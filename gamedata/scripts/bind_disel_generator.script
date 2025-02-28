@@ -1,0 +1,206 @@
+get_unknown_object = hfg_utils.get_unknown_object
+contains = hfg_utils.contains
+gts = hfg_utils.get_translation
+set_debug_level = hfg_utils.set_debug_level
+
+placed_generators = {}
+
+swap_power_state = {
+    on = "off",
+    off = "on"
+}
+
+-- DEBUGGING
+function pr(str, ...)
+    hfg_utils.dbg_pr("[HFG|Bind Disel Gen]: %s", str, ...)
+end
+
+function toggle_power(obj_id)
+    pr("Toggle Genny Power")
+    local data = hf_obj_manager.get_data(obj_id)
+    pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
+    local in_progress = data["anim_in_progress"]
+    if in_progress then pr("anim in progress, cant switch power state") return end
+
+    local power_state = data["power_state"]
+    if power_state then
+        pr("Attempting to switch power from %s to %s", power_state, swap_power_state[power_state])
+        hf_obj_manager.update_data(obj_id, {power_state=swap_power_state[power_state], anim_due=true})
+        return
+    end
+    pr("genny left in current state")
+end
+
+function init(obj)
+    pr("Initalising genny")
+    obj:bind_object(placeable_disel_generator_wrapper(obj).binder)
+end
+
+class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
+function placeable_disel_generator_wrapper:__init(obj) super(obj)
+    placed_generators[obj:id()] = true
+
+    local data = hf_obj_manager.get_data(self.object:id())
+
+    -- Object Fields
+    self.section = self.object:section()
+
+    -- Object State
+    self.power_state = data["power_state"] or "off"
+
+    -- Animation State
+    self.anim_due = data["anim_due"] or false
+    self.anim_in_progress = data["anim_in_progress"] or false
+    self.anim_stage = data["anim_stage"] or 1
+    self.anim_state = data["anim_state"] or ""
+    self.anim_power_state = data["anim_power_state"] or ""
+
+    -- Animation snd
+    self.snd = data["snd"] or {}
+    self.snd["last_played"] = contains(data["snd"], "last_played", true) and data["snd"]["last_played"] or nil
+
+    -- Animation Time
+    self.anim_tmr = data["anim_tmr"] or 0
+
+    -- Animation tbl
+    self.anim_tbl = data["anim_tbl"] or {
+        on = {
+            [1] = {anim="work_0.5", duration=2, snd="device\\bridge\\motor_start"},
+            [2] = {anim="work",     duration=6, snd="ambient\\pripyat\\pri_b306_generator_start"},
+            [3] = {anim="work_2x",  duration=0, snd="ambient\\pripyat\\pri_b306_generator_work"}
+        },
+        off = {
+            [1] = {anim="work",     duration=6, snd="ambient\\pripyat\\pri_b306_generator_work"},
+            [2] = {anim="work_0.5", duration=2, snd="device\\bridge\\motor_start"},
+            [3] = {anim="idle",     duration=0, snd="device\\bridge\\motor_stop"}
+        }
+    }
+    self:save_data()
+end
+
+function placeable_disel_generator_wrapper:update(delta)
+    bind_hf_base.hf_binder_wrapper.update(self, delta)
+    local tg = time_global()
+    self:load_data()
+
+    if self.anim_due then
+        if not self.anim_in_progress then
+            pr("Setting anim in progress to true")
+            self.anim_in_progress = true
+            self.anim_power_state = self.power_state
+        end
+
+        -- Prevent Toggle Power being constantly pressed from interrupting an animation
+        if self.anim_in_progress and self.anim_power_state ~= self.power_state then
+            pr("Attempted to change power state during anim, using anim set power state")
+            self.power_state = self.anim_power_state
+        end
+
+        -- End Process if Animation Time not reached
+        if tg < self.anim_tmr then
+            return
+        end
+
+        -- Stop Animation and Reset Controllers
+        -- pr("anim stage %s, power state %s", self.anim_stage, self.power_state)
+        if self.anim_stage > #self.anim_tbl[self.power_state] then
+            pr("stopping anim")
+            self.anim_due = false
+            self.anim_in_progress = false
+            self.anim_tmr = 0
+            self.anim_stage = 1
+            self.anim_power_state = ""
+            self:save_data()
+            return
+        end
+
+        pr("Starting Anim Stage %s at %s", self.anim_stage, tg)
+        -- Play Animation for given duration and advance/save animation
+        pr("getting details")
+        local details = self.anim_tbl[self.power_state][self.anim_stage]        
+        pr("setting snd props")
+        local snd_props = sound_object.s3d + sound_object.looped
+        pr("getting last stage")
+        local last_stage = #self.anim_tbl[self.power_state]
+        if self.anim_stage < last_stage or self.anim_stage == last_stage and self.power_state == "off" then
+            pr("Not looping snd")
+            snd_props = sound_object.s3d
+        end
+
+        if self.snd["last_played"] ~= nil and self.snd["last_played"]:playing() then
+            self.snd["last_played"]:stop()
+            pr("Stopping last played snd. Played for %s", tg - self.anim_tmr)
+        end
+        pr("setting new sound to %s", details["snd"])
+        self.snd["last_played"] = sound_object(details["snd"])
+        self.snd["last_played"].volume = 1
+        pr("trying to play snd")
+        self.snd["last_played"]:play_at_pos(self.object, self.object:position(), 0, snd_props)
+        pr("Starting to play %s at %s", details["anim"], tg)
+
+        self.object:play_cycle(details["anim"])
+        self:UpdateAnimData(details["anim"])
+        self.anim_tmr = tg + (details["duration"] * 1000)
+        pr("snd should last %ss and played at ~%s", details["duration"], self.anim_tmr)
+        self.anim_stage = self.anim_stage + 1
+        pr("Next Stage: %s", self.anim_stage)
+        self:save_data()
+    end
+end
+
+function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
+    pr("Updating anim data for id:%s", self.object:id())
+    local se_obj = alife_object(self.object:id())
+    if se_obj then
+        local data = utils_stpk.get_physic_data(se_obj)
+        pr("From %s to %s", data["skeleton_name"], anim_name)
+        data.skeleton_name = anim_name
+        utils_stpk.set_physic_data(data, se_obj)
+    end
+end
+
+function placeable_disel_generator_wrapper:net_destroy()
+    self:save_data()
+
+    if self.snd and contains(self.snd, "last_played", true) and self.snd["last_played"]:playing() then
+        self.snd["last_played"]:stop()
+    end
+
+    placed_generators[self.object:id()] = nil
+end
+
+function placeable_disel_generator_wrapper:save_data()
+    pr("save data")
+    hf_obj_manager.update_data(self.object:id(), {
+        power_state      = self.power_state,
+        anim_due         = self.anim_due,
+        anim_in_progress = self.anim_in_progress,
+        anim_stage       = self.anim_stage,
+        anim_state       = self.anim_state,
+        anim_tmr         = self.anim_tmr,
+        anim_tbl         = self.anim_tbl,
+        anim_power_state = self.anim_power_state,
+        snd            = self.snd,
+    })
+end
+
+function placeable_disel_generator_wrapper:load_data()
+    local data = hf_obj_manager.get_data(self.object:id())
+    self.power_state = data["power_state"]
+    self.anim_due = data["anim_due"]
+    self.anim_in_progress = data["anim_in_progress"]
+    self.anim_stage = data["anim_stage"]
+    self.anim_state = data["anim_state"]
+    self.anim_tmr = data["anim_tmr"]
+    self.anim_tbl = data["anim_tbl"]
+    self.anim_power_state = data["anim_power_state"]
+    self.snd            = data["snd"]
+    --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
+end
+
+function placeable_disel_generator_wrapper:update_data(data)
+    pr("updating")
+    hf_obj_manager.update_data(self.object:id(), {power_state=swap_power_state[power_state], anim_due=true})
+    self:save_data()
+    self:load_data()
+end

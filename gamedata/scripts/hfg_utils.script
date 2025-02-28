@@ -1,0 +1,119 @@
+dbg_lvl = "dev"
+
+function reverse_ipairs(tbl)
+    local tmp = {}
+    for i=#tbl, 1 , -1 do
+        tmp[#tmp + 1] = tbl[i]
+    end
+    return tmp
+end
+
+--- Authored by NLTP_ASHES 17/02/24 Anomaly Discord
+function get_unknown_object(obj, result_obj_type)
+    if result_obj_type == "server" then
+        if obj and type(obj.id) == "number" then
+            return obj
+        elseif obj and type(obj.id) == "function" then
+            return alife_object(obj:id())
+        end
+    elseif result_obj_type == "game" then
+        if obj and type(obj.id) == "number" then
+            return level.object_by_id(obj.id)
+        elseif obj and type(obj.id) == "function" then
+            return obj
+        end
+    end
+    return nil
+end
+
+
+
+---@Author NLTP ASHES
+function get_translation(str, ...)
+    if not has_translation(str) then return end
+
+    local string = game.translate_string(str)
+
+    if (select('#',...) >= 1) then
+        local i = 0
+        local p = {...}
+        local function sr()
+            i = i + 1
+            if (type(p[i]) == "userdata") then
+                return "userdata"
+            end
+            return tostring(p[i])
+        end
+        string = string.gsub(string,"%%s",sr)
+    end
+
+    return string
+end
+
+function has_translation(str)
+    return game.translate_string(str) ~= str
+end
+
+--- Check if table contains a key
+---@param tbl table
+---@param key any
+---@param by_key boolean
+---@param return_value boolean
+function contains(tbl, key, by_key, return_value, return_idx)
+	if is_empty(tbl) or key == "" then return false end
+    for k, v in pairs(tbl) do
+        if by_key and k == key then
+			if return_idx then
+				return true, k
+			elseif return_value then
+				return true, v
+			else
+				return true
+			end
+        else
+            if v == key then
+                if return_value and return_idx then
+                    return true, v, k
+				elseif return_value then
+					return true, v
+				elseif return_idx then
+					return true, k
+                else
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- DEBUG print
+function dbg_pr(header, str, ...)
+    --if get_config("enable_debug") then
+    printf(header, strformat(str, ...))
+    --end
+end
+
+function pr(str, ...)
+	if not filter_debug_msg(dbg_lvl) then return end
+    dbg_pr("[HFG|Utils]: %s", str, ...)
+end
+
+
+function mcm_debug_level()
+	return DEV_DEBUG and "all" or "player" --  get_config("debug_level") or
+end
+
+function filter_debug_msg(debug_level)
+	local mcm_dbg_lvl = mcm_debug_level()
+	local accepted_debug_msgs = {
+		["player"] = {"player"},
+		["dev"] = {"player", "dev"},
+		["all"] = {"player", "dev", "all"}
+	}
+	return contains(accepted_debug_msgs[mcm_dbg_lvl], debug_level)
+end
+
+function set_debug_level(new_dbg_level)
+	dbg_lvl = new_dbg_level
+end

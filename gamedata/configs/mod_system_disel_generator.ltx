@@ -24,8 +24,10 @@ visual                                   = dynamics\el_tehnika\disel_generator.o
 placeable_type                           = prop
 startup_animation                        = idle
 
-script_binding                           = bind_prop_furniture.init
+script_binding                           = bind_disel_generator.init
 item_section                             = disel_generator_item
+
+ui_on_simple_interaction                 = bind_disel_generator.toggle_power
 
 fixed_bones                              = link, body, but_belt, l_rotor, r_rotor, tank, top_belt
 
