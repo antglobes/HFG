@@ -48,9 +48,7 @@ end
 
 class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_disel_generator_wrapper:__init(obj) super(obj)
-    placed_generators[obj:id()] = true
-
-    local data = hf_obj_manager.get_data(self.object:id())
+    local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
     
     -- Object Fields
     self.section = self.object:section()
@@ -297,7 +295,7 @@ end
 
 function placeable_disel_generator_wrapper:net_destroy()
     self:save_data()
-
+    pr("on net destory")
     if self.snd and contains(self.snd, "last_played", true) and self.snd["last_played"]:playing() then
         self.snd["last_played"]:stop()
     end
@@ -312,11 +310,13 @@ function placeable_disel_generator_wrapper:net_destroy()
             end
         end 
     end
-
-    placed_generators[self.object:id()] = nil
+    if self.power_state == "broken" then
+        placed_generators[self.object:id()] = nil
+    end
 end
 
 function placeable_disel_generator_wrapper:death_callback(victim, who)
+    pr("on death")
     if self.snd and contains(self.snd, "last_played", true) and self.snd["last_played"]:playing() then
         self.snd["last_played"]:stop()
     end
@@ -353,6 +353,7 @@ function placeable_disel_generator_wrapper:save_data()
         exhaust_pos      = self.exhaust_pos,
         condition        = self.condition
     })
+    placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
 end
 
 function placeable_disel_generator_wrapper:load_data()
@@ -449,6 +450,16 @@ function set_condition_on_hit(obj)
    
 end
 
+function on_save(mdata)
+    mdata.placed_generators = placed_generators
+end
+
+function on_load(mdata)
+    placed_generators = mdata["placed_generators"] or {}
+end
+
 function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_condition_on_hit)
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
 end
