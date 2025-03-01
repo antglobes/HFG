@@ -6,4 +6,20 @@
     <string id="st_disel_generator">
         <text>Disel Generator</text>
     </string>
+
+    <string id="st_power_state_on">
+        <text>Turn Generator On</text>
+    </string>
+
+    <string id="st_power_state_off">
+        <text>Turn Generator Off</text>
+    </string>
+
+    <string id="st_power_state_broken">
+        <text>Try to Start Generator</text>
+    </string>
+
+    <string id="st_generator_broken">
+        <text>Generator Broken and requires maintenance</text>
+    </string>
 </string_table>

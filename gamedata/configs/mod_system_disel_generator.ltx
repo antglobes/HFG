@@ -1,7 +1,7 @@
 [disel_generator_item]:tch_junk
 class									= II_ATTCH
 kind								    = i_tool
-visual									= dynamics\el_tehnika\disel_generator.ogf
+visual									= dynamics\disel_generator_1.ogf
 description								= st_disel_generator_descr
 inv_name								= st_disel_generator
 inv_name_short							= st_disel_generator
@@ -20,16 +20,17 @@ placeable_type                          = prop
 placeable_section                       = placeable_disel_generator
 
 [placeable_disel_generator]:physic_object
-visual                                   = dynamics\el_tehnika\disel_generator.ogf
+visual                                   = dynamics\disel_generator_1.ogf
 placeable_type                           = prop
 startup_animation                        = idle
 
 script_binding                           = bind_disel_generator.init
 item_section                             = disel_generator_item
 
+ui_on_interaction                        = bind_disel_generator.display_toggle_power
 ui_on_simple_interaction                 = bind_disel_generator.toggle_power
 
-fixed_bones                              = link, body, but_belt, l_rotor, r_rotor, tank, top_belt
+fixed_bones                              = link, body, but_belt, l_rotor, r_rotor, tank, top_belt, exhaust
 
 bounding_box_size                        = 0.743, 0.840, 0.911
 bounding_box_origin                      = 0.035032, 0.91057, 0.061213
@@ -37,3 +38,13 @@ bounding_box_origin                      = 0.035032, 0.91057, 0.061213
 ; Modified OGF Bounding Box Vals
 ; 0.743, 0.910, 0.740
 ; 0.035, 0.91, 0.12
+
+[tch_on_explode]
+on_explode = bind_disel_generator.set_condition_on_hit
+![wpn_rpg7]:tch_on_explode
+![wpn_rg-6]:tch_on_explode
+![wpn_m79]:tch_on_explode
+![grenade_rgd5]:tch_on_explode
+![grenade_smoke]:tch_on_explode
+![grenade_gd-05]:tch_on_explode
+![grenade_f1]:tch_on_explode
