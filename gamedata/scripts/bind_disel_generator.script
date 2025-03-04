@@ -54,7 +54,6 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.section = self.object:section()
     self.condition = contains(data, "condition", true) and data["condition"] or 1
     
-    self.exhaust_pos = calc_exhaust_pos(self.object)
     -- Object State
     self.power_state = data["power_state"] or "off"
     self.object:set_tip_text(gts("st_power_state_" .. swap_power_state[self.power_state]))
@@ -98,24 +97,28 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.curr_fx = data["curr_fx"] or {}
     self.fx_tbl = { -- rpt = repeat, slp = sleep
         broken = {
-            [1] = {part="explosions\\expl_car_smoke_big",                duration={active=13, pause=2},                  count=0, loop=true,  active=false, tmr=0},
-            [2] = {part="explosions\\explosion_dynamite",                duration={active=1, pause=0.5, rpt=3},          count=0, loop=false, active=false, tmr=0},
+            [1] = {part="explosions\\expl_car_smoke_big",                duration={active=13, pause=2},                  bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="explosions\\explosion_dynamite",                duration={active=1, pause=0.5, rpt=3},          bone_name="body",    count=0, loop=false, active=false, tmr=0},
         },
         low = {
-            [1] = {part="explosions\\expl_car_smoke_small",              duration={active=13, pause=2},                  count=0, loop=true,  active=false, tmr=0},
-            [2] = {part="explosions\\campfire_hot_no_fire",              duration={active=1, pause=0.5, rpt=5, slp=60},  count=0, loop=true,  active=false, tmr=0},
-            [3] = {part="vehiclefx\\niva_damagedexhaust_01",             duration={active=15},                           count=0, loop=true,  active=false, tmr=0},
+            [1] = {part="explosions\\expl_car_smoke_small",              duration={active=13, pause=2},                  bone_name="r_rotor", count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="explosions\\campfire_hot_no_fire",              duration={active=1, pause=0.5, rpt=5, slp=60},  bone_name="r_rotor", count=0, loop=true,  active=false, tmr=0},
+            [3] = {part="vehiclefx\\niva_damagedexhaust_01",             duration={active=15},                           bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
         },
         med = {
-            [1] = {part="vehiclefx\\generic_exhaust_01",                 duration={active=15},                           count=0, loop=true,  active=false, tmr=0},
-            [2] = {part="vehiclefx\\exhaust_kamaz",                      duration={active=15},                           count=0, loop=true,  active=false, tmr=0},
+            [1] = {part="vehiclefx\\generic_exhaust_01",                 duration={active=15},                           bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="vehiclefx\\exhaust_kamaz",                      duration={active=15},                           bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
         },
         high = {
-            [1] = {part="vehiclefx\\exhaust_1",                          duration={active=15},                           count=0, loop=true,  active=false, tmr=0},
-            [2] = {part="vehiclefx\\niva_damagedexhaust_01",             duration={active=1, pause=0.5, rpt=5},          count=0, loop=false, active=false, tmr=0},
-            [3] = {part="industrial_particles\\exhaust_workshop_1",      duration={active=15},                           count=0, loop=true,  active=false, tmr=0},
+            [1] = {part="vehiclefx\\exhaust_1",                          duration={active=15},                           bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="vehiclefx\\niva_damagedexhaust_01",             duration={active=1, pause=0.5, rpt=5},          bone_name="exhaust", count=0, loop=false, active=false, tmr=0},
+            [3] = {part="industrial_particles\\exhaust_workshop_1",      duration={active=15},                           bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
         }
     }
+
+    -- Powerable Devices
+    self.radius = 50
+    self.powerable_devices = self:GetPowerableDevices()
 
 
     self:save_data()
@@ -153,7 +156,7 @@ function placeable_disel_generator_wrapper:update(delta)
                     self.curr_fx[self.last_cond_state][idx].tmr = tg + (details["duration"]["active"] * 1000)
                     self.curr_fx[self.last_cond_state][idx].active = true
                     --pr("exhaust pos: %s", vec_to_str(self.exhaust_pos))
-                    self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], self.exhaust_pos, (details["duration"]["active"]*1000))
+                    self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], calc_part_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
                     pr("Playing particle: %s for %s", details["part"], details["duration"]["active"])
                 elseif details["active"] then
                     local remove_particle = false
@@ -293,6 +296,21 @@ function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
     end
 end
 
+function placeable_disel_generator_wrapper:GetPowerableDevices()
+    local powerable_devices = {}
+    local function search(obj)
+        local sect = obj:section()
+        if ini_sys:r_string_ex(sect, "placeable_type") then
+            powerable_devices[#powerable_devices + 1] = {
+                id = obj:id(),
+                section = sect,
+            }
+        end
+    end
+    level.iterate_nearest(self.object:position(), self.radius, search)
+    return powerable_devices
+end
+
 function placeable_disel_generator_wrapper:net_destroy()
     self:save_data()
     pr("on net destory")
@@ -350,7 +368,6 @@ function placeable_disel_generator_wrapper:save_data()
         last_cond_state  = self.last_cond_state,
         curr_fx          = self.curr_fx,
         fx_tbl           = self.fx_tbl,
-        exhaust_pos      = self.exhaust_pos,
         condition        = self.condition
     })
     placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
@@ -370,21 +387,15 @@ function placeable_disel_generator_wrapper:load_data()
     self.last_cond_state  = data["last_cond_state"]
     self.curr_fx          = data["curr_fx"]
     self.fx_tbl           = data["fx_tbl"]
-    self.exhaust_pos      = data["exhaust_pos"]
     self.condition        = data["condition"]
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
 
-function calc_exhaust_pos(obj)
-    -- d - 2(d . n)n
-    --[[pr("obj pos: %s", vec_to_str(obj:position()))
-    for _, name in pairs({"link", "body", "l_rotor", "r_rotor", "tank", "exhaust"}) do
-        local pos = obj:bone_position(name)
-
-    
-        pr("%s pos: %s", name, vec_to_str(pos))
-    end]]
-    return obj:position()
+function calc_part_pos(obj, bone_name)    
+    local bid = obj:get_bone_id(bone_name)
+    local bpos = obj:bone_position(bid)
+    pr("%s pos: %s", bone_name, vec_to_str(bpos))
+    return bpos
 end
 
 function cond_to_state(cond)
@@ -451,7 +462,7 @@ function set_condition_on_hit(obj)
 end
 
 function on_save(mdata)
-    mdata.placed_generators = placed_generators
+    mdata.placed_generators = placed_generators or {}
 end
 
 function on_load(mdata)
