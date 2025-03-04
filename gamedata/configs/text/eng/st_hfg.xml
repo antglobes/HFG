@@ -22,4 +22,8 @@
     <string id="st_generator_broken">
         <text>Generator Broken and requires maintenance</text>
     </string>
+
+    <string id="st_requires_power">
+        <text>Generator is currently %s. %s requires power</text>
+    </string>
 </string_table>

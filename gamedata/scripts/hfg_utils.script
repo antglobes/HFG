@@ -87,7 +87,57 @@ function contains(tbl, key, by_key, return_value, return_idx)
     return false
 end
 
+--- Get a list of sections from objects
+---@param objs table{game_objects}
+function get_sect_tbl(tbl)
+    local sect_tbl = {}
+    for _, obj in ipairs(tbl) do
+        sect_tbl[#sect_tbl + 1] = obj:section()
+    end
+    --printf("sect list %s", table.concat(sect_list, ","))
+    return sect_tbl
+end
+
+function find_obj(sect, pos, radius, search)
+    local objs = {}
+    local function itr(obj)
+        local found_sect = obj:section()
+        if not search then
+            if is_not_empty({string.find(found_sect, sect)}) then
+                objs[#objs + 1] = obj
+            end
+        else
+            if search(obj) then
+                objs[#objs + 1] = obj
+            end
+        end       
+    end
+    level.iterate_nearest(pos, radius, itr)
+    return objs
+end
+
+function get_nearest(tbl, pos)
+    local closest_idx
+    local closest_dist
+    pos = pos or db.actor:position()
+    for idx, obj in pairs(tbl) do
+        local dist = pos:distance_to(obj:position())
+        if not closest_dist or dist < closest_dist then
+            closest_dist = dist
+            closest_idx = idx
+        end
+    end
+    return tbl[closest_idx]
+end
+
 -- DEBUG print
+
+function print_table(tbl)
+    if is_empty(tbl) then return "{}" end
+    return utils_data.print_table(tbl, nil, true)
+end
+
+
 function dbg_pr(header, str, ...)
     --if get_config("enable_debug") then
     printf(header, strformat(str, ...))
