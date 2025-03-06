@@ -1,0 +1,142 @@
+
+
+-- Imports
+
+gts = hfg_utils.get_translation
+contains = hfg_utils.contains
+is_powerable_device = bind_disel_generator.is_powerable_device
+add_functor = custom_functor_autoinject.add_functor
+split = hfg_utils.split
+
+-- Variables
+
+update_descr = {}
+
+-- DEBUGGING
+function pr(str, ...)
+    hfg_utils.dbg_pr("[HFG|Main]: %s", str, ...)
+end
+
+-- Boolean Funcs
+
+function is_fuse_pack(sect)
+    local tkns = split(sect, "_")
+    return is_fuse(sect) and contains(tkns, "pack") or false
+end
+
+function is_fuse(sect)
+    local tkns = split(sect, "_")
+    return contains(tkns, "fuse")
+end
+
+function is_fuse_broken(sect)
+    local tkns = split(sect, "_")
+    return contains(tkns, "broken")
+end
+
+function is_fuse_protected(id)
+    local data = hf_obj_manager.get_data(id)
+    return data and contains(data, "fuse_protected", true) or false
+end
+
+-- Helper Funcs
+
+function get_fuse_type(sect)
+    sect = sect:gsub("hfg_fuse_", "")
+    sect = sect:gsub("pack_", "")
+    return sect
+ end
+
+-- Custom Func: Unpack
+
+function unpack_fuse_pack_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    return is_fuse_pack(sect) and not is_fuse_broken(sect)
+end
+
+function unpack_fuse_pack_menu(obj)
+    return gts("st_unpack_fuse_pack")
+end
+
+function unpack_fuse_pack_func(obj)
+    local sect = obj:section()
+    local fuse_type = get_fuse_type(sect)
+    local max_amount = ini_sys:r_float_ex(sect, "max_amount")
+    local amount_to_spawn = math.random(1, max_amount)
+    local broken_to_spawn = 0
+    local fuse_sect = strformat("hfg_fuse_%s", fuse_type)
+    local broken_fuse_sect = "hfg_fuse_broken"
+
+    if amount_to_spawn < max_amount and max_amount - amount_to_spawn > 0 then
+        broken_to_spawn = math.random(1, max_amount - amount_to_spawn)
+    end
+    pr("unpacking %s", sect)
+    pr("max amount: %s", max_amount)
+    pr("amount to spawn: %s", amount_to_spawn)
+    pr("broken to spawn: %s", broken_to_spawn)
+    pr("fuse sect: %s", fuse_sect)
+    pr("broken sect: %s", broken_fuse_sect)
+
+
+    for i=1, amount_to_spawn do
+        alife_create_item(fuse_sect, db.actor)
+    end
+    if broken_to_spawn > 0 then
+        for i=1, broken_to_spawn do
+            alife_create_item(broken_fuse_sect, db.actor)
+        end
+    end
+    alife():release(alife_object(obj:id(), true))
+end
+
+add_functor("hfg_unpack_fuse_pack", unpack_fuse_pack_cond, unpack_fuse_pack_menu, nil, unpack_fuse_pack_func)
+
+-- Monkey Patches
+
+function build_fuse_details_descr()
+    return strformat("%s %s %s\n", utils_xml.get_color("d_orange"), gts("st_bullet_point"), gts("st_fuse_protected_device") )
+end
+
+base_obj_desc = ui_item.get_obj_desc
+function ui_item.get_obj_desc(obj)
+    local sect = obj:section()
+    if is_powerable_device(sect) and is_fuse_protected(obj:id()) then
+        pr("updating %s descr to be fuse protected", sect)
+        if contains(update_descr, sect, true) then
+            local details = update_descr[sect]
+            local descr = strformat("%s\n %s\n", details["base"], details["additional"])   
+            return descr
+        end
+    end
+    return base_obj_desc(obj)
+end
+
+-- Callbacks
+
+function on_drag_drop(obj_dropped, obj_target, slot_from, slot_to)
+    if not (slot_from == EDDListType.iActorBag and (slot_to == EDDListType.iActorBag or slot_to == EDDListType.iActorSlot)) then
+        return
+    end
+
+    local device = obj_target
+    local fuse = obj_dropped 
+
+    if is_fuse(fuse:section()) and is_powerable_device(device:section()) then 
+        if is_fuse_broken(fuse) then
+            actor_menu.set_msg(1, gts("st_broken_fuse", fuse:section()), 3)
+            return
+        end
+        if is_fuse_protected(device:id()) then return end
+        pr("dragging %s onto %s", fuse:section(), device:section())
+        update_descr[device:section()] = {base=ui_item.get_obj_desc(device), additional=build_fuse_details_descr()}
+        hf_obj_manager.update_data(device:id(), {fuse_protected=true})
+        pr("updadting %s to be fuse protected", device:section())
+        alife():release(alife_object(fuse:id(), true))
+    end
+end
+
+function on_game_start()
+    RegisterScriptCallback("ActorMenu_on_item_drag_drop", on_drag_drop)
+end

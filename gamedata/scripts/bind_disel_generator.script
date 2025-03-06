@@ -10,6 +10,7 @@ print_table = hfg_utils.print_table
 -- Constants
 
 SEARCH_RADIUS = 50
+FUEL_SECTIONS = {"batteries_dead"}
 
 placed_generators = {}
 
@@ -125,7 +126,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     }
 
     -- Powerable Devices
-    self.radius = SEARCH_RADIUS
+    self.power_off_devices = false
     self.powerable_devices = self:GetPowerableDevices()
 
 
@@ -253,6 +254,7 @@ function placeable_disel_generator_wrapper:update(delta)
             self.anim_in_progress = false
             self.anim_tmr = 0
             self.anim_stage = 1
+            self.power_off_devices = contains({"off", "broken"}, self.power_state)
             self:save_data()
             -- local pos = self.object:position()
             -- local new_pos = {x=pos.x/2, y=pos.y, z=pos.z/4}
@@ -291,6 +293,15 @@ function placeable_disel_generator_wrapper:update(delta)
         self.anim_stage = self.anim_stage + 1
         self:save_data()
     end
+
+    if self.power_off_devices then
+        pr("turning off devices")
+        for id, sect in pairs(self.powerable_devices) do
+            hf_obj_manager.update_data(id, {is_on=false})
+        end
+        self.power_off_devices = false
+        self:save_data()
+    end
 end
 
 function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
@@ -305,21 +316,7 @@ function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
 end
 
 function placeable_disel_generator_wrapper:GetPowerableDevices()
-    pr("Getting powerable devices")
-    local powerable_devices = {}
-    local function search(obj)
-        local sect = obj:section()
-        local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
-        if contains({"batteries_dead"}, fuel_sect) then
-            powerable_devices[#powerable_devices + 1] = {
-                id = obj:id(),
-                section = sect,
-            }
-        end
-    end
-    level.iterate_nearest(self.object:position(), self.radius, search)
-    --pr("Found powerable devices: %s", print_table(powerable_devices))
-    return powerable_devices
+    return get_powerable_devices(self.object:position())
 end
 
 function placeable_disel_generator_wrapper:net_destroy()
@@ -381,6 +378,7 @@ function placeable_disel_generator_wrapper:save_data()
         fx_tbl            = self.fx_tbl,
         condition         = self.condition,
         powerable_devices = self.powerable_devices,
+        power_off_devices = self.power_off_devices
     })
     placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
     --pr("Genny data: %s\n", print_table(data))
@@ -402,6 +400,7 @@ function placeable_disel_generator_wrapper:load_data()
     self.fx_tbl            = data["fx_tbl"]
     self.condition         = data["condition"]
     self.powerable_devices = data["powerable_devices"]
+    self.power_off_devices = data["power_off_devices"]
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
 
@@ -410,6 +409,25 @@ function calc_part_pos(obj, bone_name)
     local bpos = obj:bone_position(bid)
     --pr("%s pos: %s", bone_name, vec_to_str(bpos))
     return bpos
+end
+
+function is_powerable_device(sect)
+    return contains(FUEL_SECTIONS, sect)
+end
+
+function get_powerable_devices(pos)
+    pr("Getting powerable devices")
+    local powerable_devices = {}
+    local function search(obj)
+        local sect = obj:section()
+        local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
+        if is_powerable_device(sect) then
+            powerable_devices[obj:id()] = sect
+        end
+    end
+    level.iterate_nearest(pos, SEARCH_RADIUS, search)
+    --pr("Found powerable devices: %s", print_table(powerable_devices))
+    return powerable_devices
 end
 
 function cond_to_state(cond)
@@ -438,15 +456,15 @@ function ui_furniture_light.toggle_light(obj_id)
         local found_gen = get_nearest(found_gens)
         local data = hf_obj_manager.get_data(found_gen:id())
         local powerable_devices = data["powerable_devices"]
-        --pr("Found data: %s", print_table(data))
+        
         if is_not_empty(powerable_devices) then
-            --pr("checking power state")
             local power_state = data["power_state"]
             pr("power state: %s", power_state)
             if contains({"broken", "off"}, power_state) then
                 local is_on = hf_obj_manager.get_data(obj_id)["is_on"]
                 if is_on then
                     base_toggle_light(obj_id)
+                    return
                 end
                 local item_sect = ini_sys:r_string_ex(se_obj:section_name(), "item_section")
                 local light_name = gts(ini_sys:r_string_ex(item_sect, "inv_name"))

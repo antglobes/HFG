@@ -1,5 +1,17 @@
 dbg_lvl = "dev"
 
+function split(str, sep)
+    local tbl = {}
+    if not sep then
+        sep = "%s"
+    end
+    for ele in string.gmatch(str, "([^" .. sep .. "]+)") do
+        tbl[#tbl + 1] = ele
+    end
+    return tbl
+end
+
+
 function reverse_ipairs(tbl)
     local tmp = {}
     for i=#tbl, 1 , -1 do

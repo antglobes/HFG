@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="windows-1251"?>
 <string_table>
     <string id="st_disel_generator_descr">
         <text>Facking Disel Innit</text>
@@ -25,5 +26,79 @@
 
     <string id="st_requires_power">
         <text>Generator is currently %s. %s requires power</text>
+    </string>
+
+    <string id="st_bullet_point">
+		<text>�</text>
+    </string>
+
+    <string id="st_unpack_fuse_pack">
+        <text>unpack</text>
+    </string>
+
+    <string id="st_fuse_protected_device">
+        <text>This device is protected by a ceramic fuse</text>
+    </string>
+
+    <string id="st_broken_fuse">
+        <text>This fuse is broken</text>
+    </string>
+
+    <string id="st_fuse_normal">
+        <text>Ceramic Fuse</text>
+    </string>
+    <string id="st_fuse_moist">
+        <text>Slightly Wet Ceramic Fuse</text>
+    </string>
+    <string id="st_fuse_damp">
+        <text>A Wet Ceramic Fuse</text>
+    </string>
+    <string id="st_fuse_homemade">
+        <text>Homemade Fuse</text>
+    </string>
+    <string id="st_fuse_broken">
+        <text>Broken Fuse</text>
+    </string>
+
+    <string id="st_fuse_normal_descr">
+        <text>A 3-13A (Ampere) fuse, protecting applicances under 700w (Watts)</text>
+    </string>
+    <string id="st_fuse_moist_descr">
+        <text>A 3-13A (Ampere) fuse, protecting applicances under 700w (Watts)</text>
+    </string>
+    <string id="st_fuse_damp_descr">
+        <text>A 3-13A (Ampere) fuse, protecting applicances under 700w (Watts)</text>
+    </string>
+    <string id="st_fuse_homemade_descr">
+        <text>A 3-8A (Ampere) fuse, handcrafted from parts reclaimed from old machinery found in factories, protecting applicances under 450w (watts)</text>
+    </string>
+    <string id="st_fuse_broken_descr">
+        <text>A Broken Fuse, likely tripped during a power surge in which the device it was attached to was protected was receving that current</text>
+    </string>
+
+    <string id="st_fuse_pack_normal">
+        <text>Pack of Ceramic Fuses</text>
+    </string>
+    <string id="st_fuse_pack_moist">
+        <text>Slightly Wet Pack of Ceramic Fuses</text>
+    </string>
+    <string id="st_fuse_pack_damp">
+        <text>A Wet Pack of Ceramic Fuses</text>
+    </string>
+    <string id="st_fuse_pack_homemade">
+        <text>A Pack of Homemade Fuses</text>
+    </string>
+
+    <string id="st_fuse_pack_normal_descr">
+        <text>Mangun's Machinery branded fuses. Containing 10x 3-13A (Ampere) fuses, typically holding 10 fuses per pack but due to being scavanged from old factories around rostok, the overall quality is hard to cipher.</text>
+    </string>
+    <string id="st_fuse_pack_moist_descr">
+        <text>Mangun's Machinery branded fuses. Containing 10x 3-13A (Ampere) fuses, typically holding 10 fuses per pack but due to being scavanged from old factories around rostok, the overall quality is hard to cipher.</text>
+    </string>
+    <string id="st_fuse_pack_damp_descr">
+        <text>Mangun's Machinery branded fuses. Containing 10x 3-13A (Ampere) fuses, typically holding 10 fuses per pack but due to being scavanged from old factories around rostok, the overall quality is hard to cipher.</text>
+    </string>
+    <string id="st_fuse_pack_homemade_descr">
+        <text>A small box of homemade fuses, containing about 10.</text>
     </string>
 </string_table>
