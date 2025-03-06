@@ -44,7 +44,7 @@ function toggle_power(obj_id)
             obj:set_tip_text(gts("st_power_state_" .. power_state))
         end
         pr("Attempting to switch power from %s to %s", power_state, swap_power_state[power_state])
-        hf_obj_manager.update_data(obj_id, {power_state=swap_power_state[power_state], anim_due=true})
+        hf_obj_manager.update_data(obj_id, {power_state=swap_power_state[power_state], last_power_state=power_state, anim_due=true})
         return
     end
     pr("genny left in current state")
@@ -57,6 +57,7 @@ end
 
 class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_disel_generator_wrapper:__init(obj) super(obj)
+    pr("bind obj id: %s, game obj id: %s", self.object:id(), obj:id())
     local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
     
     -- Object Fields
@@ -66,6 +67,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     -- Object State
     self.power_state = data["power_state"] or "off"
     self.object:set_tip_text(gts("st_power_state_" .. swap_power_state[self.power_state]))
+    self.current_motion = "idle"
 
     -- Animation State
     self.anim_due = data["anim_due"] or false
@@ -94,8 +96,8 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
             [3] = {anim="idle",     duration=0, snd="device\\bridge\\motor_stop"}
         },
         broken = {
-            [1] = {anim="work",     duration=2, snd="device\\bridge\\motor_start"},
-            [2] = {anim="work_2x",  duration=2, snd="ambient\\pripyat\\pri_b306_generator_work"},
+            [1] = {anim="work_2x",  duration=5, snd="weapons\\explo\\dynamite_boom"},
+            [2] = {anim="work_0.5", duration=2, snd="device\\bridge\\motor_start"},
             [3] = {anim="idle",     duration=0, snd="device\\bridge\\motor_stop"}
         }
     }
@@ -107,7 +109,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.fx_tbl = { -- rpt = repeat, slp = sleep
         broken = {
             [1] = {part="explosions\\expl_car_smoke_big",                duration={active=13, pause=2},                  bone_name="exhaust", count=0, loop=true,  active=false, tmr=0},
-            [2] = {part="explosions\\explosion_dynamite",                duration={active=1, pause=0.5, rpt=3},          bone_name="body",    count=0, loop=false, active=false, tmr=0},
+            [2] = {part="explosions\\explosion_dynamite",                duration={active=1.2, pause=3.8, rpt=1},        bone_name="body",    count=0, loop=false, active=false, tmr=0},
         },
         low = {
             [1] = {part="explosions\\expl_car_smoke_small",              duration={active=13, pause=2},                  bone_name="r_rotor", count=0, loop=true,  active=false, tmr=0},
@@ -126,7 +128,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     }
 
     -- Powerable Devices
-    self.power_off_devices = false
+    self.power_off_devices = true
     self.powerable_devices = self:GetPowerableDevices()
 
 
@@ -140,6 +142,10 @@ function placeable_disel_generator_wrapper:update(delta)
 
     local condition = self.condition
     local cond_state = cond_to_state(round_idp(condition * 100, 2))    
+
+    if self.last_power_state ~= self.power_state then
+        self.object:set_tip_text(gts("st_power_state_" .. swap_power_state[self.power_state]))
+    end
 
     if self.power_state == "on" then
         -- If Condition Has Changed enough for a particle update
@@ -223,14 +229,22 @@ function placeable_disel_generator_wrapper:update(delta)
             end
             self:save_data()
         end
+
+    elseif self.power_state == "broken" then
+        --[[if self.current_motion ~= "idle" then
+            self.object:play_cycle("idle")
+            self.current_motion = "idle"
+            self:save_data()
+        end]]
     end
 
 
     if self.anim_due then
         if not self.anim_in_progress then
-            pr("Setting anim in progress to true")
+            pr("Setting Anim Control Vars")
             self.anim_in_progress = true
             self.anim_power_state = self.power_state
+            self.anim_start_time = tg
             pr("anim power state: %s", self.anim_power_state)
         end
 
@@ -238,16 +252,23 @@ function placeable_disel_generator_wrapper:update(delta)
         if self.anim_in_progress and self.anim_power_state ~= self.power_state then
             pr("Attempted to change power state during anim, using anim set power state")
             self.power_state = self.anim_power_state
-            pr("power state: %s", self.power_state)
+            --pr("power state: %s", self.power_state)
         end
 
         -- End Process if Animation Time not reached
         if tg < self.anim_tmr then
             return
         end
+        pr("Anim Time Reached")
+        -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
+        if tg > self.anim_tmr and tg - self.anim_start_time > self.anim_tmr then
+            pr("Anim Runtime Exceed, Advancing Stage")
+            self.anim_tmr = 0
+            self.anim_stage = self.anim_stage + 1
+        end
 
         -- Stop Animation and Reset Controllers
-        pr("anim stage %s, power state %s, anim tbl exist? %s", self.anim_stage, self.power_state, is_not_empty(self.anim_tbl))
+        --pr("Anim stage %s, power state %s", self.anim_stage, self.power_state)
         if self.anim_stage > #self.anim_tbl[self.power_state] then
             pr("stopping anim")
             self.anim_due = false
@@ -256,12 +277,6 @@ function placeable_disel_generator_wrapper:update(delta)
             self.anim_stage = 1
             self.power_off_devices = contains({"off", "broken"}, self.power_state)
             self:save_data()
-            -- local pos = self.object:position()
-            -- local new_pos = {x=pos.x/2, y=pos.y, z=pos.z/4}
-            -- test_funcs.play_particle("explosions\\expl_car_smoke_big", vector():set(new_pos), 30)
-            --local data = utils_stpk.get_physic_data(alife_object(self.object:id()))
-            --pr("%s \n", utils_data.print_table(data, nil, true))
-            --local pos = self.object:bone_position("link")
             return
         end
 
@@ -271,7 +286,7 @@ function placeable_disel_generator_wrapper:update(delta)
         local snd_props = sound_object.s3d + sound_object.looped
         local last_stage = #self.anim_tbl[self.power_state]
         if self.anim_stage < last_stage or self.anim_stage == last_stage and contains({"off", "broken"}, self.power_state) then
-            pr("Not looping snd")
+            --pr("Not looping snd")
             snd_props = sound_object.s3d
         end
 
@@ -289,6 +304,7 @@ function placeable_disel_generator_wrapper:update(delta)
 
         self.object:play_cycle(details["anim"])
         self:UpdateAnimData(details["anim"])
+        self.current_motion = details["anim"]
         self.anim_tmr = tg + (details["duration"] * 1000)
         self.anim_stage = self.anim_stage + 1
         self:save_data()
@@ -378,7 +394,10 @@ function placeable_disel_generator_wrapper:save_data()
         fx_tbl            = self.fx_tbl,
         condition         = self.condition,
         powerable_devices = self.powerable_devices,
-        power_off_devices = self.power_off_devices
+        power_off_devices = self.power_off_devices,
+        current_motion    = self.current_motion,
+        anim_start_time   = self.anim_start_time,
+        last_power_state   = self.last_power_state
     })
     placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
     --pr("Genny data: %s\n", print_table(data))
@@ -401,6 +420,9 @@ function placeable_disel_generator_wrapper:load_data()
     self.condition         = data["condition"]
     self.powerable_devices = data["powerable_devices"]
     self.power_off_devices = data["power_off_devices"]
+    self.current_motion    = data["current_motion"]
+    self.anim_start_time   = data["anim_start_time"]
+    self.last_power_state  = data["last_power_state"]
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
 
@@ -412,7 +434,8 @@ function calc_part_pos(obj, bone_name)
 end
 
 function is_powerable_device(sect)
-    return contains(FUEL_SECTIONS, sect)
+    local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
+    return contains(FUEL_SECTIONS, fuel_sect)
 end
 
 function get_powerable_devices(pos)
@@ -420,7 +443,6 @@ function get_powerable_devices(pos)
     local powerable_devices = {}
     local function search(obj)
         local sect = obj:section()
-        local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
         if is_powerable_device(sect) then
             powerable_devices[obj:id()] = sect
         end
@@ -499,28 +521,12 @@ function set_condition_on_hit(obj)
             local anim_due = false
             local cond = data["condition"] or 1
             cond = cond - 0.25
-            
-            
             -- shoot a ray from obj to genny
             -- if hit any material get material
             -- check to see how much the material would absorb the damage
             -- apply to cond
-                
-            if (cond * 100) <= 10 then
-                if (cond * 100) < 0 then
-                    cond = 0
-                end
-                if data["power_state"] == "on" then
-                    anim_due = true
-                end
-                pr("Setting genny to broken")
-                gen:set_tip_text(gts("st_power_state_broken"))
-                hf_obj_manager.update_data(gen:id(), {power_state="broken", anim_due=anim_due, condition=cond})
-            else
-                pr("just updating cond")
-                hf_obj_manager.update_data(gen:id(), {condition=cond})
-            end
-            pr("updating cond: %s", cond)
+            pr("just updating cond: %s", cond)
+            hf_obj_manager.update_data(gen:id(), {condition=cond})        
         end
     end
    

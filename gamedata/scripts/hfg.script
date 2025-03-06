@@ -122,7 +122,7 @@ function on_drag_drop(obj_dropped, obj_target, slot_from, slot_to)
 
     local device = obj_target
     local fuse = obj_dropped 
-
+    
     if is_fuse(fuse:section()) and is_powerable_device(device:section()) then 
         if is_fuse_broken(fuse) then
             actor_menu.set_msg(1, gts("st_broken_fuse", fuse:section()), 3)
