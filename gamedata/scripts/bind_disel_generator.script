@@ -527,6 +527,29 @@ function ui_furniture_light.toggle_light(obj_id)
     base_toggle_light(obj_id)
 end
 
+function update_gen_cond(gen, cond, power_state, hit_damage)
+    if power_state ~= "broken" then
+        local anim_due = false
+        local loss_cond = cond - hit_damage
+        cond = loss_cond > 0 and loss_cond or MIN_COND
+
+        pr("updating cond: %s", cond)
+        if cond > BROKEN_COND then
+            hf_obj_manager.update_data(gen:id(), {condition=cond}) 
+        else
+            if power_state == "on" then
+                anim_due = true
+            end
+            hf_obj_manager.update_data(gen:id(), {
+                condition=cond,
+                last_power_state=power_state,
+                power_state="broken",
+                anim_due=anim_due
+            }) 
+        end
+    end
+end
+
 function set_cond_on_explode(obj)
     local explo_sect = obj:section()
     pr("explosive_item_on_explode: %s", explo_sect)
@@ -534,7 +557,7 @@ function set_cond_on_explode(obj)
     local function search(obj)
         local sect = obj:section()
         if is_not_empty({string.find(sect, "disel_generator")}) then
-            pr("found genny: %s", obj:section())
+            pr("found genny: %s", sect)
             found_objs[#found_objs + 1] = obj
         end
     end
@@ -549,51 +572,29 @@ function set_cond_on_explode(obj)
             local data = hf_obj_manager.get_data(gen:id())
             local power_state = data["power_state"]
             local cond = data["condition"] or 1
-
-            if power_state ~= "broken" then
-                local anim_due = false
-                local hit_damage = ini_sys:r_float_ex(explo_sect, "blast_impulse") / 100
-                local loss_cond = cond - hit_damage
-                cond = loss_cond > 0 and loss_cond or MIN_COND
-                -- shoot a ray from obj to genny
-                -- if hit any material get material
-                -- check to see how much the material would absorb the damage
-                -- apply to cond
-                pr("just updating cond: %s", cond)
-                if cond > BROKEN_COND then
-                    hf_obj_manager.update_data(gen:id(), {condition=cond}) 
-                else
-                    if power_state == "on" then
-                        anim_due = true
-                    end
-                    hf_obj_manager.update_data(gen:id(), {
-                        condition=cond,
-                        last_power_state=power_state,
-                        power_state="broken",
-                        anim_due=anim_due
-                    }) 
-                end
-            end
+            local hit_damage = ini_sys:r_float_ex(explo_sect, "blast_impulse") / 100
+            -- shoot a ray from obj to genny
+            -- if hit any material get material
+            -- check to see how much the material would absorb the damage
+            -- apply to cond
+            update_gen_cond(gen, cond, power_state, hit_damage)
         end
     end   
 end
 
-function set_cond_on_impact(obj)
-    local data = {
-        pos = vec_to_str(obj.position),
-        dir = vec_to_str(obj.direction),
-        speed = obj.speed,
-        dist = obj.distance,
-        sect = obj.section,
-        bullet_id = obj.bullet_id,
-        parent_id = obj.parent_id,
-        target_id = obj.target_id,
-        material = obj.material,
-        lifeime = obj.life_time
-    }
-    if contains(placed_generators, data["target_id"], true) then
-        --pr("bullet data: %s", print_table(data))
-    end
+function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, grenade_type)
+    if obj:id() ~= AC_ID then return end
+    local target = level.get_target_obj()
+    if not target then return end
+    local target_sect = target:section()
+    if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
+    local wpn_sect = wpn:section()
+    local data = hf_obj_manager.get_data(target:id())
+    local power_state = data["power_state"]
+    local cond = data["condition"] or 1
+    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
+    pr("on impact: %s", wpn_sect)
+    update_gen_cond(target, cond, power_state, hit_damage)
 end
 
 function on_save(mdata)
@@ -606,7 +607,7 @@ end
 
 function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
-    RegisterScriptCallback("bullet_on_impact", set_cond_on_impact)
+    RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
 end
