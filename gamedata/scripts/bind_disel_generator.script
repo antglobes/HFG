@@ -62,7 +62,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     
     --local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
     local data = hf_obj_manager.get_data(self.object:id())
-    
+
     -- Object Fields
     self.section = self.object:section()
     self.condition = contains(data, "condition", true) and data["condition"] or 1
@@ -313,6 +313,15 @@ function placeable_disel_generator_wrapper:update(delta)
 
     if self.power_off_devices then
         pr("turning off devices")
+        local extra_powerable_devices = get_powerable_devices(self.object:position())
+        if is_not_empty(extra_powerable_devices) then
+            for id, sect in pairs(extra_powerable_devices) do
+                if not contains(self.powerable_devices, id, true) then
+                    self.powerable_devices[id] = sect
+                end
+            end
+        end
+
         for id, sect in pairs(self.powerable_devices) do
             hf_obj_manager.update_data(id, {is_on=false})
         end
@@ -595,12 +604,12 @@ end
 
 function on_save(mdata)
     pr("on save state")
-    mdata.placed_generators = placed_generators or {}
+    mdata.placed_generators = placed_generators
 end
 
 function on_load(mdata)
     pr("on load state")
-    placed_generators = mdata["placed_generators"] or {}
+    placed_generators = mdata.placed_generators or {}
 end
 
 function on_game_start()
