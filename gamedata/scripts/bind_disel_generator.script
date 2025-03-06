@@ -57,15 +57,16 @@ end
 
 class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_disel_generator_wrapper:__init(obj) super(obj)
-    pr("bind obj id: %s, game obj id: %s", self.object:id(), obj:id())
-    local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
     
+    --local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
+    local data = hf_obj_manager.get_data(self.object:id())
+
     -- Object Fields
     self.section = self.object:section()
     self.condition = contains(data, "condition", true) and data["condition"] or 1
     
     -- Object State
-    self.power_state = data["power_state"] or "off"
+    self.power_state = self.condition >= 0.01 and (data["power_state"] or "off") or "broken"
     self.object:set_tip_text(gts("st_power_state_" .. swap_power_state[self.power_state]))
     self.current_motion = "idle"
 
@@ -143,8 +144,14 @@ function placeable_disel_generator_wrapper:update(delta)
     local condition = self.condition
     local cond_state = cond_to_state(round_idp(condition * 100, 2))    
 
+    -- On Power State Switch
     if self.last_power_state ~= self.power_state then
         self.object:set_tip_text(gts("st_power_state_" .. swap_power_state[self.power_state]))
+        if self.power_state == "broken" and cond_state == "broken" then
+            if not self.anim_in_progress and self.current_motion ~= "idle" then
+                self.anim_due = true
+            end
+        end
     end
 
     if self.power_state == "on" then
@@ -192,7 +199,7 @@ function placeable_disel_generator_wrapper:update(delta)
                                     id = self.curr_fx[self.last_cond_state][idx]["id"]
                                     self.curr_fx[self.last_cond_state][idx] = nil
                                     remove_particle = true
-                                    if self.last_cond_state == "broken" then
+                                    if self.last_cond_state == "broken" or cond_state == "broken" then
                                         self.anim_due = true
                                         self.power_state = self.last_cond_state
                                     end
@@ -335,6 +342,19 @@ function placeable_disel_generator_wrapper:GetPowerableDevices()
     return get_powerable_devices(self.object:position())
 end
 
+function placeable_disel_generator_wrapper:pickup()
+    self:load_data()
+    pr("on pickup")
+    local item_section = ini_sys:r_string_ex(self.object:section(), "item_section")
+	alife_create_item(item_section, db.actor, {cond=self.condition}) -- Maybe transfer all data to new item? Probably depends on item type tho
+
+    -- Clean up HF-related data
+    hf_obj_manager.cleanup_data(self.object:id())
+	alife_release(self.object)
+
+    return true
+end
+
 function placeable_disel_generator_wrapper:net_destroy()
     self:save_data()
     pr("on net destory")
@@ -352,9 +372,9 @@ function placeable_disel_generator_wrapper:net_destroy()
             end
         end 
     end
-    if self.power_state == "broken" then
-        placed_generators[self.object:id()] = nil
-    end
+    
+    pr("destory broken gen")
+    placed_generators[self.object:id()] = nil
 end
 
 function placeable_disel_generator_wrapper:death_callback(victim, who)
@@ -397,7 +417,7 @@ function placeable_disel_generator_wrapper:save_data()
         power_off_devices = self.power_off_devices,
         current_motion    = self.current_motion,
         anim_start_time   = self.anim_start_time,
-        last_power_state   = self.last_power_state
+        last_power_state  = self.last_power_state,
     })
     placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
     --pr("Genny data: %s\n", print_table(data))
@@ -499,8 +519,9 @@ function ui_furniture_light.toggle_light(obj_id)
     base_toggle_light(obj_id)
 end
 
-function set_condition_on_hit(obj)
-    pr("explosive_item_on_explode: %s", obj:section())
+function set_cond_on_explode(obj)
+    local explo_sect = obj:section()
+    pr("explosive_item_on_explode: %s", explo_sect)
     local found_objs = {}
     local function search(obj)
         local sect = obj:section()
@@ -510,7 +531,7 @@ function set_condition_on_hit(obj)
         end
     end
 
-    local radius = ini_sys:r_float_ex(obj:section(), "frags_r")
+    local radius = ini_sys:r_float_ex(explo_sect, "blast_r")
     level.iterate_nearest(obj:position(), radius, search)
 
     if is_empty(found_objs) then return end
@@ -518,18 +539,53 @@ function set_condition_on_hit(obj)
         local gen = table.remove(found_objs, i)
         if gen then
             local data = hf_obj_manager.get_data(gen:id())
-            local anim_due = false
+            local power_state = data["power_state"]
             local cond = data["condition"] or 1
-            cond = cond - 0.25
-            -- shoot a ray from obj to genny
-            -- if hit any material get material
-            -- check to see how much the material would absorb the damage
-            -- apply to cond
-            pr("just updating cond: %s", cond)
-            hf_obj_manager.update_data(gen:id(), {condition=cond})        
+
+            if power_state ~= "broken" and cond > 0 then
+                local anim_due = false
+                local hit_damage = ini_sys:r_float_ex(explo_sect, "blast_impulse") / 100
+                local loss_cond = cond - hit_damage
+                cond = loss_cond >= 0 and loss_cond or 0
+                -- shoot a ray from obj to genny
+                -- if hit any material get material
+                -- check to see how much the material would absorb the damage
+                -- apply to cond
+                pr("just updating cond: %s", cond)
+                if cond > 10 then
+                    hf_obj_manager.update_data(gen:id(), {condition=cond}) 
+                else
+                    if power_state == "on" then
+                        anim_due = true
+                    end
+                    hf_obj_manager.update_data(gen:id(), {
+                        condition=cond,
+                        last_power_state=power_state,
+                        power_state="broken",
+                        anim_due=anim_due
+                    }) 
+                end
+            end
         end
+    end   
+end
+
+function set_cond_on_impact(obj)
+    local data = {
+        pos = vec_to_str(obj.position),
+        dir = vec_to_str(obj.direction),
+        speed = obj.speed,
+        dist = obj.distance,
+        sect = obj.section,
+        bullet_id = obj.bullet_id,
+        parent_id = obj.parent_id,
+        target_id = obj.target_id,
+        material = obj.material,
+        lifeime = obj.life_time
+    }
+    if contains(placed_generators, data["target_id"], true) then
+        --pr("bullet data: %s", print_table(data))
     end
-   
 end
 
 function on_save(mdata)
@@ -541,7 +597,8 @@ function on_load(mdata)
 end
 
 function on_game_start()
-    RegisterScriptCallback("explosive_item_on_explode", set_condition_on_hit)
+    RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
+    RegisterScriptCallback("bullet_on_impact", set_cond_on_impact)
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
 end
