@@ -62,7 +62,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     
     --local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
     local data = hf_obj_manager.get_data(self.object:id())
-    pr("data: %s", print_table(data))
+    
     -- Object Fields
     self.section = self.object:section()
     self.condition = contains(data, "condition", true) and data["condition"] or 1
@@ -133,7 +133,6 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     -- Powerable Devices
     self.power_off_devices = true
     self.powerable_devices = self:GetPowerableDevices()
-
 
     self:save_data()
 end
@@ -228,16 +227,7 @@ function placeable_disel_generator_wrapper:update(delta)
         end
 
     elseif self.power_state == "off" then        
-        if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
-            pr("power off removing particles")
-            local fx = self.curr_fx[self.last_cond_state]
-            for idx, details in pairs(fx) do
-                if details["active"] and contains(details, "id", true) then
-                    thial_particles.remove(details["id"])
-                end
-            end
-            self:save_data()
-        end
+        self:CleanupParticles()
 
     elseif self.power_state == "broken" then
         --[[if self.current_motion ~= "idle" then
@@ -245,6 +235,7 @@ function placeable_disel_generator_wrapper:update(delta)
             self.current_motion = "idle"
             self:save_data()
         end]]
+        self:CleanupParticles()
     end
 
 
@@ -254,6 +245,7 @@ function placeable_disel_generator_wrapper:update(delta)
             self.anim_in_progress = true
             self.anim_power_state = self.power_state
             self.anim_start_time = tg
+            self:CleanupParticles()
             pr("anim power state: %s", self.anim_power_state)
         end
 
@@ -344,9 +336,22 @@ function placeable_disel_generator_wrapper:GetPowerableDevices()
     return get_powerable_devices(self.object:position())
 end
 
+function placeable_disel_generator_wrapper:CleanupParticles()
+    if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
+        pr("power off removing particles")
+        local fx = self.curr_fx[self.last_cond_state]
+        for idx, details in pairs(fx) do
+            if details["active"] and contains(details, "id", true) then
+                thial_particles.remove(details["id"])
+            end
+        end
+        self:save_data()
+    end
+end
+
 function placeable_disel_generator_wrapper:pickup()
-    self:load_data()
     pr("on pickup")
+    self:load_data()
     local item_section = ini_sys:r_string_ex(self.object:section(), "item_section")
     pr("binder cond: %s", self.condition)
 	--alife_create_item(item_section, db.actor, {cond=self.condition}) -- Maybe transfer all data to new item? Probably depends on item type tho
@@ -359,27 +364,17 @@ function placeable_disel_generator_wrapper:pickup()
     -- Clean up HF-related data
     hf_obj_manager.cleanup_data(self.object:id())
 	alife_release(self.object)
-
     return true
 end
 
 function placeable_disel_generator_wrapper:net_destroy()
-    self:save_data()
     pr("on net destory")
+    self:save_data()
     if self.snd and contains(self.snd, "last_played", true) and self.snd["last_played"]:playing() then
         self.snd["last_played"]:stop()
     end
 
-    if self.curr_fx and is_not_empty(self.curr_fx) then
-        if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
-            local fx = self.curr_fx[self.last_cond_state]
-            for idx, details in pairs(fx) do
-                if details["active"] and contains(details, "id", true) then
-                    thial_particles.remove(details["id"])
-                end
-            end
-        end 
-    end
+    self:CleanupParticles()
     
     pr("destory broken gen")
     placed_generators[self.object:id()] = nil
@@ -406,7 +401,7 @@ function placeable_disel_generator_wrapper:death_callback(victim, who)
 end
 
 function placeable_disel_generator_wrapper:save_data()
-    pr("save data")
+    --pr("save data")
     hf_obj_manager.update_data(self.object:id(), {
         power_state       = self.power_state,
         anim_due          = self.anim_due,
@@ -432,6 +427,7 @@ function placeable_disel_generator_wrapper:save_data()
 end
 
 function placeable_disel_generator_wrapper:load_data()
+    --pr("on load")
     local data = hf_obj_manager.get_data(self.object:id())
     self.power_state       = data["power_state"]
     self.anim_due          = data["anim_due"]
@@ -598,10 +594,12 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
 end
 
 function on_save(mdata)
+    pr("on save state")
     mdata.placed_generators = placed_generators or {}
 end
 
 function on_load(mdata)
+    pr("on load state")
     placed_generators = mdata["placed_generators"] or {}
 end
 
