@@ -71,6 +71,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
     self.object:set_tip_text(gts("st_power_state_" .. swap_power_state[self.power_state]))
     self.current_motion = "idle"
+    self.powerable_device_tmr = 0
 
     -- Animation State
     self.anim_due = data["anim_due"] or false
@@ -224,6 +225,22 @@ function placeable_disel_generator_wrapper:update(delta)
                 end
             end
             self:save_data()
+        end
+
+        if tg > self.powerable_device_tmr then
+            pr("updating fuel")
+            local powerable_devices = get_powerable_devices(self.object:position())
+            if is_not_empty(powerable_devices) then
+                for id, sect in pairs(powerable_devices) do
+                    local data = hf_obj_manager.get_data(id)
+                    if data["is_on"] then
+                        if contains(data, "fuel", true) and not contains(data, "infinite_fuel", true) and data["fuel"] < 0.95 then
+                            hf_obj_manager.update_data(id, {fuel=1})
+                        end
+                    end
+                end
+                self.powerable_device_tmr = tg + (3600 * 1000)
+            end
         end
 
     elseif self.power_state == "off" then        
@@ -412,24 +429,25 @@ end
 function placeable_disel_generator_wrapper:save_data()
     --pr("save data")
     hf_obj_manager.update_data(self.object:id(), {
-        power_state       = self.power_state,
-        anim_due          = self.anim_due,
-        anim_in_progress  = self.anim_in_progress,
-        anim_stage        = self.anim_stage,
-        anim_state        = self.anim_state,
-        anim_tmr          = self.anim_tmr,
-        anim_tbl          = self.anim_tbl,
-        anim_power_state  = self.anim_power_state,
-        snd               = self.snd,
-        last_cond_state   = self.last_cond_state,
-        curr_fx           = self.curr_fx,
-        fx_tbl            = self.fx_tbl,
-        condition         = self.condition,
-        powerable_devices = self.powerable_devices,
-        power_off_devices = self.power_off_devices,
-        current_motion    = self.current_motion,
-        anim_start_time   = self.anim_start_time,
-        last_power_state  = self.last_power_state,
+        power_state          = self.power_state,
+        anim_due             = self.anim_due,
+        anim_in_progress     = self.anim_in_progress,
+        anim_stage           = self.anim_stage,
+        anim_state           = self.anim_state,
+        anim_tmr             = self.anim_tmr,
+        anim_tbl             = self.anim_tbl,
+        anim_power_state     = self.anim_power_state,
+        snd                  = self.snd,
+        last_cond_state      = self.last_cond_state,
+        curr_fx              = self.curr_fx,
+        fx_tbl               = self.fx_tbl,
+        condition            = self.condition,
+        powerable_devices    = self.powerable_devices,
+        power_off_devices    = self.power_off_devices,
+        current_motion       = self.current_motion,
+        anim_start_time      = self.anim_start_time,
+        last_power_state     = self.last_power_state,
+        powerable_device_tmr = self.powerable_device_tmr,
     })
     placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
     --pr("Genny data: %s\n", print_table(data))
@@ -438,24 +456,25 @@ end
 function placeable_disel_generator_wrapper:load_data()
     --pr("on load")
     local data = hf_obj_manager.get_data(self.object:id())
-    self.power_state       = data["power_state"]
-    self.anim_due          = data["anim_due"]
-    self.anim_in_progress  = data["anim_in_progress"]
-    self.anim_stage        = data["anim_stage"]
-    self.anim_state        = data["anim_state"]
-    self.anim_tmr          = data["anim_tmr"]
-    self.anim_tbl          = data["anim_tbl"]
-    self.anim_power_state  = data["anim_power_state"]
-    self.snd               = data["snd"]
-    self.last_cond_state   = data["last_cond_state"]
-    self.curr_fx           = data["curr_fx"]
-    self.fx_tbl            = data["fx_tbl"]
-    self.condition         = data["condition"]
-    self.powerable_devices = data["powerable_devices"]
-    self.power_off_devices = data["power_off_devices"]
-    self.current_motion    = data["current_motion"]
-    self.anim_start_time   = data["anim_start_time"]
-    self.last_power_state  = data["last_power_state"]
+    self.power_state          = data["power_state"]
+    self.anim_due             = data["anim_due"]
+    self.anim_in_progress     = data["anim_in_progress"]
+    self.anim_stage           = data["anim_stage"]
+    self.anim_state           = data["anim_state"]
+    self.anim_tmr             = data["anim_tmr"]
+    self.anim_tbl             = data["anim_tbl"]
+    self.anim_power_state     = data["anim_power_state"]
+    self.snd                  = data["snd"]
+    self.last_cond_state      = data["last_cond_state"]
+    self.curr_fx              = data["curr_fx"]
+    self.fx_tbl               = data["fx_tbl"]
+    self.condition            = data["condition"]
+    self.powerable_devices    = data["powerable_devices"]
+    self.power_off_devices    = data["power_off_devices"]
+    self.current_motion       = data["current_motion"]
+    self.anim_start_time      = data["anim_start_time"]
+    self.last_power_state     = data["last_power_state"]
+    self.powerable_device_tmr = data["powerable_device_tmr"]
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
 
