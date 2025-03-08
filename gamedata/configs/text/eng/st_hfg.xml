@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <string_table>
     <string id="st_disel_generator_descr">
-        <text>Facking Disel Innit</text>
+        <text>
+		A non-standard diesel generator, with parts sourced from the wreck of a small fishing vessel in the
+		murky swamp beds of the zaton valley, old warehouses surrounding the jupiter factory and truck cemetary.
+		This generator has been touched with some stalker magic and has been retrofitted for 'household use'.\n
+		%c[ui_gray_1]PROPERTIES:\n
+		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
+		%c[d_purple] • %c[ui_gray_1] Capable of outputting up to 5KW \n
+		%c[d_purple] • %c[ui_gray_1] Requires Diesel, Kerosene or Biodiesel to operate\n
+		%c[d_purple] • %c[ui_gray_1] Full Tank Lasts 9 hours\n
+		%c[d_purple] • %c[ui_gray_1] Turbine Power Unit\n
+		</text>
     </string>
 
     <string id="st_disel_generator">
@@ -29,7 +39,7 @@
     </string>
 
     <string id="st_bullet_point">
-		<text>пїЅ</text>
+		<text>•</text>
     </string>
 
     <string id="st_unpack_fuse_pack">
@@ -44,6 +54,7 @@
         <text>This fuse is broken</text>
     </string>
 
+    <!-- Items -->
     <string id="st_fuse_normal">
         <text>Ceramic Fuse</text>
     </string>
@@ -101,4 +112,303 @@
     <string id="st_fuse_pack_homemade_descr">
         <text>A small box of homemade fuses, containing about 10.</text>
     </string>
+
+    <string id="st_hfg_part_tank">
+        <text>Diesel Generator Fuel Tank</text>
+    </string>
+    <string id="st_hfg_part_turbine">
+        <text>Diesel Generator Turbine Motor</text>
+    </string>
+	<string id="st_hfg_part_engine">
+        <text>Diesel Generator Engine</text>
+    </string>
+    <string id="st_hfg_part_wires">
+        <text>Diesel Generator Electric Wires</text>
+    </string>
+    <string id="st_hfg_part_frame">
+        <text>Diesel Generator Rebar Frame</text>
+    </string>
+    <string id="st_hfg_part_battery">
+        <text>Diesel Generator Battery</text>
+    </string>
+    <string id="st_hfg_part_fan">
+        <text>Diesel Generator Engine Fan</text>
+    </string>
+    <string id="st_hfg_part_exhaust">
+        <text>Diesel Generator Exhaust</text>
+    </string>
+    <string id="st_hfg_part_band">
+        <text>Diesel Generator Rotor Band</text>
+    </string>
+    <string id="st_hfg_part_pipes">
+        <text>Diesel Generator Fuel Pipes</text>
+    </string>
+    <string id="st_hfg_part_l_rotor">
+        <text>Diesel Generator Turbine Rotor</text>
+    </string>
+    <string id="st_hfg_part_r_rotor">
+        <text>Diesel Generator Engine Rotor</text>
+    </string>
+
+    <string id="st_hfg_part_tank_descr">
+        <text>
+		%c[white] Steel plated tank with plastic cover and rubber seal and cap. \n
+		%c[d_orange] •  %c[ui_gray_1] Mechanical Item\n
+		%c[d_purple] • %c[ui_gray_1] Capcity of 25L\n
+		%c[d_green] • %c[ui_gray_1] Fuel System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_turbine_descr">
+        <text>
+		%c[white] Electrical Turbine works in synchronous action with the engine. \n
+		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
+		%c[d_purple] • %c[ui_gray_1] 110 / 230V\n
+		%c[d_purple] • %c[ui_gray_1] 16A\n
+		%c[yellow] • %c[ui_gray_1] Power System \n
+		</text>
+    </string>
+	<string id="st_hfg_part_engine_descr">
+        <text>
+		%c[white] Requires fuel, Runs fast. \n
+		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
+		%c[d_orange] • %c[ui_gray_1] V6 Engine\n
+		%c[d_orange] • %c[ui_gray_1] ~7hp\n
+		%c[d_orange] • %c[ui_gray_1] Single Phase\n
+		%c[yellow] • %c[ui_gray_1] Power System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_wires_descr">
+        <text>
+		%c[white] Copper Wires in Black Plastic.\n
+		%c[pda_yellow] • %c[ui_gray_1] Electrical System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_frame_descr">
+        <text>
+		%c[white] Rebar Frame made of Steel. \n
+		%c[d_blue] • %c[ui_gray_1] Final Part of Generator\n
+		</text>
+    </string>
+    <string id="st_hfg_part_battery_descr">
+        <text>
+		%c[white] Battery sourced from an old truck \n
+		%c[pda_yellow] • %c[ui_gray_1] Electrical System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_fan_descr">
+        <text>
+		%c[white] Engine Fan used to keep the generator cool.\n
+		%c[d_cyan] • %c[ui_gray_1] Ventillation System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_exhaust_descr">
+        <text>
+		%c[white] Used to filter the byproducts from the engine. \n
+		%c[d_cyan] • %c[ui_gray_1] Ventillation System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_band_descr">
+        <text>
+		%c[white] Rubber Chain used to help move the rotor. \n
+		%c[d_red] • %c[ui_gray_1] Motor System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_pipes_descr">
+        <text>
+		%c[white] Used to pipe fuel inbetween the tank and the engine. \n
+		%c[d_green] • %c[ui_gray_1] Fuel System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_l_rotor_descr">
+        <text>
+		%c[white] Turbine Rotor. \n
+		%c[d_orange] • %c[ui_gray_1] 1200 rpm\n
+		%c[d_red] • %c[ui_gray_1] Motor System \n
+		</text>
+    </string>
+    <string id="st_hfg_part_r_rotor_descr">
+        <text>
+		%c[white] Engine Rotor. \n
+		%c[d_orange] • %c[ui_gray_1] 1200 rpm\n
+		%c[d_red] • %c[ui_gray_1] Motor System \n
+		</text>
+    </string>
+	
+	<!-- Compoents -->
+
+	<string id="st_hfg_comp_power">
+        <text>Generator Power System</text>
+    </string>
+	<string id="st_hfg_comp_electrical">
+        <text>Generator Electrical System</text>
+    </string>
+	<string id="st_hfg_comp_vent">
+        <text>Generator Ventillation System</text>
+    </string>
+	<string id="st_hfg_comp_motor">
+        <text>Generator Motor System</text>
+    </string>
+	<string id="st_hfg_comp_fuel">
+        <text>Generator Fuel System</text>
+    </string>
+	<string id="st_hfg_comp_gen_main">
+        <text>Generator Main Part</text>
+    </string>
+	<string id="st_hfg_comp_gen_sec">
+        <text>Generator Secondary Part</text>
+    </string>
+
+	<string id="st_hfg_comp_power_descr">
+        <text>
+		%c[yellow] • %c[ui_gray_1] Engine\n
+		%c[yellow] • %c[ui_gray_1] Turbine\n
+		</text>
+    </string>
+	<string id="st_hfg_comp_electrical_descr">
+        <text>
+		%c[pda_yellow] • %c[ui_gray_1] Battery\n
+		%c[pda_yellow] • %c[ui_gray_1] Wires \n
+		</text>
+    </string>
+	<string id="st_hfg_comp_vent_descr">
+        <text>
+		%c[d_cyan] • %c[ui_gray_1] Fan\n
+		%c[d_cyan] • %c[ui_gray_1] Exhaust\n
+		</text>
+    </string>
+	<string id="st_hfg_comp_motor_descr">
+        <text>
+		%c[d_red] • %c[ui_gray_1] Turbine Rotor\n
+		%c[d_red] • %c[ui_gray_1] Engine Rotor\n
+		%c[d_red] • %c[ui_gray_1] Rotor Band\n
+		</text>
+    </string>
+	<string id="st_hfg_comp_fuel_descr">
+        <text>
+		%c[d_green] • %c[ui_gray_1] Pipes\n
+		%c[d_green] • %c[ui_gray_1] Tank \n
+		</text>
+    </string>
+	<string id="st_hfg_comp_gen_main_descr">
+        <text>
+		%c[yellow] • %c[ui_gray_1] Power System\n
+		%c[pda_yellow] • %c[ui_gray_1] Electrical System\n
+		%c[d_green] • %c[ui_gray_1] Fuel System\n
+		%c[pda_blue] • %c[ui_gray_1] Penultimate Part of Generator\n
+		</text>
+    </string>
+	<string id="st_hfg_comp_gen_sec_descr">
+        <text>
+		%c[pda_blue] • %c[ui_gray_1] Main Part\n
+		%c[d_red] • %c[ui_gray_1] Motor System\n
+		%c[d_cyan] • %c[ui_gray_1] Motor System\n
+		%c[d_blue] • %c[ui_gray_1] Final Part of Generator\n
+		</text>
+    </string>
+	
+	<string id="st_hfg_manual">
+        <text>A Brief Guide to Diesel Generator Disassembly</text>
+    </string>
+	<string id="st_hfg_manual_descr">
+        <text>A Single page torn out of an old engineering magazine, detailing how a diesel generator is built.</text>
+    </string>
+	
+	<string id="encyclopedia__notes_hfg_manual">
+        <text>A Brief Guide to Diesel Generator Disassembly</text>
+    </string>	
+	<string id="encyclopedia__notes_hfg_manual_text">
+        <text>%c[white] All Items Require "Advanced Toolkit" for crafting\n\n
+		%c[white] Generator Parts\n\n
+		 %c[white] 1x Fuel Tank\n
+		 %c[d_green] • %c[pda_white] 2x Metal Scrap\n
+		 %c[d_green] • %c[pda_white] 4x Rubber\n
+		 %c[d_green] • %c[pda_white] 2x Textotile\n
+		\n
+		 %c[white] 1x Turbine Motor\n
+		 %c[yellow] • %c[pda_white] 4x Metal Scrap\n
+		 %c[yellow] • %c[pda_white] 2x Copper Wire\n
+		 %c[yellow] • %c[pda_white] 2x Textotile\n
+		\n
+		 %c[white] 1x Engine\n
+		 %c[yellow] • %c[pda_white] 8x Metal Scrap\n
+		 %c[yellow] • %c[pda_white] 4x Copper Wire\n
+		 %c[yellow] • %c[pda_white] 2x Rubber\n
+		 %c[yellow] • %c[pda_white] 2x Textotile\n
+		\n
+		 %c[white] 1x Electric Wires\n
+		 %c[pda_yellow] • %c[pda_white] 2x Textotile\n
+		 %c[pda_yellow] • %c[pda_white] 2x Copper Wire\n
+		\n
+		 %c[white] 1x Rebar Frame\n
+		 %c[d_blue] • %c[pda_white] 6x Metal Scrap\n
+		 %c[d_blue] • %c[pda_white] 6x Fasteners\n
+		\n
+		 %c[white] 1x Diesel Generator Battery\n
+		 %c[pda_yellow] • %c[pda_white] 4x Ammo Parts\n
+		 %c[pda_yellow] • %c[pda_white] 2x Copper Wire\n
+		 %c[pda_yellow] • %c[pda_white] 1x Textotile\n
+		\n
+		 %c[white] 1x Engine Fan\n
+		 %c[d_cyan] • %c[pda_white] 2x Metal Scrap\n
+		 %c[d_cyan] • %c[pda_white] 1x Copper Wire\n
+		\n
+		 %c[white] 1x Exhaust\n
+		 %c[d_cyan] • %c[pda_white] 6x Metal Scrap\n
+		 %c[d_cyan] • %c[pda_white] 1x Carbon Fibre Fabrics\n
+		\n
+		 %c[white] 1x Rotor Band\n
+		 %c[d_red] • %c[pda_white] 4x Rubber\n
+		 %c[d_red] • %c[pda_white] 2x Fasteners\n
+		\n
+		 %c[white] 1x Fuel Pipes\n
+		 %c[d_green] • %c[pda_white] 4x Metal Scrap\n
+		 %c[d_green] • %c[pda_white] 4x Rubber\n
+		\n
+		 %c[white] 1x Turbine Rotor\n
+		 %c[d_red] • %c[pda_white] 4x Metal Scrap\n
+		 %c[d_red] • %c[pda_white] 4x Fasteners\n
+		\n
+		 %c[white] 1x Engine Rotor\n
+		 %c[d_red] • %c[pda_white] 4x Metal Scrap\n
+		 %c[d_red] • %c[pda_white] 4x Fasteners\n
+		\n
+		%c[white] Generator Components\n\n
+		 %c[white] 1x Generator Power System\n
+		 %c[yellow] • %c[ui_gray_1] Engine\n
+		 %c[yellow] • %c[ui_gray_1] Turbine\n`
+		\n
+		 %c[white] 1x Generator Electrical System\n
+		 %c[pda_yellow] • %c[ui_gray_1] Battery\n
+		 %c[pda_yellow] • %c[ui_gray_1] Wires \n
+		\n
+		 %c[white] 1x Generator Ventillation System\n
+		 %c[d_cyan] • %c[ui_gray_1] Fan\n
+		 %c[d_cyan] • %c[ui_gray_1] Exhaust\n
+		\n
+		 %c[white] 1x Generator Motor System\n
+		 %c[d_red] • %c[ui_gray_1] Turbine Rotor\n
+		 %c[d_red] • %c[ui_gray_1] Engine Rotor\n
+		 %c[d_red] • %c[ui_gray_1] Rotor Band\n
+		\n
+		 %c[white] 1x Generator Fuel System\n
+		 %c[d_green] • %c[ui_gray_1] Pipes\n
+		 %c[d_green] • %c[ui_gray_1] Tank \n
+		\n
+		 %c[white] 1x Generator Main Part\n
+		 %c[yellow] • %c[ui_gray_1] Power System\n
+		 %c[pda_yellow] • %c[ui_gray_1] Electrical System\n
+		 %c[d_green] • %c[ui_gray_1] Fuel System\n
+		\n
+		 %c[white] 1x Generator Secondary Part\n
+		 %c[pda_blue] • %c[ui_gray_1] Main Part\n
+		 %c[d_red] • %c[ui_gray_1] Motor System\n
+		 %c[d_cyan] • %c[ui_gray_1] Motor System\n
+		 \n
+		 %c[white] Final Product\n\n
+		 %c[white] 1x Diesel Generator\n
+		 %c[pda_blue] • %c[ui_gray_1] 1x Secondary Part\n
+		 %c[d_pda_blue] • %c[ui_gray_1] 1x Rebar Frame\n
+		</text>
+    </string>
+
 </string_table>

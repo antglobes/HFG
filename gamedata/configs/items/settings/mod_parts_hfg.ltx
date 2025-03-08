@@ -1,0 +1,21 @@
+![nor_parts_list]
+hfg_prt_tank         = 2, hfg_manual, prt_i_scrap ,prt_i_rubber ,prt_i_textolite
+hfg_prt_turbine      = 2, hfg_manual, prt_i_scrap ,prt_i_copper ,prt_i_textolite
+hfg_prt_engine       = 2, hfg_manual, prt_i_scrap ,prt_i_copper ,prt_i_rubber ,prt_i_textolite
+hfg_prt_wires        = 2, hfg_manual, prt_i_textolite ,prt_i_copper 
+hfg_prt_frame        = 2, hfg_manual, prt_i_scrap ,prt_i_fasteners
+hfg_prt_battery      = 2, hfg_manual, prt_i_ammo ,prt_i_copper ,prt_i_textolite  
+hfg_prt_fan          = 2, hfg_manual, prt_i_scrap ,prt_i_copper   
+hfg_prt_exhaust      = 2, hfg_manual, prt_i_scrap ,prt_o_retardant_5
+hfg_prt_band         = 2, hfg_manual, prt_i_rubber ,prt_i_fasteners
+hfg_prt_pipes        = 2, hfg_manual, prt_i_scrap ,prt_i_rubber    
+hfg_prt_l_rotor      = 2, hfg_manual, prt_i_scrap ,prt_i_fasteners
+hfg_prt_r_rotor      = 2, hfg_manual, prt_i_scrap ,prt_i_fasteners
+hfg_comp_power       = 2, hfg_manual, hfg_prt_engine ,hfg_prt_turbine        
+hfg_comp_electrical  = 2, hfg_manual, hfg_prt_battery ,hfg_prt_wires        
+hfg_comp_fuel        = 2, hfg_manual, hfg_prt_tank ,hfg_prt_pipes        
+hfg_comp_motor       = 2, hfg_manual, hfg_prt_l_rotor ,hfg_prt_r_rotor ,hfg_prt_band         
+hfg_comp_vent        = 2, hfg_manual, hfg_prt_exhaust ,hfg_prt_fan 
+hfg_comp_gen_main    = 2, hfg_manual, hfg_comp_power ,hfg_comp_electricl hfg_comp_fuel       
+hfg_comp_gen_sec     = 2, hfg_manual, hfg_comp_gen_main ,hfg_comp_motor ,hfg_comp_vent       
+disel_generator_item = 2, hfg_manual, hfg_comp_gen_sec ,hfg_prt_frame         

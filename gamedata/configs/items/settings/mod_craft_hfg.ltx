@@ -1,0 +1,24 @@
+![2]
+; Genny Parts
+x_hfg_prt_tank         = 2, hfg_manual, prt_i_scrap,2 ,prt_i_rubber,4 ,prt_i_textolite,2
+x_hfg_prt_turbine      = 2, hfg_manual, prt_i_scrap,4 ,prt_i_copper,2 ,prt_i_textolite,2
+x_hfg_prt_engine       = 2, hfg_manual, prt_i_scrap,8 ,prt_i_copper,4 ,prt_i_rubber,2 ,prt_i_textolite,2 
+x_hfg_prt_wires        = 2, hfg_manual, prt_i_textolite,2 prt_i_copper,2 
+x_hfg_prt_frame        = 2, hfg_manual, prt_i_scrap,6 ,prt_i_fasteners,6
+x_hfg_prt_battery      = 2, hfg_manual, prt_i_ammo,4 ,prt_i_copper,2 ,prt_i_textolite,1  
+x_hfg_prt_fan          = 2, hfg_manual, prt_i_scrap,2 ,prt_i_copper,1   
+x_hfg_prt_exhaust      = 2, hfg_manual, prt_i_scrap,6 ,prt_o_retardant_5,1
+x_hfg_prt_band         = 2, hfg_manual, prt_i_rubber,4 ,prt_i_fasteners,2
+x_hfg_prt_pipes        = 2, hfg_manual, prt_i_scrap,4 ,prt_i_rubber,4    
+x_hfg_prt_l_rotor      = 2, hfg_manual, prt_i_scrap,4 ,prt_i_fasteners,2
+x_hfg_prt_r_rotor      = 2, hfg_manual, prt_i_scrap,4 ,prt_i_fasteners,2
+; Genny Systems/Components
+x_hfg_comp_power       = 2, hfg_manual, hfg_prt_engine,1 ,hfg_prt_turbine,1        
+x_hfg_comp_electrical  = 2, hfg_manual, hfg_prt_battery,1 ,hfg_prt_wires,1        
+x_hfg_comp_fuel        = 2, hfg_manual, hfg_prt_tank,1 ,hfg_prt_pipes,1        
+x_hfg_comp_motor       = 2, hfg_manual, hfg_prt_l_rotor,1 ,hfg_prt_r_rotor,1 ,hfg_prt_band,1         
+x_hfg_comp_vent        = 2, hfg_manual, hfg_prt_exhaust,1 ,hfg_prt_fan,1 
+x_hfg_comp_gen_main    = 2, hfg_manual, hfg_comp_power,1 ,hfg_comp_electrical,1 hfg_comp_fuel,1         
+x_hfg_comp_gen_sec     = 2, hfg_manual, hfg_comp_gen_main,1 ,hfg_comp_motor,1 ,hfg_comp_vent,1        
+x_disel_generator_item = 2, hfg_manual, hfg_comp_gen_sec,1 ,hfg_prt_frame,1         
+

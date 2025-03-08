@@ -239,8 +239,8 @@ function placeable_disel_generator_wrapper:update(delta)
                         end
                     end
                 end
-                self.powerable_device_tmr = tg + (3600 * 1000)
             end
+            self.powerable_device_tmr = tg + (3600 * 1000)
         end
 
     elseif self.power_state == "off" then        
@@ -427,7 +427,7 @@ function placeable_disel_generator_wrapper:death_callback(victim, who)
 end
 
 function placeable_disel_generator_wrapper:save_data()
-    --pr("save data")
+    pr("save data")
     hf_obj_manager.update_data(self.object:id(), {
         power_state          = self.power_state,
         anim_due             = self.anim_due,
@@ -454,7 +454,7 @@ function placeable_disel_generator_wrapper:save_data()
 end
 
 function placeable_disel_generator_wrapper:load_data()
-    --pr("on load")
+    pr("on load")
     local data = hf_obj_manager.get_data(self.object:id())
     self.power_state          = data["power_state"]
     self.anim_due             = data["anim_due"]
@@ -621,14 +621,27 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
     update_gen_cond(target, cond, power_state, hit_damage)
 end
 
-function on_save(mdata)
+function on_save(m_data)
     pr("on save state")
-    mdata.placed_generators = placed_generators
+    local tmp = {}
+    for id, data in pairs(placed_generators) do
+        if placed_generators[id]["snd"]["last_played"] and placed_generators[id]["snd"]["last_played"]:playing() then
+            placed_generators[id]["snd"]["last_played"] = nil
+        end
+    end
+    copy_table(tmp, placed_generators)
+    m_data.placed_generators = tmp
 end
 
 function on_load(mdata)
     pr("on load state")
-    placed_generators = mdata.placed_generators or {}
+    local tmp = mdata.placed_generators or {}
+    copy_table(placed_generators, tmp)
+end
+
+function before_level_change()
+    pr("before level change")
+    pr("data: %s", print_table(placed_generators))
 end
 
 function on_game_start()
@@ -636,4 +649,5 @@ function on_game_start()
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
+    --RegisterScriptCallback("on_before_level_changing", before_level_change)
 end
