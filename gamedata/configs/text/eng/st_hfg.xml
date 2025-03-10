@@ -260,24 +260,28 @@
 
 	<string id="st_hfg_comp_power_descr">
         <text>
+		%c[white] Contains:\n
 		%c[yellow] • %c[ui_gray_1] Engine\n
 		%c[yellow] • %c[ui_gray_1] Turbine\n
 		</text>
     </string>
 	<string id="st_hfg_comp_electrical_descr">
         <text>
+		%c[white] Contains:\n
 		%c[pda_yellow] • %c[ui_gray_1] Battery\n
 		%c[pda_yellow] • %c[ui_gray_1] Wires \n
 		</text>
     </string>
 	<string id="st_hfg_comp_vent_descr">
         <text>
+		%c[white] Contains:\n
 		%c[d_cyan] • %c[ui_gray_1] Fan\n
 		%c[d_cyan] • %c[ui_gray_1] Exhaust\n
 		</text>
     </string>
 	<string id="st_hfg_comp_motor_descr">
         <text>
+		%c[white] Contains:\n
 		%c[d_red] • %c[ui_gray_1] Turbine Rotor\n
 		%c[d_red] • %c[ui_gray_1] Engine Rotor\n
 		%c[d_red] • %c[ui_gray_1] Rotor Band\n
@@ -285,12 +289,14 @@
     </string>
 	<string id="st_hfg_comp_fuel_descr">
         <text>
+		%c[white] Contains:\n
 		%c[d_green] • %c[ui_gray_1] Pipes\n
 		%c[d_green] • %c[ui_gray_1] Tank \n
 		</text>
     </string>
 	<string id="st_hfg_comp_gen_main_descr">
         <text>
+		%c[white] Contains:\n
 		%c[yellow] • %c[ui_gray_1] Power System\n
 		%c[pda_yellow] • %c[ui_gray_1] Electrical System\n
 		%c[d_green] • %c[ui_gray_1] Fuel System\n
@@ -299,9 +305,10 @@
     </string>
 	<string id="st_hfg_comp_gen_sec_descr">
         <text>
+		%c[white] Contains:\n
 		%c[pda_blue] • %c[ui_gray_1] Main Part\n
 		%c[d_red] • %c[ui_gray_1] Motor System\n
-		%c[d_cyan] • %c[ui_gray_1] Motor System\n
+		%c[d_cyan] • %c[ui_gray_1] Ventillation System\n
 		%c[d_blue] • %c[ui_gray_1] Final Part of Generator\n
 		</text>
     </string>
@@ -410,5 +417,69 @@
 		 %c[d_pda_blue] • %c[ui_gray_1] 1x Rebar Frame\n
 		</text>
     </string>
+	
+	<string id="st_animal_fat">
+		<text>Animal Fat</text>
+	</string>
+	
+	<string id="st_jar_animal_fat">
+		<text>Jar of Animal Fat</text>
+	</string>
+	
+	<string id="st_jar_animal_oil">
+		<text>Jar of Animal Oil</text>
+	</string>
+	
+	<string id="st_jar_empty">
+		<text>An empty mason jar, capable of storing 500ml of liquid</text>
+	</string>
+	
+	<string id="st_jar_diesel">
+		<text>Jar of Diesel</text>
+	</string>
+	
+	<string id="st_jar_bio_diesel">
+		<text>Jar of Bio-Diesel</text>
+	</string>
+	
+	<string id="st_jar_methanol">
+		<text>Jar of Methanol</text>
+	</string>
+	
+	<string id="st_jar_scrap_diesel">
+		<text>Jar of Scrap Diesel</text>
+	</string>
+	
+	<string id="st_animal_fat_descr">
+		<text>Lumps of fatty tissue cut from the flesh of an animal</text>
+	</string>
+	
+	<string id="st_jar_animal_fat_descr">
+		<text>A Jar full of animal fat</text>
+	</string>
+	
+	<string id="st_jar_animal_oil_descr">
+		<text>A Jar full of animal oil, made from melting animal fat</text>
+	</string>
+	
+	<string id="st_jar_empty_descr">
+		<text>An empty mason jar, capable of storing 500ml of liquid</text>
+	</string>
+	
+	<string id="st_jar_diesel_descr">
+		<text>500ml of diesel, suitable for refuelling a generator</text>
+	</string>
+	
+	<string id="st_jar_bio_diesel_descr">
+		<text>500ml of diesel, suitable for refuelling a generator</text>
+	</string>
+	
+	<string id="st_jar_methanol_descr">
+		<text>500ml of methanol, used to craft diesel, also used in the creation of methanol-diesel combination which can cool generator engines</text>
+	</string>
+	
+	<string id="st_jar_scrap_diesel_descr">
+		<text>500ml of scrap diesel, a mixture of mostly carbon matter and some recycled diesel from oil products</text>
+	</string>
 
 </string_table>
