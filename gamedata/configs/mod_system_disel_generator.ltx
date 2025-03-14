@@ -41,30 +41,14 @@ bounding_box_origin                      = 0.035032, 0.91057, 0.061213
 ; 0.743, 0.910, 0.740
 ; 0.035, 0.91, 0.12
 
-[hfg_jerrycan_base]:tch_junk
-class								  = II_ATTCH
-kind								  = i_tool
+[hfg_jerrycan_diesel]:explo_jerrycan_fuel
 icons_texture						  = ui\ui_hfg_icons
 inv_grid_width                        = 2
 inv_grid_height                       = 2
-empty_weight						  = 3.16
 
-;can_trade			                  = true
-;quest_item                            = false
-;use_condition                         = true
-;script_binding                        = bind_item.bind
-;remove_after_use                      = true
 max_uses							  = 10
+fuel_source                           = true
 
-placeable_type                        = prop
-
-[placeable_jerrycan_base]:physic_object
-placeable_type                         = prop
-script_binding                         = bind_fluid_container.init
-bounding_box_size                      = 0.167712, 0.371525, 0.570807
-bounding_box_origin                    = 0.001506, 0.282296, -0.008672
-
-[hfg_jerrycan_diesel]:hfg_jerrycan_base
 visual                                 = dynamics\hfg_jerrycan_diesel.ogf
 description                            = st_jerrycan_diesel_descr
 inv_name                               = st_jerrycan_diesel
@@ -72,72 +56,13 @@ inv_name_short                         = st_jerrycan_diesel
 inv_grid_x                             = 6
 inv_grid_y                             = 5
 
-cost                                   = 10
+cost                                   = 6724
 inv_weight                             = 8.75
 
-use1_functor         				   = placeable_furniture.place_item
-use1_action_functor  				   = placeable_furniture.func_place_item
+use2_functor         				   = placeable_furniture.place_item
+use2_action_functor  				   = placeable_furniture.func_place_item
 placeable_section                      = placeable_jerrycan_diesel
-
-fluid_container                        = true
-default_fluid                          = diesel
-capacity                               = 10
-accepted_fluids                        = diesel, biodiesel
-empty_sect                             = hfg_jerrycan_diesel_empty
-
-[placeable_jerrycan_diesel]:placeable_jerrycan_base
-visual                                 = dynamics\hfg_jerrycan_diesel.ogf
-item_section                           = hfg_jerrycan_diesel
-
-[hfg_jerrycan_biodiesel]:hfg_jerrycan_base
-visual                                 = dynamics\hfg_jerrycan_biodiesel.ogf
-description                            = st_jerrycan_biodiesel_descr
-inv_name                               = st_jerrycan_biodiesel
-inv_name_short                         = st_jerrycan_biodiesel
-inv_grid_x                             = 8
-inv_grid_y                             = 5
-
-cost                                   = 10
-inv_weight                             = 8.88
-
-use1_functor         				   = placeable_furniture.place_item
-use1_action_functor  				   = placeable_furniture.func_place_item
-placeable_section                      = placeable_jerrycan_biodiesel
-
-fluid_container                        = true
-default_fluid                          = biodiesel
-capacity                               = 10
-accepted_fluids                        = diesel, biodiesel
-empty_sect                             = hfg_jerrycan_biodiesel_empty
-
-[placeable_jerrycan_biodiesel]:placeable_jerrycan_base
-visual                                 = dynamics\hfg_jerrycan_biodiesel.ogf
-item_section                           = hfg_jerrycan_biodiesel
-
-[hfg_jerrycan_animal_oil]:hfg_jerrycan_base
-visual                                 = dynamics\hfg_jerrycan_animal_oil.ogf
-description                            = st_jerrycan_animal_oil_descr
-inv_name                               = st_jerrycan_animal_oil
-inv_name_short                         = st_jerrycan_animal_oil
-inv_grid_x                             = 4
-inv_grid_y                             = 5
-
-cost                                   = 10
-inv_weight                             = 9.2
-
-use1_functor         				   = placeable_furniture.place_item
-use1_action_functor  				   = placeable_furniture.func_place_item
-placeable_section                      = placeable_jerrycan_animal_oil
-
-fluid_container                        = true
-default_fluid                          = animal_oil
-capacity                               = 10
-accepted_fluids                        = animal_oil
-empty_sect                             = hfg_jerrycan_animal_oil_empty
-
-[placeable_jerrycan_animal_oil]:placeable_jerrycan_base
-visual                                 = dynamics\hfg_jerrycan_animal_oil.ogf
-item_section                           = hfg_jerrycan_animal_oil
+placeable_type                         = prop
 
 [hfg_jerrycan_diesel_empty]:hfg_jerrycan_diesel
 description                            = st_jerrycan_diesel_empty_descr
@@ -145,35 +70,19 @@ inv_name                               = st_jerrycan_diesel_empty
 inv_name_short                         = st_jerrycan_diesel_empty
 inv_grid_y                             = 7
 inv_weight                             = 8.75
+fuel_source                            = true
+cost                                   = 624
 
-fluid_container                        = true
-capacity                               = 10
-accepted_fluids                        = diesel, biodiesel, animal_oil
-empty_sect                             =
 
-[hfg_jerrycan_biodiesel_empty]:hfg_jerrycan_biodiesel
-description                            = st_jerrycan_biodiesel_empty_descr
-inv_name                               = st_jerrycan_biodiesel_empty
-inv_name_short                         = st_jerrycan_biodiesel_empty
-inv_grid_y                             = 7
-inv_weight                             = 8.75
+[placeable_jerrycan_base]:physic_object
+placeable_type                         = prop
+script_binding                         = bind_disel_generator.bind_generator_item
+bounding_box_size                      = 0.167712, 0.371525, 0.570807
+bounding_box_origin                    = 0.001506, 0.282296, -0.008672
 
-fluid_container                        = true
-capacity                               = 10
-accepted_fluids                        = diesel, biodiesel, animal_oil
-empty_sect                             =
-
-[hfg_jerrycan_animal_oil_empty]:hfg_jerrycan_animal_oil
-description                            = st_jerrycan_animal_oil_empty_descr
-inv_name                               = st_jerrycan_animal_oil_empty
-inv_name_short                         = st_jerrycan_animal_oil_empty
-inv_grid_y                             = 7
-inv_weight                             = 8.75
-
-fluid_container                        = true
-capacity                               = 10
-accepted_fluids                        = diesel, biodiesel, animal_oil
-empty_sect                             =
+[placeable_jerrycan_diesel]:placeable_jerrycan_base
+visual                                 = dynamics\hfg_jerrycan_diesel.ogf
+item_section                           = hfg_jerrycan_diesel
 
 [tch_on_explode]
 on_explode = bind_disel_generator.set_cond_on_explode
