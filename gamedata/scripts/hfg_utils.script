@@ -11,6 +11,9 @@ function split(str, sep)
     return tbl
 end
 
+function capitalise(str)
+    return (str:gsub("^%l", string.upper))
+end
 
 function reverse_ipairs(tbl)
     local tmp = {}

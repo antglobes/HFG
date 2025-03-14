@@ -481,5 +481,62 @@
 	<string id="st_jar_scrap_diesel_descr">
 		<text>500ml of scrap diesel, a mixture of mostly carbon matter and some recycled diesel from oil products</text>
 	</string>
+	
+	<string id="st_jar_scrap_diesel">
+		<text>Jar of Scrap Diesel</text>
+	</string>
+	<string id="st_jar_scrap_diesel">
+		<text>Jar of Scrap Diesel</text>
+	</string>
+	<string id="st_jar_scrap_diesel">
+		<text>Jar of Scrap Diesel</text>
+	</string>
+	
+	<string id="st_jerrycan_diesel">
+		<text>Jerrycan (Diesel)</text>
+	</string>
+	<string id="st_jerrycan_biodiesel">
+		<text>Jerrycan (Bio-Diesel)</text>
+	</string>
+	<string id="st_jerrycan_animal_oil">
+		<text>Jerrycan (Animal Oil)</text>
+	</string>
+	
+	<string id="st_jerrycan_diesel_descr">
+		<text>10L of Diesel</text>
+	</string>
+	<string id="st_jerrycan_biodiesel_descr">
+		<text>10L of Bio-Diesel</text>
+	</string>
+	<string id="st_jerrycan_animal_oil_descr">
+		<text>10L of Animal Oil</text>
+	</string>
+	
+	<string id="st_jerrycan_diesel_empty">
+		<text>Empty Diesel Jerrycan)</text>
+	</string>
+	<string id="st_jerrycan_biodiesel_empty">
+		<text>Empty Bio-Diesel Jerrycan)</text>
+	</string>
+	<string id="st_jerrycan_animal_oil_empty">
+		<text>Empty Animal Oil Jerrycan)</text>
+	</string>
+	
+	<string id="st_jerrycan_diesel_empty_descr">
+		<text>Empty Jerrycan used for diesel but can be used for other fluids, now it's empty</text>
+	</string>
+	<string id="st_jerrycan_biodiesel_empty_descr">
+		<text>Empty Jerrycan used for bio-diesel but can be used for other fluids, now it's empty</text>
+	</string>
+	<string id="st_jerrycan_animal_oil_empty_descr">
+		<text>Empty Jerrycan used for animal oil but can be used for other fluids, now it's empty</text>
+	</string>
+	
+	<string id="st_fc_pour">
+		<text>pour</text>
+	</string>
+	<string id="st_fc_pour_all">
+		<text>pour all</text>
+	</string>
 
 </string_table>
