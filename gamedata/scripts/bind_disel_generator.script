@@ -6,7 +6,7 @@ get_sect_tbl = hfg_utils.get_sect_tbl
 find_obj = hfg_utils.find_obj
 get_nearest = hfg_utils.get_nearest
 print_table = hfg_utils.print_table
-
+sound_cache = ag_sounds
 -- Constants
 
 SEARCH_RADIUS = 50
@@ -24,7 +24,7 @@ GENERATOR_ITEMS = {
 
 -- Variables
 
-placed_generators = {}
+sound_cache = {}
 placed_generator_items = {}
 
 
@@ -68,7 +68,6 @@ end
 class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_disel_generator_wrapper:__init(obj) super(obj)
     
-    --local data = contains(placed_generators, self.object:id(), true) and placed_generators[self.object:id()] or hf_obj_manager.get_data(self.object:id())
     local data = hf_obj_manager.get_data(self.object:id())
 
     -- Object Fields
@@ -148,12 +147,20 @@ end
 
 function placeable_disel_generator_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
-    local tg = time_global()
+    self.object:set_callback(callback.death, placeable_disel_generator_wrapper.death_callback, self)
+    self.tg = time_global()
     self:load_data()
 
     local condition = self.condition
     local cond_state = cond_to_state(round_idp(condition * 100, 2))    
+    
+    self.ProcessPowerState(cond_state)
+    self:ProcessParticles(cond_state)
+    self:ProcessAnims()
+    self:ProcessPowerableDevices()
+end
 
+function placeable_disel_generator_wrapper:ProcessPowerState(cond_state)
     -- On Power State Switch
     if self.last_power_state ~= self.power_state then
         self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state]))
@@ -163,7 +170,9 @@ function placeable_disel_generator_wrapper:update(delta)
             end
         end
     end
+end
 
+function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
     if self.power_state == "on" or (self.power_state == "broken" and self.current_motion ~= "idle") then
         -- If Condition Has Changed enough for a particle update
         if cond_state ~= self.last_cond_state then
@@ -183,9 +192,9 @@ function placeable_disel_generator_wrapper:update(delta)
         end
 
         for idx, details in pairs(self.curr_fx[self.last_cond_state]) do
-            if tg > details["tmr"] then
+            if self.tg > details["tmr"] then
                 if not details["active"] then                    
-                    self.curr_fx[self.last_cond_state][idx].tmr = tg + (details["duration"]["active"] * 1000)
+                    self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["active"] * 1000)
                     self.curr_fx[self.last_cond_state][idx].active = true
                     --pr("exhaust pos: %s", vec_to_str(self.exhaust_pos))
                     self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], calc_part_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
@@ -194,7 +203,7 @@ function placeable_disel_generator_wrapper:update(delta)
                     local remove_particle = false
 
                     if details["duration"]["pause"] then
-                        self.curr_fx[self.last_cond_state][idx].tmr = tg + (details["duration"]["pause"] * 1000)
+                        self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["pause"] * 1000)
                         self.curr_fx[self.last_cond_state][idx].active = false
                         pr("pausing %s for %s", details["part"], details["duration"]["pause"])
                         if details["duration"]["rpt"] then
@@ -215,7 +224,7 @@ function placeable_disel_generator_wrapper:update(delta)
                                     end
                                 elseif details["loop"] and details["duration"]["slp"] then
                                     pr("particle %s reached end of loop putting to sleep for %s", details["part"], details["duration"]["slp"])
-                                    self.curr_fx[self.last_cond_state][idx].tmr = tg + details["duration"]["slp"]
+                                    self.curr_fx[self.last_cond_state][idx].tmr = self.tg + details["duration"]["slp"]
                                 end
                             end
                         end                    
@@ -235,33 +244,18 @@ function placeable_disel_generator_wrapper:update(delta)
             self:save_data()
         end
 
-        if tg > self.powerable_device_tmr then
-            pr("updating fuel")
-            local powerable_devices = get_powerable_devices(self.object:position())
-            if is_not_empty(powerable_devices) then
-                for id, sect in pairs(powerable_devices) do
-                    local data = hf_obj_manager.get_data(id)
-                    if data["is_on"] then
-                        if contains(data, "fuel", true) and not contains(data, "infinite_fuel", true) and data["fuel"] < 0.95 then
-                            hf_obj_manager.update_data(id, {fuel=1})
-                        end
-                    end
-                end
-            end
-            self.powerable_device_tmr = tg + (3600 * 1000)
-        end
-
     elseif self.power_state == "off" then        
         self:CleanupParticles()
     end
+end
 
-
+function placeable_disel_generator_wrapper:ProcessAnims()
     if self.anim_due then
         if not self.anim_in_progress then
             pr("Setting Anim Control Vars")
             self.anim_in_progress = true
             self.anim_power_state = self.power_state
-            self.anim_start_time = tg
+            self.anim_start_time = self.tg
             self:CleanupParticles()
             pr("anim power state: %s", self.anim_power_state)
         end
@@ -274,12 +268,12 @@ function placeable_disel_generator_wrapper:update(delta)
         end
 
         -- End Process if Animation Time not reached
-        if tg < self.anim_tmr then
+        if self.tg < self.anim_tmr then
             return
         end
         pr("Anim Time Reached")
         -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
-        if tg > self.anim_tmr and tg - self.anim_start_time > self.anim_tmr then
+        if self.tg > self.anim_tmr and self.tg - self.anim_start_time > self.anim_tmr then
             pr("Anim Runtime Exceed, Advancing Stage")
             self.anim_tmr = 0
             self.anim_stage = self.anim_stage + 1
@@ -298,7 +292,7 @@ function placeable_disel_generator_wrapper:update(delta)
             return
         end
 
-        pr("Starting Anim Stage %s at %s", self.anim_stage, tg)
+        pr("Starting Anim Stage %s at %s", self.anim_stage, self.tg)
         -- Play Animation for given duration and advance/save animation
         local details = self.anim_tbl[self.power_state][self.anim_stage]        
         local snd_props = sound_object.s3d + sound_object.looped
@@ -308,24 +302,40 @@ function placeable_disel_generator_wrapper:update(delta)
             snd_props = sound_object.s3d
         end
 
-        if self.snd["last_played"] ~= nil and self.snd["last_played"]:playing() then
-            self.snd["last_played"]:stop()
-            pr("Stopping last played snd. Played for %s", tg - self.anim_tmr)
+        if self.snd["last_played"] ~= nil  then
+            ag_sounds.remove(self.snd["last_played"])
+            pr("Stopping last played snd. Played for %s", self.tg - self.anim_tmr)
         end
         if details["snd"] then
-            self.snd["last_played"] = sound_object(details["snd"])
-            self.snd["last_played"].volume = 0.7
-            self.snd["last_played"]:play_at_pos(self.object, self.object:position(), 0, snd_props)
+            self.snd["last_played"] = ag_sounds.add(self.object, details["snd"], self.object:position(),  0.7, snd_props)
             pr("playing sound %s", details["snd"])
         end
-        pr("Starting to play %s at %s", details["anim"], tg)
+        pr("Starting to play %s at %s", details["anim"], self.tg)
 
         self.object:play_cycle(details["anim"])
         self:UpdateAnimData(details["anim"])
         self.current_motion = details["anim"]
-        self.anim_tmr = tg + (details["duration"] * 1000)
+        self.anim_tmr = self.tg + (details["duration"] * 1000)
         self.anim_stage = self.anim_stage + 1
         self:save_data()
+    end
+end
+
+function placeable_disel_generator_wrapper:ProcessPowerableDevices()
+    if self.tg > self.powerable_device_tmr then
+        pr("updating fuel")
+        local powerable_devices = get_powerable_devices(self.object:position())
+        if is_not_empty(powerable_devices) then
+            for id, sect in pairs(powerable_devices) do
+                local data = hf_obj_manager.get_data(id)
+                if data["is_on"] then
+                    if contains(data, "fuel", true) and not contains(data, "infinite_fuel", true) and data["fuel"] < 0.95 then
+                        hf_obj_manager.update_data(id, {fuel=1})
+                    end
+                end
+            end
+        end
+        self.powerable_device_tmr = self.tg + (3600 * 1000)
     end
 
     if self.power_off_devices then
@@ -396,35 +406,34 @@ end
 function placeable_disel_generator_wrapper:net_destroy()
     pr("on net destory")
     self:save_data()
-    if self.snd and contains(self.snd, "last_played", true) and self.snd["last_played"]:playing() then
-        self.snd["last_played"]:stop()
+    if self.snd and contains(self.snd, "last_played", true) then
+        local id = self.snd["last_played"]
+        ag_sounds.remove(id)
+        self.snd["last_played"] = nil
     end
 
-    self:CleanupParticles()
-    
-    pr("destory broken gen")
-    placed_generators[self.object:id()] = nil
+    self:CleanupParticles()    
 end
 
 function placeable_disel_generator_wrapper:death_callback(victim, who)
     pr("on death")
-    if self.snd and contains(self.snd, "last_played", true) and self.snd["last_played"]:playing() then
-        self.snd["last_played"]:stop()
+    if self.snd and contains(self.snd, "last_played", true) then
+        local id = self.snd["last_played"]
+        ag_sounds.remove(id)
+        self.snd["last_played"] = nil
     end
 
-    if self.curr_fx and is_not_empty(self.curr_fx) then
-        if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
-            local fx = self.curr_fx[self.last_cond_state]
-            for idx, details in pairs(fx) do
-                if details["active"] and contains(details, "id", true) then
-                    thial_particles.remove(details["id"])
-                end
-            end
-        end 
-    end
-
-    placed_generators[self.object:id()] = nil
+    self:CleanupParticles()    
 end
+
+function placeable_disel_generator_wrapper:reinit()
+    pr("on reinit")
+end
+
+function placeable_disel_generator_wrapper:reload(section)
+    pr("on reload: %s", section)
+end
+
 
 function placeable_disel_generator_wrapper:save_data()
     --pr("save data")
@@ -449,7 +458,6 @@ function placeable_disel_generator_wrapper:save_data()
         last_power_state     = self.last_power_state,
         powerable_device_tmr = self.powerable_device_tmr,
     })
-    placed_generators[self.object:id()] = hf_obj_manager.get_data(self.object:id())
     --pr("Genny data: %s\n", print_table(data))
 end
 
@@ -860,34 +868,12 @@ end
 -- Callbacks
 
 function on_save(mdata)
-    pr("on save state")
-    local tmp_pg = {}
-    for id, data in pairs(placed_generators) do
-        if placed_generators[id]["snd"]["last_played"] and placed_generators[id]["snd"]["last_played"]:playing() then
-            placed_generators[id]["snd"]["last_played"] = nil
+    pr("on save")
+    for id, datum in pairs(mdata["se_object"]) do
+        if contains(datum, "hf_data", true) then
+            pr("hf data: %s, %s", id, print_table(datum))
         end
     end
-    local tmp_pgi = {}
-
-    copy_table(tmp_pg, placed_generators)
-    copy_table(tmp_pgi, placed_generator_items)
-
-    mdata.placed_generators = tmp_pg
-    mdata.placed_generator_items = tmp_pgi
-
-end
-
-function on_load(mdata)
-    pr("on load state")
-    local tmp_pg = mdata.placed_generators or {}
-    local tmp_pgi = mdata.placed_generator_items or {}
-    copy_table(placed_generators, tmp_pg)
-    copy_table(placed_generator_items, tmp_pgi)
-end
-
-function before_level_change()
-    pr("before level change")
-    pr("data: %s", print_table(placed_generators))
 end
 
 function on_item_take(obj)
@@ -904,11 +890,9 @@ function physic_object_on_hit(obj, amount, dir, who, bidx)
 end
 
 function on_game_start()
-    RegisterScriptCallback("physic_object_on_hit_callback", physic_object_on_hit)
+    --RegisterScriptCallback("physic_object_on_hit_callback", physic_object_on_hit)
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
-    RegisterScriptCallback("save_state", on_save)
-    RegisterScriptCallback("load_state", on_load)
     RegisterScriptCallback("actor_on_item_take", on_item_take)
-    --RegisterScriptCallback("on_before_level_changing", before_level_change)
+    --RegisterScriptCallback("save_state", on_save)
 end
