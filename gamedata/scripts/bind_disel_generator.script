@@ -202,22 +202,15 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
                     if details["bone_name"] == "exhaust" then
                         pr("setiting part dir to be exhaust dir")
                         local part_obj = thial_particles.get(self.curr_fx[self.last_cond_state][idx].id)
-                        --local dir = vector_rotate_y(db.actor:direction(), 180)
-                        --pr("getting exhaust pos")
                         local exhaust_pos = get_bone_pos(self.object, "exhaust")
-                        --pr("getting body pos: %s", vec_to_str(exhaust_pos))
                         local link_pos =  get_bone_pos(self.object, "body")
-                        --pr("getting direction: %s", vec_to_str(link_pos))
                         local dx = exhaust_pos.x - link_pos.x
                         local dy = exhaust_pos.y - link_pos.y
                         local dz = exhaust_pos.z - link_pos.z
-                        --pr("direction vec: %s %s %s", dx, dy, dz)
                         local length = math.sqrt(math.pow(dx, 2)) + math.sqrt(math.pow(dy, 2)) + math.sqrt(math.pow(dz, 2))
-                        --pr("length: %s", length)
                         local nx = dx/length
                         local ny = dy/length
                         local nz = dz/length
-                        --pr("norm dir: %s %s %s", nx, ny, nz)
                         local norm_dir = vector():set(nx, ny, nz)
                         pr("dir: %s", vec_to_str(norm_dir))
                         part_obj:set_direction(norm_dir)
@@ -507,9 +500,9 @@ function cond_to_state(cond)
     local state = "high"
     if cond <= 10 then
         state = "broken"
-    elseif cond <= 25 then
+    elseif cond <= 35 then
         state = "low"
-    elseif cond <= 50 then
+    elseif cond <= 80 then
         state = "med"
     elseif cond <= 100 then
         state = "high"
