@@ -147,7 +147,8 @@ end
 
 function placeable_disel_generator_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
-    self.object:set_callback(callback.death, placeable_disel_generator_wrapper.death_callback, self)
+    pr("on update")
+
     self.tg = time_global()
     self:load_data()
 
@@ -197,7 +198,30 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
                     self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["active"] * 1000)
                     self.curr_fx[self.last_cond_state][idx].active = true
                     --pr("exhaust pos: %s", vec_to_str(self.exhaust_pos))
-                    self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], calc_part_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
+                    self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], get_bone_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
+                    if details["bone_name"] == "exhaust" then
+                        pr("setiting part dir to be exhaust dir")
+                        local part_obj = thial_particles.get(self.curr_fx[self.last_cond_state][idx].id)
+                        --local dir = vector_rotate_y(db.actor:direction(), 180)
+                        --pr("getting exhaust pos")
+                        local exhaust_pos = get_bone_pos(self.object, "exhaust")
+                        --pr("getting body pos: %s", vec_to_str(exhaust_pos))
+                        local link_pos =  get_bone_pos(self.object, "body")
+                        --pr("getting direction: %s", vec_to_str(link_pos))
+                        local dx = exhaust_pos.x - link_pos.x
+                        local dy = exhaust_pos.y - link_pos.y
+                        local dz = exhaust_pos.z - link_pos.z
+                        --pr("direction vec: %s %s %s", dx, dy, dz)
+                        local length = math.sqrt(math.pow(dx, 2)) + math.sqrt(math.pow(dy, 2)) + math.sqrt(math.pow(dz, 2))
+                        --pr("length: %s", length)
+                        local nx = dx/length
+                        local ny = dy/length
+                        local nz = dz/length
+                        --pr("norm dir: %s %s %s", nx, ny, nz)
+                        local norm_dir = vector():set(nx, ny, nz)
+                        pr("dir: %s", vec_to_str(norm_dir))
+                        part_obj:set_direction(norm_dir)
+                    end
                     pr("Playing particle: %s for %s", details["part"], details["duration"]["active"])
                 elseif details["active"] then
                     local remove_particle = false
@@ -280,7 +304,7 @@ function placeable_disel_generator_wrapper:ProcessAnims()
         end
 
         -- Stop Animation and Reset Controllers
-        --pr("Anim stage %s, power state %s", self.anim_stage, self.power_state)
+        pr("Anim stage %s, total stages %s", self.anim_stage, #self.anim_tbl[self.power_state])
         if self.anim_stage > #self.anim_tbl[self.power_state] then
             pr("stopping anim")
             self.anim_due = false
@@ -313,11 +337,15 @@ function placeable_disel_generator_wrapper:ProcessAnims()
         pr("Starting to play %s at %s", details["anim"], self.tg)
 
         self.object:play_cycle(details["anim"])
-        self:UpdateAnimData(details["anim"])
+        --self:UpdateAnimData(details["anim"])
         self.current_motion = details["anim"]
+        pr("setting current motion to %s", details["anim"])
         self.anim_tmr = self.tg + (details["duration"] * 1000)
+        pr("setting next anim time to %s", self.anim_tmr)
         self.anim_stage = self.anim_stage + 1
+        pr("advancing anim stage to: %s", self.anim_stage)
         self:save_data()
+        pr("saved data")
     end
 end
 
@@ -412,28 +440,8 @@ function placeable_disel_generator_wrapper:net_destroy()
         self.snd["last_played"] = nil
     end
 
-    self:CleanupParticles()    
+    self:CleanupParticles()
 end
-
-function placeable_disel_generator_wrapper:death_callback(victim, who)
-    pr("on death")
-    if self.snd and contains(self.snd, "last_played", true) then
-        local id = self.snd["last_played"]
-        ag_sounds.remove(id)
-        self.snd["last_played"] = nil
-    end
-
-    self:CleanupParticles()    
-end
-
-function placeable_disel_generator_wrapper:reinit()
-    pr("on reinit")
-end
-
-function placeable_disel_generator_wrapper:reload(section)
-    pr("on reload: %s", section)
-end
-
 
 function placeable_disel_generator_wrapper:save_data()
     --pr("save data")
@@ -488,7 +496,7 @@ end
 
 -- Binder Helpers
 
-function calc_part_pos(obj, bone_name)    
+function get_bone_pos(obj, bone_name)    
     local bid = obj:get_bone_id(bone_name)
     local bpos = obj:bone_position(bid)
     --pr("%s pos: %s", bone_name, vec_to_str(bpos))

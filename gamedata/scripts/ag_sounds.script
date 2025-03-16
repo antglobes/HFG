@@ -67,14 +67,18 @@ end
 ---@param id string - The id of the sound
 function remove(id)
     if id == nil or id == "" then
+        log("[sound_cache] Invalid Id")
         return
     end
 
     if cache[id] ~= nil then
+        log("[sound_cache] Attempting to remove: "..id)
         cache[id].object:stop()
         cache[id] = nil
         log("[sound_cache] Removed: "..id)
+        return
     end    
+    log("[sound_cache] Failed to remove: " .. id)
 end
 
 ---Moves the sound to a new position
