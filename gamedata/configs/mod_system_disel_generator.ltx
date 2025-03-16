@@ -29,7 +29,7 @@ startup_animation                        = idle
 script_binding                           = bind_disel_generator.init
 item_section                             = disel_generator_item
 
-ui_on_interaction                        = bind_disel_generator.display_toggle_power
+ui_on_interaction                        = bind_disel_generator.start_ui
 ui_on_simple_interaction                 = bind_disel_generator.toggle_power
 
 ;fixed_bones                              = link, body, but_belt, l_rotor, r_rotor, tank, top_belt, exhaust
@@ -58,20 +58,35 @@ inv_grid_y                             = 5
 
 cost                                   = 6724
 inv_weight                             = 8.75
+empty_sect                             = hfg_jerrycan_diesel_empty
 
 use2_functor         				   = placeable_furniture.place_item
 use2_action_functor  				   = placeable_furniture.func_place_item
 placeable_section                      = placeable_jerrycan_diesel
 placeable_type                         = prop
 
-[hfg_jerrycan_diesel_empty]:hfg_jerrycan_diesel
+[hfg_jerrycan_diesel_empty]:tch_junk
+class								   = II_ATTCH
+kind								   = i_tool
+icons_texture						   = ui\ui_hfg_icons
+inv_grid_width                         = 2
+inv_grid_height                        = 2
+
+visual                                 = dynamics\hfg_jerrycan_diesel.ogf
 description                            = st_jerrycan_diesel_empty_descr
 inv_name                               = st_jerrycan_diesel_empty
 inv_name_short                         = st_jerrycan_diesel_empty
+inv_grid_x                             = 6
 inv_grid_y                             = 7
 inv_weight                             = 8.75
-fuel_source                            = true
+
+use1_functor         				   = placeable_furniture.place_item
+use1_action_functor  				   = placeable_furniture.func_place_item
+
 cost                                   = 624
+placeable_section                      = placeable_jerrycan_diesel_empty
+placeable_type                         = prop
+fuel_source                            = true
 
 
 [placeable_jerrycan_base]:physic_object
@@ -83,6 +98,10 @@ bounding_box_origin                    = 0.001506, 0.282296, -0.008672
 [placeable_jerrycan_diesel]:placeable_jerrycan_base
 visual                                 = dynamics\hfg_jerrycan_diesel.ogf
 item_section                           = hfg_jerrycan_diesel
+
+[placeable_jerrycan_diesel_empty]:placeable_jerrycan_base
+visual                                 = dynamics\hfg_jerrycan_diesel.ogf
+item_section                           = hfg_jerrycan_diesel_empty
 
 [tch_on_explode]
 on_explode = bind_disel_generator.set_cond_on_explode

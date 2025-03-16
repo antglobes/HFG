@@ -538,5 +538,17 @@
 	<string id="st_fc_pour_all">
 		<text>pour all</text>
 	</string>
-
+	
+	<string id="st_max_fuel">
+		<text>Diesel Generator fuel tank is full.</text>
+	</string>
+	<string id="st_add_fuel">
+		<text>add fuel</text>
+	</string>
+	<string id="st_no_gen_nearby">
+		<text>Stand Closer to a Generator</text>
+	</string>
+	<string id="st_no_fuel">
+		<text>Diesel Generator tank is empty</text>
+	</string>
 </string_table>

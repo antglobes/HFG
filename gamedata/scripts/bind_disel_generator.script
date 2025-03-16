@@ -5,8 +5,12 @@ set_debug_level = hfg_utils.set_debug_level
 get_sect_tbl = hfg_utils.get_sect_tbl
 find_obj = hfg_utils.find_obj
 get_nearest = hfg_utils.get_nearest
+nearest_val = hfg_utils.nearest_val
 print_table = hfg_utils.print_table
 sound_cache = ag_sounds
+add_functor = custom_functor_autoinject.add_functor
+get_keytable = hfg_utils.get_keytable
+
 -- Constants
 
 SEARCH_RADIUS = 50
@@ -20,10 +24,13 @@ SWAP_POWER_STATE = {
 }
 GENERATOR_ITEMS = {
     "hfg_jerrycan_diesel",
+    "hfg_jerrycan_diesel_empty"
 }
+MAX_FUEL = 60
+MAX_POWER_OUTPUT = 5000
 
 -- Variables
-
+GUI = nil
 sound_cache = {}
 placed_generator_items = {}
 
@@ -39,6 +46,13 @@ function toggle_power(obj_id)
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
     local in_progress = data["anim_in_progress"]
     if in_progress then pr("anim in progress, cant switch power state") return end
+
+    local no_fuel = data["stored_fuel"] == 0
+    if no_fuel then
+        pr("no fuel")
+        actor_menu.set_msg(1, gts("st_no_fuel"), 3)
+        return
+    end
 
     local power_state = data["power_state"]
     if power_state then
@@ -140,36 +154,59 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
 
     -- Powerable Devices
     self.power_off_devices = true
-    self.powerable_devices = self:GetPowerableDevices()
+    self.powerable_devices = {} -- get_powerable_devices(self.object:position())
+    self.power_output = data["power_output"] or MAX_POWER_OUTPUT
+    self.connected_devices = data["connected_devices"] or 0
 
+    -- Fuel
+    self.stored_fuel = data["stored_fuel"] or 0
+    self.max_fuel = data["max_fuel"] or MAX_FUEL
+    self.fuel_transfer = data["fuel_transfer"] or false
+    self.time_til_empty = data["time_til_empty"] or 0
+    self.drain_rate = {
+        [0.5]  = 1.2,
+        [0.75] = 1.48,
+        [1]    = 2
+    }
+    pr("saving data")
     self:save_data()
+    pr("finished init")
 end
 
 function placeable_disel_generator_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
-    pr("on update")
 
     self.tg = time_global()
     self:load_data()
 
     local condition = self.condition
-    local cond_state = cond_to_state(round_idp(condition * 100, 2))    
+    local cond_state = cond_to_state(round_idp(condition * 100, 2))
+    
+    -- Process Power Output
+    if self.power_state == "on" then
+        self.power_output = MAX_POWER_OUTPUT * round_idp(condition * 100, 2)
+    elseif contains({"off", "broken", self.power_state}) then
+        self.power_output = 0
+    end
     
     self.ProcessPowerState(cond_state)
     self:ProcessParticles(cond_state)
     self:ProcessAnims()
     self:ProcessPowerableDevices()
+    self:ProcessFuel()
 end
 
 function placeable_disel_generator_wrapper:ProcessPowerState(cond_state)
     -- On Power State Switch
     if self.last_power_state ~= self.power_state then
+        pr("processing power state")
         self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state]))
         if self.power_state == "broken" and cond_state == "broken" then
             if not self.anim_in_progress and self.current_motion ~= "idle" then
                 self.anim_due = true
             end
         end
+        self:save_data()
     end
 end
 
@@ -212,7 +249,7 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
                         local ny = dy/length
                         local nz = dz/length
                         local norm_dir = vector():set(nx, ny, nz)
-                        pr("dir: %s", vec_to_str(norm_dir))
+                        --pr("dir: %s", vec_to_str(norm_dir))
                         part_obj:set_direction(norm_dir)
                     end
                     pr("Playing particle: %s for %s", details["part"], details["duration"]["active"])
@@ -352,11 +389,13 @@ function placeable_disel_generator_wrapper:ProcessPowerableDevices()
                 if data["is_on"] then
                     if contains(data, "fuel", true) and not contains(data, "infinite_fuel", true) and data["fuel"] < 0.95 then
                         hf_obj_manager.update_data(id, {fuel=1})
+                        self.connected_devices = self.connected_devices + 1
                     end
                 end
             end
         end
         self.powerable_device_tmr = self.tg + (3600 * 1000)
+        self:save_data()
     end
 
     if self.power_off_devices then
@@ -372,10 +411,41 @@ function placeable_disel_generator_wrapper:ProcessPowerableDevices()
 
         for id, sect in pairs(self.powerable_devices) do
             hf_obj_manager.update_data(id, {is_on=false})
+            self.connected_devices = self.connected_devices - 1
         end
         self.power_off_devices = false
         self:save_data()
     end
+end
+
+function placeable_disel_generator_wrapper:ProcessFuel()
+    if self.stored_fuel == 0 then
+        if self.power_state == "on" and not self.anim_in_progress then
+            pr("no fuel switching off")
+            self.power_state = "off"
+            self.anim_due = true
+        end
+        return
+    end
+
+    local percent_full = self.stored_fuel / self.max_fuel
+    local drain_rate = get_keytable(self.drain_rate )
+    local fuel_load = nearest_val(drain_rate, percent_full)
+
+    if self.fuel_transfer then
+        pr("resesting time til empty")
+        self.time_til_empty = self.tg + (self.stored_fuel / self.drain_rate[fuel_load]) * (3600 * 1000)
+        pr("stored fuel: %s", self.stored_fuel)
+        pr("time_til_empty: %s", self.time_til_empty)
+        self.fuel_transfer = false
+    end
+
+    local drain_rate_second = self.drain_rate[fuel_load] / 3600 
+    self.stored_fuel = self.stored_fuel - drain_rate_second
+    self.time_til_empty = self.time_til_empty - 1000
+    pr("stored fuel: %s", self.stored_fuel)
+    pr("time_til_empty: %s", self.time_til_empty)
+    self:save_data()
 end
 
 function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
@@ -387,10 +457,6 @@ function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
         data.skeleton_name = anim_name
         utils_stpk.set_physic_data(data, se_obj)
     end
-end
-
-function placeable_disel_generator_wrapper:GetPowerableDevices()
-    return get_powerable_devices(self.object:position())
 end
 
 function placeable_disel_generator_wrapper:CleanupParticles()
@@ -406,12 +472,21 @@ function placeable_disel_generator_wrapper:CleanupParticles()
     end
 end
 
+function placeable_disel_generator_wrapper:GetGenInfo()
+    return {
+        condition         = self.condition,
+        stored_fuel       = self.stored_fuel,
+        time_til_empty    = self.time_til_empty,
+        power_output      = self.power_output,
+        connected_devices = self.connected_devices
+    }
+end
+
 function placeable_disel_generator_wrapper:pickup()
     pr("on pickup")
     self:load_data()
     local item_section = ini_sys:r_string_ex(self.object:section(), "item_section")
     pr("binder cond: %s", self.condition)
-	--alife_create_item(item_section, db.actor, {cond=self.condition}) -- Maybe transfer all data to new item? Probably depends on item type tho
     local se_obj = alife_create(item_section, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), AC_ID, false)
     local data = utils_stpk.get_item_data(se_obj)
     data.condition = self.condition
@@ -458,6 +533,13 @@ function placeable_disel_generator_wrapper:save_data()
         anim_start_time      = self.anim_start_time,
         last_power_state     = self.last_power_state,
         powerable_device_tmr = self.powerable_device_tmr,
+        power_output         = self.power_output,
+        connected_devices    = self.connected_devices,
+        stored_fuel          = self.stored_fuel,
+        max_fuel             = self.max_fuel,
+        fuel_transfer        = self.fuel_transfer,
+        time_til_empty       = self.time_til_empty,
+        drain_rate           = self.drain_rate,
     })
     --pr("Genny data: %s\n", print_table(data))
 end
@@ -484,8 +566,64 @@ function placeable_disel_generator_wrapper:load_data()
     self.anim_start_time      = data["anim_start_time"]
     self.last_power_state     = data["last_power_state"]
     self.powerable_device_tmr = data["powerable_device_tmr"]
+    self.power_output         = data["power_output"]
+    self.connected_devices    = data["connected_devices"]
+    self.stored_fuel          = data["stored_fuel"]
+    self.max_fuel             = data["max_fuel"]
+    self.fuel_transfer        = data["fuel_transfer"]
+    self.time_til_empty       = data["time_til_empty"]
+    self.drain_rate           = data["drain_rate"]
+
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
+
+-- Generator UI
+function start_ui(obj_id)
+    if not GUI then
+        GUI = UIDieselGenerator()
+    end
+
+    if GUI and not GUI:IsShown() then
+        GUI:Reset(obj_id)
+        GUI:ShowDialog(true)
+        Register_UI("UIDieselGenerator")
+    end
+end
+
+class "UIDieselGenerator" (CUIScriptWnd)
+function UIDieselGenerator:__init(obj_id) super(obj_id)
+    self.gen_id = obj_id
+
+end
+
+function UIDieselGenerator:InitControls()
+
+end
+
+function UIDieselGenerator:InitCallbacks()
+
+end
+
+function UIDieselGenerator:Reset(obj_id)
+
+end
+
+function UIDieselGenerator:Close()
+
+end
+
+function UIDieselGenerator:Update()
+
+end
+
+function UIDieselGenerator:Pickup()
+
+end
+
+function UIDieselGenerator:TogglePower()
+    toggle_power(self.gen_id)
+end
+
 
 -- Binder Helpers
 
@@ -647,6 +785,7 @@ function update_generator_item(id, info)
     for kind, info in pairs(placed_generator_items) do
         if contains(placed_generator_items[kind], id, true) then
             for k, v in pairs(info) do
+                pr("%s info: %s", kind, print_table(info))
                 if contains(placed_generator_items[kind][id], k, true) then
                     pr("updating %s's %s to %v", id, k, v)
                     placed_generator_items[kind][id][k] = v
@@ -701,7 +840,12 @@ function placeable_generator_item_wrapper:pickup()
     pr("on pickup")
     self:load_data()
 
-    local se_obj = alife_create_item(self.item_section, db.actor, {cond=self.condition, uses=self.uses})
+    local se_obj
+    if ini_sys:r_string_ex(self.item_section, "max_uses") ~= nil then
+        se_obj = alife_create_item(self.item_section, db.actor, {cond=self.condition, uses=self.uses})
+    else
+        se_obj = alife_create_item(self.item_section, db.actor)
+    end
     local data = hf_obj_manager.get_data(self.object:id())
     
     -- Find newly created se_obj, replace existing gen item tbl id with server obj id
@@ -732,6 +876,83 @@ function placeable_generator_item_wrapper:load_data()
     self.condition            = data["condition"]
     self.uses                 = data["uses"]
 end
+
+function add_fuel_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    local found_gens = find_obj("placeable_disel_generator", db.actor:position(), 0.5)
+    local gen_nearby = is_not_empty(found_gens)
+    if not gen_nearby then
+        actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
+    end
+    local uses = hf_obj_manager.get_data(obj:id()).uses
+    return is_generator_item(sect) and is_fuel_source(sect) and (uses and uses > 0) and gen_nearby
+end
+
+function add_fuel_func(obj)
+    local found_gens = find_obj("placeable_disel_generator", db.actor:position(), 0.5)
+    local found_gen = get_nearest(found_gens)
+    local sect = obj:section()
+    pr("adding %s to diesel gen", sect)
+    local data = hf_obj_manager.get_data(obj:id())
+    local uses = data["uses"]
+    local fuel_to_add = uses
+    local wrapper = found_gen:binded_object().wrapper
+    local stored_fuel = wrapper.stored_fuel
+
+    if stored_fuel >= MAX_FUEL then
+        hide_hud_inventory()
+        actor_menu.set_msg(1, gts("st_max_fuel"), 3)
+        return
+    end
+    pr("stored fuel: %s", stored_fuel)
+    pr("calculating fuel to transfer")
+    if fuel_to_add + stored_fuel > MAX_FUEL then
+        for i=1, fuel_to_add do
+            fuel_to_add = fuel_to_add - 1
+            if fuel_to_add + stored_fuel <= MAX_FUEL then
+                break
+            end
+        end
+    end
+    pr("adding %sL to genny", fuel_to_add)
+
+    local remaining_uses = uses - fuel_to_add
+    data["uses"] = remaining_uses
+    pr("remaining uses: %s", remaining_uses)
+
+    local update_id = obj:id()
+    utils_item.discharge(obj, fuel_to_add)
+    if remaining_uses == 0 then
+        local empty_sect = ini_sys:r_string_ex(sect, "empty_sect")
+        local se_obj = alife_create_item(empty_sect, db.actor)
+        if data and contains(data, "tbl_id", true) then
+            replace_generator_item(data["tbl_id"], se_obj.id)
+            data["tbl_id"] = se_obj.id
+            data["item_section"] = empty_sect
+            update_id = se_obj.id
+        end
+        pr("creating %s", empty_sect)
+    end
+    local transfer_occured = remaining_uses < uses
+    hf_obj_manager.update_data(update_id, data)
+    hf_obj_manager.update_data(found_gen:id(), {stored_fuel=(fuel_to_add + stored_fuel), fuel_transfer=transfer_occured})
+    --pr("new stored fuel: %s", found_gen:binded_object().wrapper.stored_fuel)
+end
+
+--add_functor("hfg_fuel_source_add_fuel", add_fuel_cond, add_fuel_menu, nil, add_fuel_func)
+
+
+
+
+
+
+
+
+
+
+
 
 -- HFG Light furniture
 
@@ -880,10 +1101,16 @@ end
 function on_item_take(obj)
     local id = obj:id()
     local sect = obj:section()
-    if not is_generator_item(sect) or not is_placeable_item(sect) then return end
-    if is_in_generator_item_tbl(id) then return end
+    if not is_generator_item(sect) or not is_placeable_item(sect) then return pr("%s is not placeable gen item", sect) end
+    if is_in_generator_item_tbl(id) then return pr("%s is in gen item tbl already", sect) end
     pr("on item take: %s", sect)
     init_generator_item({obj=obj})
+end
+
+function use_generator_item(obj)
+    if add_fuel_cond(obj) then
+        add_fuel_func(obj)
+    end
 end
 
 function physic_object_on_hit(obj, amount, dir, who, bidx)
@@ -895,5 +1122,6 @@ function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("actor_on_item_take", on_item_take)
+    RegisterScriptCallback("actor_on_item_use", use_generator_item)
     --RegisterScriptCallback("save_state", on_save)
 end

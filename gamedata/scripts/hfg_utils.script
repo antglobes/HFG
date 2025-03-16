@@ -23,6 +23,14 @@ function reverse_ipairs(tbl)
     return tmp
 end
 
+function get_keytable(t)
+    local a = {}
+	for k,v in pairs(t) do
+		a[#a+1] = k
+	end
+    return a
+end
+
 --- Authored by NLTP_ASHES 17/02/24 Anomaly Discord
 function get_unknown_object(obj, result_obj_type)
     if result_obj_type == "server" then
@@ -143,6 +151,21 @@ function get_nearest(tbl, pos)
         end
     end
     return tbl[closest_idx]
+end
+
+-- https://stackoverflow.com/questions/29987249/find-the-nearest-value
+function nearest_val(tbl, val, rtn_idx)
+    local smallest_val, smallest_idx
+    for i, y in ipairs(tbl) do
+        if not smallest_val or (math.abs(val-y) < smallest_val) then
+            smallest_val = math.abs(val-y)
+            smallest_idx = i
+        end
+    end
+    if not rtn_idx then
+        return tbl[smallest_idx]
+    end
+    return smallest_idx, tbl[smallest_idx]
 end
 
 -- DEBUG print
