@@ -551,4 +551,14 @@
 	<string id="st_no_fuel">
 		<text>Diesel Generator tank is empty</text>
 	</string>
+	<string id="st_siphon_fuel">
+		<text>Siphon Fuel Barrel</text>
+	</string>
+	
+	<string id="st_siphon_kit_descr">
+		<text>PVC Hose and Funnel, perfect for a quick and dirty, blow n suck</text>
+	</string>
+	<string id="st_siphon_kit">
+		<text>Siphoning Kit</text>
+	</string>
 </string_table>

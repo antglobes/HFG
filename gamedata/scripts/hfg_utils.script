@@ -168,6 +168,27 @@ function nearest_val(tbl, val, rtn_idx)
     return smallest_idx, tbl[smallest_idx]
 end
 
+---@author: demonized 2023-12-12 18:44
+function throttle(func, tg_throttle)
+    local tg = 0
+    if not tg_throttle or tg_throttle == 0 then
+        return function(...)
+            local t = time_global()
+            if t ~= tg then
+                tg = t
+                return func(...)
+            end
+        end
+    else
+        return function(...)
+            local t = time_global()
+            if t < tg then return end
+            tg = t + tg_throttle
+            return func(...)
+        end
+    end
+end
+
 -- DEBUG print
 
 function print_table(tbl)

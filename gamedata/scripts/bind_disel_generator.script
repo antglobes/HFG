@@ -1,3 +1,4 @@
+-- Imports
 get_unknown_object = hfg_utils.get_unknown_object
 contains = hfg_utils.contains
 gts = hfg_utils.get_translation
@@ -7,15 +8,17 @@ find_obj = hfg_utils.find_obj
 get_nearest = hfg_utils.get_nearest
 nearest_val = hfg_utils.nearest_val
 print_table = hfg_utils.print_table
-sound_cache = ag_sounds
 add_functor = custom_functor_autoinject.add_functor
 get_keytable = hfg_utils.get_keytable
+throttle = hfg_utils.throttle
 
 -- Constants
-
 SEARCH_RADIUS = 50
 MIN_COND = 0.01
 BROKEN_COND = 0.1
+MAX_FUEL = 60
+MAX_POWER_OUTPUT = 5000
+SIPHON_RANGE = 3
 FUEL_SECTIONS = {"batteries_dead"}
 SWAP_POWER_STATE = {
     on = "off",
@@ -26,13 +29,11 @@ GENERATOR_ITEMS = {
     "hfg_jerrycan_diesel",
     "hfg_jerrycan_diesel_empty"
 }
-MAX_FUEL = 60
-MAX_POWER_OUTPUT = 5000
 
 -- Variables
 GUI = nil
-sound_cache = {}
 placed_generator_items = {}
+fuel_barrels = {}
 
 
 -- DEBUGGING
@@ -443,8 +444,6 @@ function placeable_disel_generator_wrapper:ProcessFuel()
     local drain_rate_second = self.drain_rate[fuel_load] / 3600 
     self.stored_fuel = self.stored_fuel - drain_rate_second
     self.time_til_empty = self.time_til_empty - 1000
-    pr("stored fuel: %s", self.stored_fuel)
-    pr("time_til_empty: %s", self.time_til_empty)
     self:save_data()
 end
 
@@ -941,9 +940,76 @@ function add_fuel_func(obj)
     --pr("new stored fuel: %s", found_gen:binded_object().wrapper.stored_fuel)
 end
 
---add_functor("hfg_fuel_source_add_fuel", add_fuel_cond, add_fuel_menu, nil, add_fuel_func)
+-- Fuel Siphoning
 
+function calc_stored_fuel()
+    math.randomseed(time_continual())
+    local rnd = round_idp(math.random() + math.random(1, 100), 1)
+    if rnd <= 2.5 then
+        return math.random(1, MAX_FUEL)
+    elseif rnd <= 12.5 then
+        return math.random(1, MAX_FUEL * 0.75)
+    elseif rnd <= 20 then
+        return math.random(1, MAX_FUEL * 0.5)
+    elseif rnd <= 55 then
+        return math.random(1, MAX_FUEL * 0.1)
+    elseif rnd <= 100 then
+        return 0
+    end
+end
 
+function init_fuel_barrel(obj)
+    local id = obj:id()
+    if not contains(fuel_barrels, id, true) then
+        pr("init fuel barrel: %s", id)
+        fuel_barrels[id] = {
+            stored_fuel = calc_stored_fuel(),
+            searched = false, -- Reset barrel after x amount of time past
+            has_exploded = false,
+            
+        }
+        obj:set_tip_text(gts("st_siphon_fuel"))
+        pr("Fuel barrel data: %s", print_table(fuel_barrels[id]))
+    end
+end
+
+function on_look_at_object()
+    local obj = level.get_target_obj()
+    if not obj then return end
+    local sect = obj:section()
+    if sect ~= "explosive_barrel" then return end
+    init_fuel_barrel(obj)
+    
+end
+
+function siphon_fuel_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    local found_barrels = find_obj("explosive_barrel", db.actor:position(), SIPHON_RANGE)
+    if is_empty(found_barrels) then return end
+    local found_barrel = get_nearest(found_barrels)
+    local dist = distance_between(db.actor, found_barrel)
+    return sect == "hfg_siphon_kit" and  dist <= SIPHON_RANGE and contains(fuel_barrels, found_barrel:id(), true)
+end
+
+function siphon_fuel_menu(obj)
+    return gts("st_item_use")
+end
+
+function siphon_fuel_func(obj)
+    local found_barrels = find_obj("explosive_barrel", db.actor:position(), SIPHON_RANGE)
+    local found_barrel = get_nearest(found_barrels)
+    local id = found_barrel:id()
+    start_siphon_ui(id)
+end
+
+function start_siphon_ui(id)
+    pr("starting siphon ui")
+
+end
+
+add_functor("siphon_fuel", siphon_fuel_cond, siphon_fuel_menu, nil, siphon_fuel_func)
 
 
 
@@ -1113,6 +1179,10 @@ function use_generator_item(obj)
     end
 end
 
+actor_on_update = throttle(function()
+    on_look_at_object()
+  end, 1000)
+
 function physic_object_on_hit(obj, amount, dir, who, bidx)
     pr("on physic ob hit: %s", obj:section())
 end
@@ -1123,5 +1193,6 @@ function on_game_start()
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("actor_on_item_take", on_item_take)
     RegisterScriptCallback("actor_on_item_use", use_generator_item)
+    RegisterScriptCallback("actor_on_update", actor_on_update)
     --RegisterScriptCallback("save_state", on_save)
 end
