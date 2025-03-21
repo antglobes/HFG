@@ -554,6 +554,15 @@
 	<string id="st_siphon_fuel">
 		<text>Siphon Fuel Barrel</text>
 	</string>
+	<string id="st_no_jerrycan">
+		<text>Need a Jerrycan to Siphon</text>
+	</string>
+	<string id="st_no_empty_jerrycan">
+		<text>All Jerrycans are full</text>
+	</string>
+	<string id="st_barrel_empty">
+		<text>This Fuel Barrel is Empty</text>
+	</string>
 	
 	<string id="st_siphon_kit_descr">
 		<text>PVC Hose and Funnel, perfect for a quick and dirty, blow n suck</text>

@@ -1,0 +1,7 @@
+<w>
+    <file name="ui\ui_hfg_siphon">
+        <texture id="ui_hfg_siphon_background"    x="0"   y="0"     width="536"   height="482"  />
+        <texture id="ui_hfg_siphon_jerrycan_fuel" x="0"   y="740"   width="132"   height="173"  />
+        <texture id="ui_hfg_siphon_barrel_fuel"   x="184" y="499"   width="254"   height="409"  />
+    </file>
+</w>

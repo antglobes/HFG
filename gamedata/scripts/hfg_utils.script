@@ -121,6 +121,17 @@ function get_sect_tbl(tbl)
     return sect_tbl
 end
 
+--- @author NLTP_ASHES
+--- @addon Western Goods
+function itr_inv(npc, func, ...)
+	local args = {...}
+	npc:iterate_inventory(
+		function(owner, obj)
+			return func(owner, obj, unpack(args))
+		end, 
+	npc)
+end
+
 function find_obj(sect, pos, radius, search)
     local objs = {}
     local function itr(obj)
@@ -137,6 +148,20 @@ function find_obj(sect, pos, radius, search)
     end
     level.iterate_nearest(pos, radius, itr)
     return objs
+end
+
+function find_inv_item(key)
+    local t = type(key)
+    local tmp = {}
+    local function search(npc, obj)
+        local sect = obj:section()
+        --pr("%s in %s? %s", sect, key, is_not_empty({string.find(sect, key)}))
+        if is_not_empty({string.find(sect, key)}) then
+            tmp[#tmp + 1] = obj
+        end
+    end
+    itr_inv(db.actor, search)
+    return tmp
 end
 
 function get_nearest(tbl, pos)

@@ -1,0 +1,31 @@
+<w>
+    <frame x="296" y="156" width="461" height="452" stretch="1">
+        <texture>ui_inGame2_hint_wnd_main_window</texture>
+    </frame>
+
+    <icon x="44" y="20" width="352" height="356" stretch="1">
+        <texture>ui_hfg_siphon_background</texture>
+    </icon>
+
+    <!-- top 225 bottom 339 -->
+    <fuel_counter_jerrycan x="19" y="339" width="25" height="20" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c"/>
+    </fuel_counter_jerrycan>
+
+    <!-- top 45 bottom 333  -->
+    <fuel_counter_barrel x="405" y="333" width="25" height="20" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c"/>
+    </fuel_counter_barrel>
+
+    <operation_text x="44" y="377" width="357" height="25" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c"/>
+    </operation_text>
+
+    <fuel_trackbar x="104" y="397" width="251" height="16" stretch="1"/>
+
+    <start_btn x="181" y="420" width="100" height="22" check_mode="0" stretch="1">
+        <window_name>button_start</window_name>
+        <text font="letterica18">Start</text>
+        <texture>ui_button_ordinary</texture>
+    </start_btn>
+</w>
