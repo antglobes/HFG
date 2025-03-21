@@ -882,18 +882,20 @@ function add_fuel_cond(obj)
     local p = obj:parent()
 	if not (p and p:id() == AC_ID) then return end
     local sect = obj:section()
-    local found_gens = find_obj("placeable_disel_generator", db.actor:position(), 0.5)
-    local gen_nearby = is_not_empty(found_gens)
-    if not gen_nearby then
-        actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
+    local gen = level.get_target_obj()
+    if gen and gen:section() == "placeable_disel_generator" and distance_between(db.actor, gen) <= 2 then
+        local uses = hf_obj_manager.get_data(obj:id()).uses
+        local power_state = hf_obj_manager.get_data(gen:id()).power_state
+        return is_generator_item(sect) and is_fuel_source(sect) and (uses and uses > 0) and power_state ~= "broken"
     end
-    local uses = hf_obj_manager.get_data(obj:id()).uses
-    return is_generator_item(sect) and is_fuel_source(sect) and (uses and uses > 0) and gen_nearby
+    actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
+    return false
+    
 end
 
 function add_fuel_func(obj)
-    local found_gens = find_obj("placeable_disel_generator", db.actor:position(), 0.5)
-    local found_gen = get_nearest(found_gens)
+    local found_gen = level.get_target_obj()
+    if not found_gen or (found_gen and found_gen:section() ~= "placeable_disel_generator") then return end
     local sect = obj:section()
     pr("adding %s to diesel gen", sect)
     local data = hf_obj_manager.get_data(obj:id())
