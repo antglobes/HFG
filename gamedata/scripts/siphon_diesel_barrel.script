@@ -1,0 +1,536 @@
+--[[
+    Last Edited: 21/03/25
+    Author: antglobes
+    Purpose: Manage Siphoning Diesel from explosive barrel
+--]]
+
+-- Imports
+contains = hfg_utils.contains
+gts = hfg_utils.get_translation
+print_table = hfg_utils.print_table
+find_obj = hfg_utils.find_obj
+get_nearest = hfg_utils.get_nearest
+find_inv_item = hfg_utils.find_inv_item
+nearest_val = hfg_utils.nearest_val
+get_keytable = hfg_utils.get_keytable
+replace_generator_item = bind_disel_generator.replace_generator_item
+add_functor = custom_functor_autoinject.add_functor
+itr_inv = hfg_utils.itr_inv
+throttle = hfg_utils.throttle
+
+-- Constants
+MAX_FUEL = 60
+SIPHON_RANGE = 3
+OP_TXT = "Siphon %s from barrel"
+
+-- Variables
+GUI = nil
+fuel_barrels = {}
+
+-- Tables
+FUEL_TO_CLR = {
+    jerrycan = {
+        [0]   = {255, 255, 19, 18},
+        [25]  = {255, 255, 19, 18}, 
+        [50]  = {255, 255, 77, 18}, 
+        [75]  = {255, 255, 242, 18},
+        [100] = {255, 64, 253, 40},
+    },
+    barrel = {
+        [0]   = {255, 255, 19, 18},
+        [30]  = {255, 255, 19, 18}, --"red",
+        [55]  = {255, 255, 77, 18}, --"orange",
+        [80]  = {255, 255, 242, 18}, -- "yellow",
+        [100] = {255, 64, 253, 40}, --"green"
+    }
+}
+FUEL_TO_POS = {
+    jerrycan = {
+        [0]   = 339,
+        [25]  = 311,
+        [50]  = 282,
+        [75]  = 254,
+        [100] = 225,
+    },
+    barrel = {
+        [0]   = 333,
+        [30]  = 239, --"red",
+        [55]  = 189, --"orange",
+        [80]  = 95,  -- "yellow",
+        [100] = 45, --"green"
+    }
+}
+
+-- DEBUGGING
+function pr(str, ...)
+    hfg_utils.dbg_pr("[HFG|Siphon Diesel Barrel]: %s", str, ...)
+end
+
+function calc_stored_fuel()
+    math.randomseed(time_continual())
+    local rnd = clamp(round_idp(math.random() + math.random(1, 100), 2), 0, 100)
+    if rnd <= 2.5 then
+        return math.random(MAX_FUEL * 0.75, MAX_FUEL)
+    elseif rnd <= 12.5 then
+        return math.random(MAX_FUEL * 0.5, MAX_FUEL * 0.75)
+    elseif rnd <= 20 then
+        return math.random(MAX_FUEL * 0.25, MAX_FUEL * 0.5)
+    elseif rnd <= 55 then
+        return math.random(MAX_FUEL * 0.1, MAX_FUEL * 0.25)
+    elseif rnd <= 80 then
+        return math.random(1, MAX_FUEL * 0.1)
+    elseif rnd <= 100 then
+        return 0
+    end
+end
+
+function init_fuel_barrel(obj)
+    local id = obj:id()
+    if not contains(fuel_barrels, id, true) then
+        pr("init fuel barrel: %s", id)
+        fuel_barrels[id] = {
+            stored_fuel = calc_stored_fuel(),
+            searched = false, -- Reset barrel after x amount of time past
+            has_exploded = false,
+        }
+        if fuel_barrels[id]["stored_fuel"] > 0 then
+            fuel_barrels[id]["reinit_time"] = time_global() + (math.random(24, 24*7) * 3600) * 1000
+        end
+        obj:set_tip_text(gts("st_siphon_fuel"))
+        pr("Fuel barrel data: %s", print_table(fuel_barrels[id]))
+    end
+    return id
+end
+
+function reinit_fuel_barrel(obj)
+    pr("reinit fuel barrel: %s", obj:id())
+    remove_fuel_barrel(obj)
+    return init_fuel_barrel(obj)
+end
+
+function remove_fuel_barrel(obj)
+    if contains(fuel_barrels, obj:id(), true) then
+        pr("removing %s from fuel barrels", obj:id())
+        if not fuel_barrels[obj:id()]["has_exploded"] then
+            fuel_barrels[obj:id()]["has_exploded"] = false
+        end
+        fuel_barrels[obj:id()] = nil
+        obj:set_tip_text_default()
+    end
+end
+
+function on_look_at_object()
+    local obj = level.get_target_obj()
+    if not obj then return end
+    local sect = obj:section()
+    if sect ~= "explosive_barrel" then return end
+    init_fuel_barrel(obj)
+end
+
+function siphon_fuel_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    local found_barrels = find_obj("explosive_barrel", db.actor:position(), SIPHON_RANGE)
+    if is_empty(found_barrels) then return end
+    local found_barrel = get_nearest(found_barrels)
+    local dist = distance_between(db.actor, found_barrel)
+    return sect == "hfg_siphon_kit" and  dist <= SIPHON_RANGE and contains(fuel_barrels, found_barrel:id(), true)
+end
+
+function siphon_fuel_menu(obj)
+    return gts("st_item_use")
+end
+
+function siphon_fuel_func(obj)
+    -- Barrel
+    local found_barrels = find_obj("explosive_barrel", db.actor:position(), SIPHON_RANGE)
+    local found_barrel = get_nearest(found_barrels)
+    local id = found_barrel:id()
+    local info = fuel_barrels[id]
+    local tg = time_global()
+    pr("Fuel barrel data: %s", print_table(info))
+    if info["stored_fuel"] == 0  then
+        fuel_barrels[id]["searched"] = true
+        hide_hud_inventory()
+        actor_menu.set_msg(1, gts("st_barrel_empty"), 3)
+        return
+    elseif info["searched"] and info["stored_fuel"] == 0 and tg >= info["reinit_time"] then
+        pr("reinit time: %s, tg: %s", info["reinit_time"], tg)
+        id = reinit_fuel_barrel(found_barrel)
+    end
+
+    -- Jerrycans
+    local found_jerrycans = find_inv_item("jerrycan")
+    if is_empty(found_jerrycans) then
+        hide_hud_inventory()
+        actor_menu.set_msg(1, gts("st_no_jerrycan"), 3)
+        return
+    end
+
+    local total_empty_volume = 0
+    for idx, obj in pairs(found_jerrycans) do
+        local sect = obj:section()
+        if string.find(sect, "empty") then
+            total_empty_volume = total_empty_volume + 10
+        else
+            total_empty_volume = total_empty_volume + (10 - obj:get_remaining_uses())
+        end
+    end
+    pr("total empty volume: %s", total_empty_volume)
+    if total_empty_volume == 0 then 
+        hide_hud_inventory()
+        actor_menu.set_msg(1, gts("st_no_empty_jerrycan"), 3)
+        return 
+    end
+    
+    start_siphon_ui(id)
+end
+
+add_functor("siphon_fuel", siphon_fuel_cond, siphon_fuel_menu, nil, siphon_fuel_func)
+
+function start_siphon_ui(id)
+    pr("starting siphon ui")
+    
+    if not GUI then
+        GUI = UISiphon()
+    end
+
+    if GUI and not GUI:IsShown() then
+        hide_hud_inventory()
+        GUI:Reset(id)
+        GUI:ShowDialog(true)
+        Register_UI("UISiphon")
+    end
+end
+
+class "UISiphon" (CUIScriptWnd)
+function UISiphon:__init() super()
+    pr("init siphon ui")
+    if not self.init then
+        self:InitControls()
+        self:InitCallbacks()
+        self.init = true
+    end
+    pr("finished init")
+end
+
+function UISiphon:Reset(id)
+    pr("reinit siphon ui")
+	self.barrel_id = id
+    self.stored_fuel = fuel_barrels[id]["stored_fuel"] or 0
+    self.found_jerrycans = find_inv_item("jerrycan") or {}
+    self.fuel_to_move = 0
+    self:Setup()
+end
+
+function UISiphon:__finalize()
+    pr("finalise siphon ui")
+	GUI = nil
+end
+
+
+function UISiphon:InitControls()
+    pr("init siphon controls")
+	self:SetWndRect(Frect():set(0,0,1024,768))
+    self:SetAutoDelete(true)
+
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_hfg.xml")
+
+    self.frame = self.xml:InitFrame("frame", self)
+    self.icon = self.xml:InitStatic("icon", self.frame)
+    self.fuel_counter_jerrycan = self.xml:InitTextWnd("fuel_counter_jerrycan", self.frame)
+    self.fuel_counter_barrel = self.xml:InitTextWnd("fuel_counter_barrel", self.frame)
+    self.operation_text = self.xml:InitTextWnd("operation_text", self.frame)
+    self.fuel_trackbar = self.xml:InitTrackBar("fuel_trackbar", self.frame)
+    self.start_btn = self.xml:Init3tButton("start_btn", self.frame)
+    
+    self:Register(self.fuel_trackbar, "fuel_trackbar")
+    self:Register(self.start_btn, "start_btn")
+    pr("fininshed controls")
+end
+
+function UISiphon:InitCallbacks()
+    pr("init siphon callbacks")
+    self:AddCallback("fuel_trackbar", ui_events.BUTTON_CLICKED, self.OnTrackBarMove, self)
+    self:AddCallback("switch_btn", ui_events.BUTTON_CLICKED, self.OnClickSwitch, self)
+    self:AddCallback("start_btn", ui_events.BUTTON_CLICKED, self.OnClickStart, self)
+    pr("finished callbacks")
+end
+
+function UISiphon:Setup()
+    pr("setup ui elements")
+    self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
+    local barrel_clrs = FUEL_TO_CLR["barrel"]
+    local fuel_percent = nearest_val(get_keytable(barrel_clrs), round(self.stored_fuel / MAX_FUEL) * 100)
+    self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[fuel_percent])))
+
+    local barrel_cnt_pos = self.fuel_counter_barrel:GetWndPos()
+    local fuel_to_pos = FUEL_TO_POS["barrel"]
+    local barrel_cnt_pos_y = fuel_to_pos[fuel_percent]
+    self.fuel_counter_barrel:SetWndPos(vector2():set(barrel_cnt_pos.x, barrel_cnt_pos_y))
+
+    self.operation_text:SetText(strformat(OP_TXT, self.fuel_counter_barrel:GetText()))
+
+    self.fuel_trackbar:SetStep(1)
+    self.fuel_trackbar:SetOptFBounds(0, self.stored_fuel)
+    self.fuel_trackbar:SetFValue(self.stored_fuel)
+
+    self.fuel_to_move = self.stored_fuel
+
+    pr("Setup jerrycans")
+    -- Sorting found jerrycans
+    local t = {}
+    self.total_volume = 0
+    -- Putting empty jerrycans 1st
+    for idx, obj in pairs(self.found_jerrycans) do
+        local sect = obj:section()
+        if sect == "hfg_jerrycan_diesel_empty" then
+            t[#t + 1] = obj:id()
+        end
+    end
+
+    -- Sort jerrycans from emptiest to fullest
+    pr("sorting by fuel amount low - high")
+    for idx, obj in pairs(self.found_jerrycans, function(t, a, b) return t[a]:get_remaining_uses() < t[b]:get_remaining_uses() end) do
+        if not contains(t, obj:id()) then
+            local uses = obj:get_remaining_uses()
+            if uses < 10 then
+                t[#t + 1] = obj
+                self.total_volume = self.total_volume + obj:get_remaining_uses()
+            else
+                self.total_volume = self.total_volume + 10
+            end
+        end
+    end
+    
+    pr("found jerrycans: %s", #self.found_jerrycans)
+    local jerrycan = self.found_jerrycans[1]
+    local is_jerrycan_empty = jerrycan:section() == "hfg_jerrycan_diesel_empty" and true or false
+    self.fuel_counter_jerrycan:SetText(strformat("%sL", is_jerrycan_empty and 0 or jerrycan:get_remaining_uses()))
+    
+    -- Set Jerrycan Counter Colour
+    local jerrycan_clrs = FUEL_TO_CLR["jerrycan"]
+    local fuel_count = (is_jerrycan_empty and 0 or jerrycan:get_remaining_uses()) / 10 
+    local fuel_percent = nearest_val(get_keytable(jerrycan_clrs), fuel_count * 100)
+    self.fuel_counter_jerrycan:SetTextColor(GetARGB(unpack(jerrycan_clrs[fuel_percent])))
+    
+    -- Set Jerrycan Counter Pos on the gauge
+    local jc_cnt_pos = self.fuel_counter_jerrycan:GetWndPos()
+    local fuel_to_pos = FUEL_TO_POS["jerrycan"]
+    local jc_cnt_pos_y = fuel_to_pos[fuel_percent]
+    
+    self.fuel_counter_jerrycan:SetWndPos(vector2():set(jc_cnt_pos.x, jc_cnt_pos_y))
+    self.total_empty_volume = (10 * #self.found_jerrycans) - self.total_volume
+    self.init = true
+
+    pr("total fuel stored in jerry cans: %s", self.total_volume)
+    pr("total space available: %s", self.total_empty_volume)
+    pr("found jerrycans: %s", #self.found_jerrycans)
+    pr("stored barrel fuel: %s", self.stored_fuel)
+    pr("finished setup")
+end
+
+function UISiphon:OnTrackBarMove()
+    pr("on trackbar move")
+    self.fuel_to_move = self.fuel_trackbar:GetFValue()
+    local operation_txt = strformat(OP_TXT, strformat("%sL", self.fuel_to_move))
+    self.operation_text:SetText(operation_txt)
+end
+
+function UISiphon:OnClickStart()
+    pr("on click start")
+    if self.fuel_to_move == 0 then pr("no fuel to move") return end
+    local fuel_to_move = self.fuel_to_move
+    local add_new = {}
+    local remove_full = {}
+    for i=1, #self.found_jerrycans do
+        -- take from barrel, put in jerrycan
+        pr("stored fuel %s, empty vol: %s", self.stored_fuel, self.total_empty_volume)
+        if self.stored_fuel == 0 or self.total_empty_volume == 0 then -- if no jerrycan can be filled or there is no fuel in the barrel
+            pr("if all jerrycans are full or there is no fuel in the barrel")
+            return 
+        end
+
+        local jc = self.found_jerrycans[i]
+        
+        local is_jerrycan_empty = string.find(jc:section(), "empty") and true or false
+        pr("empty jerrycan: %s", is_jerrycan_empty)
+
+        local space_left = 0
+        pr("expected fuel to move: %s", self.fuel_to_move)
+        -- Make sure theres room in the jerrycan for fuel, move to next if not
+        space_left = is_jerrycan_empty and 10 or 10 - jc:get_remaining_uses()
+        if space_left - self.fuel_to_move < 0 then
+            for i=1, self.fuel_to_move do
+                self.fuel_to_move = self.fuel_to_move - 1
+                if space_left - self.fuel_to_move == 0 then
+                    break
+                end
+            end
+        end
+        
+        pr("space left: %s", space_left)
+        pr("actual fuel to move: %s", self.fuel_to_move)
+        if self.fuel_to_move <= 10 and self.fuel_to_move > 0 then
+            local jerrycan_uses = is_jerrycan_empty and self.fuel_to_move or jc:get_remaining_uses() + self.fuel_to_move
+            -- Update UI Elements with change fuel vars
+            local percentage_removed = self.fuel_to_move/self.stored_fuel
+            self.total_empty_volume = self.total_empty_volume - self.fuel_to_move
+            self.stored_fuel = clamp(self.stored_fuel - self.fuel_to_move, 0, MAX_FUEL)
+            self.fuel_trackbar:SetOptFBounds(0, self.stored_fuel)
+            self.total_volume = self.total_volume + self.fuel_to_move
+            self.fuel_trackbar:SetFValue(0, self.stored_fuel)
+            self.fuel_to_move = self.stored_fuel
+
+            local operation_txt = strformat(OP_TXT, strformat("%sL", self.stored_fuel))    
+            self.operation_text:SetText(operation_txt)
+            pr("setting op txt to: %s", operation_txt)
+
+            if jerrycan_uses == 10 then
+                pr("assign to be removed")
+               remove_full[#remove_full + 1] = i
+            end
+
+            -- Jerrycan Text
+            pr("updating counter text: jerrycan")
+            self.fuel_counter_jerrycan:SetText(strformat("%sL", jerrycan_uses))
+            local jerrycan_clrs = FUEL_TO_CLR["jerrycan"]
+            local fuel_percent = nearest_val(get_keytable(jerrycan_clrs), (jerrycan_uses / 10) * 100)
+            self.fuel_counter_jerrycan:SetTextColor(GetARGB(unpack(jerrycan_clrs[fuel_percent])))
+            
+            -- Jerrycan Pos
+            pr("updating counter pos: jerrycan")
+            local jc_cnt_pos = self.fuel_counter_jerrycan:GetWndPos()
+            local fuel_to_pos = FUEL_TO_POS["jerrycan"]
+            local jc_cnt_pos_y = fuel_to_pos[fuel_percent]
+            self.fuel_counter_jerrycan:SetWndPos(vector2():set(jc_cnt_pos.x, jc_cnt_pos_y))
+
+            -- Barrel Text
+            pr("updating counter text: barrel")
+            self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
+            local barrel_clrs = FUEL_TO_CLR["barrel"]
+            local barrel_fuel_percent = nearest_val(get_keytable(barrel_clrs), self.stored_fuel / MAX_FUEL)
+            self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[barrel_fuel_percent])))
+
+            -- Barrel Pos
+            pr("updating counter pos: barrel")
+            local barrel_cnt_pos = self.fuel_counter_barrel:GetWndPos()
+            local fuel_to_pos = FUEL_TO_POS["barrel"]
+            local barrel_cnt_pos_y = fuel_to_pos[barrel_fuel_percent]
+            self.fuel_counter_barrel:SetWndPos(vector2():set(barrel_cnt_pos.x, barrel_cnt_pos_y))
+            
+            pr("Stored Fuel: %s", self.stored_fuel)
+            pr("Total Jerrycan Space Available: %s", self.total_empty_volume)
+            pr("updating ui elements")
+            
+            -- Update Barrel Table
+            pr("updating barrel table")
+            fuel_barrels[self.barrel_id]["stored_fuel"] = self.stored_fuel
+            fuel_barrels[self.barrel_id]["searched"] = true
+            
+            -- Update HF Data (uses) for jerrycans
+            pr("updating hf data")
+            local data = hf_obj_manager.get_data(jc:id())
+            local update_id = jc:id()
+            
+            data["uses"] = jerrycan_uses
+            pr("jerrycan_uses: %s", data["uses"])
+            if is_jerrycan_empty then
+            
+                local new_sect = "hfg_jerrycan_diesel"
+                local se_obj = alife_create_item(new_sect, db.actor, {uses=data["uses"]})               
+
+                pr("releasing %s", jc:id())
+                alife_release(alife_object(jc:id()))
+
+                pr("Creating %s with id %s", new_sect, se_obj.id)
+                replace_generator_item(data["tbl_id"], se_obj.id)
+                data["tbl_id"] = se_obj.id
+                data["item_section"] = new_sect
+                update_id = se_obj.id
+                local idx = #add_new + 1
+                add_new[idx] = {}
+                add_new[idx]["id"] = se_obj.id
+                add_new[idx]["idx"] = i
+            else
+                jc:set_remaining_uses(data["uses"])
+            end
+            pr("update id: %s", update_id)
+            hf_obj_manager.update_data(update_id, data)
+        else
+            self.fuel_to_move = fuel_to_move
+        end
+
+        if is_not_empty(add_new) then 
+            local function search(_, obj)
+                for i=1, #add_new do
+                    if obj:id() == add_new[i]["id"] then
+                        self.found_jerrycans[add_new[i]["idx"]] = obj
+                    end
+                end
+            end
+            itr_inv(db.actor, search)
+        end
+
+        if is_not_empty(remove_full) then
+            for i=1, #remove_full do
+                local idx = remove_full[i]
+                self.found_jerrycans[idx] = nil
+            end
+        end
+    end
+end
+
+function UISiphon:Close()
+    pr("on close")
+    if (self:IsShown()) then
+		self:HideDialog()
+	end
+    self.init = false
+    Unregister_UI("UISiphon")
+    CloseAll_UI()
+end
+
+function UISiphon:OnKeyboard(dik, keyboard_action)
+	local res = CUIScriptWnd.OnKeyboard(self,dik,keyboard_action)
+	if (res == false) then
+		local bind = dik_to_bind(dik)
+		if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
+		
+			if dik == DIK_keys.DIK_ESCAPE then
+                pr("esc key pressed")
+				self:Close()
+			end
+
+		end
+	end
+
+	return res
+end
+
+-- Callbacks
+actor_on_update = throttle(function()
+    on_look_at_object()
+end, 1000)
+
+function on_save(m_data)
+    local t = {}
+    copy_table(t, fuel_barrels)
+    m_data.fuel_barrels = t
+end
+
+function on_load(m_data)
+    local t = m_data.fuel_barrels or {}
+    copy_table(fuel_barrels, t)
+end
+
+
+function on_game_start()
+    --RegisterScriptCallback("physic_object_on_hit_callback", physic_object_on_hit)
+    RegisterScriptCallback("explosive_item_on_explode", remove_fuel_barrel)
+    RegisterScriptCallback("actor_on_update", actor_on_update)
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
+end
