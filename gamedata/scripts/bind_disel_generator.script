@@ -44,24 +44,26 @@ function toggle_power(obj_id)
     local in_progress = data["anim_in_progress"]
     if in_progress then pr("anim in progress, cant switch power state") return end
 
-    local no_fuel = data["stored_fuel"] == 0
-    if no_fuel then
-        pr("no fuel")
-        actor_menu.set_msg(1, gts("st_no_fuel"), 3)
-        return
-    end
-
     local power_state = data["power_state"]
     if power_state then
         if power_state == "broken" then 
             actor_menu.set_msg(1, gts("st_generator_broken"), 3)
             return 
         end
+
+        local no_fuel = data["stored_fuel"] == 0
+        if no_fuel then
+            pr("no fuel")
+            actor_menu.set_msg(1, gts("st_no_fuel"), 3)
+            return
+        end
+
         local obj = get_unknown_object({id=obj_id}, "game")
         if obj then
             pr("Switching interact tip to %s", power_state)
             obj:set_tip_text(gts("st_power_state_" .. power_state))
         end
+
         pr("Attempting to switch power from %s to %s", power_state, SWAP_POWER_STATE[power_state])
         hf_obj_manager.update_data(obj_id, {power_state=SWAP_POWER_STATE[power_state], last_power_state=power_state, anim_due=true})
         return
