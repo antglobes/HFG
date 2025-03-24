@@ -49,6 +49,11 @@ function get_unknown_object(obj, result_obj_type)
     return nil
 end
 
+function get_hf_item_name(obj_sect, as_str_id)
+    local item_sect = ini_sys:r_string_ex(obj_sect, "item_section")
+    local name = ini_sys:r_string_ex(item_sect, "inv_name")
+    return as_str_id and name or get_translation(name)
+end
 
 
 ---@Author NLTP ASHES

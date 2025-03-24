@@ -1,0 +1,22 @@
+<w>
+    <!-- Marker Icons -->
+    <marker_default x="0" y="0" width="19" height="19" stretch="1" alignment="c" vert_align="c" location_level="5">
+        <texture>ui_hfg_icon_default</texture>
+    </marker_default>
+
+    <marker_tv x="0" y="0" width="19" height="19" stretch="1" alignment="c" vert_align="c" location_level="5">
+        <texture>ui_hfg_icon_tv</texture>
+    </marker_tv>
+
+    <marker_lamp x="0" y="0" width="19" height="19" stretch="1" alignment="c" vert_align="c" location_level="5">
+        <texture>ui_hfg_icon_lamp</texture>
+    </marker_lamp>
+
+    <marker_torch x="0" y="0" width="19" height="19" stretch="1" alignment="c" vert_align="c" location_level="5">
+        <texture>ui_hfg_icon_torch</texture>
+    </marker_torch>
+
+    <marker_light x="0" y="0" width="19" height="19" stretch="1" alignment="c" vert_align="c" location_level="5">
+        <texture>ui_hfg_icon_light</texture>
+    </marker_light>
+</w>

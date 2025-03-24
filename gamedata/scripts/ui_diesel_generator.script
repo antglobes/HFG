@@ -9,11 +9,16 @@ split = hfg_utils.split
 capitalise = hfg_utils.capitalise
 find_inv_item = hfg_utils.find_inv_item
 gts = hfg_utils.get_translation
-
+contains = hfg_utils.contains
+get_unknown_object = hfg_utils.get_unknown_object
+find_obj = hfg_utils.find_obj
+get_nearest = hfg_utils.get_nearest
+print_table = hfg_utils.print_table
 
 -- Constants
 MAX_FUEL = 60
 MAX_POWER_OUTPUT = 5000
+SEARCH_RADIUS = 50
 UI_GRAY_1 = utils_xml.get_color("ui_gray_1")
 RED_CLR    = {255, 255, 19, 18}
 ORANGE_CLR = {255, 255, 77, 18}
@@ -22,6 +27,7 @@ GREEN_CLR  = {255, 64, 253, 40}
 
 -- Variables
 GUI = nil
+local clr_cache = {}
 
 -- Tables
 SWAP_POWER_STATE = {
@@ -40,6 +46,19 @@ CONDITION_CLR = {
 -- DEBUGGING
 function pr(str, ...)
     hfg_utils.dbg_pr("[HFG|Diesel Gen UI]: %s", str, ...)
+end
+
+function change_alpha(clr, a)
+    if not clr and a ~= nil then return end
+
+    if not clr_cache[clr .. "_" .. a] then
+        b = bit.band(clr, 255)
+        g = bit.band(bit.rshift(clr, 8), 255)
+        r = bit.band(bit.rshift(clr, 16), 255)
+        clr_cache[clr .. "_" .. a] = GetARGB(a, r, g, b)
+    end
+
+    return clr_cache[clr .. "_" .. a]
 end
 
 function get_condition_clr(condition, as_table)
@@ -73,15 +92,15 @@ function build_gen_info(data)
     local power_output = (data["power_state"] ~= "on" and 0) or data["power_output"]
     local power_cond = power_output/MAX_POWER_OUTPUT
 
-    local connected_devices = data["connected_devices"] or 0
+    local connected_devices = size_table(data["powerable_devices"]) or 0
 
     local cond_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Condition: "         .. strformat("%s", get_condition_clr(cond))       .. strformat("%s%", round_idp(cond*100, 2))
     local fuel_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Fuel Stored: "       .. strformat("%s", get_condition_clr(fuel_cond))  .. strformat("%sL", round_idp(stored_fuel, 2))
-    local time_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Time Til Empty: "    .. strformat("%s", get_condition_clr(time_cond))  .. strformat("%s days %shrs %sm %ss Left", D, h, m, s)
+    local time_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Time Til Empty: "    .. strformat("%s", get_condition_clr(time_cond))  .. strformat("%s days %shrs %sm %ss", D, h, m, s)
     local power_str  = UI_GRAY_1 .. gts("st_bullet_point") .. " Power Output: "      .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%sv", power_output)
     local device_str = UI_GRAY_1 .. gts("st_bullet_point") .. " Connected Devices: " .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%s", connected_devices)
 
-    local info_str = strformat("Info:\\n%s\\n%s\\n%s\\n%s\\n%s\\n", cond_str, fuel_str, time_str, power_str, device_str)
+    local info_str = strformat("%s\\n%s\\n%s\\n%s\\n%s\\n", cond_str, fuel_str, time_str, power_str, device_str)
     -- pr("info str: %s", info_str)
     return info_str
 end
@@ -119,18 +138,24 @@ function UIDieselGenerator:InitControls()
     self.add_fuel_btn      = self.xml:Init3tButton("add_fuel", self.frame)
     self.take_fuel_btn     = self.xml:Init3tButton("take_fuel", self.frame)
     self.toggle_power_btn  = self.xml:Init3tButton("toggle_power", self.frame)
+    self.show_devices_btn  = self.xml:Init3tButton("show_devices", self.frame)
 
     self:Register(self.add_fuel_btn, "add_fuel_btn")
     self:Register(self.take_fuel_btn, "take_fuel_btn")
     self:Register(self.toggle_power_btn, "toggle_power_btn")
+    self:Register(self.show_devices_btn, "show_devices_btn")
 
-    self.bg:SetTextureColor(GetARGB(70, 0, 0, 0))
+    local bg_clr = self.bg:GetTextureColor()
+    self.bg:SetTextureColor(change_alpha(bg_clr, 100))
+
+    self.title:SetText("Diesel Generator Info:")
 end
 
 function UIDieselGenerator:InitCallbacks()
 self:AddCallback("add_fuel_btn", ui_events.BUTTON_CLICKED, self.AddFuel, self)
 self:AddCallback("take_fuel_btn", ui_events.BUTTON_CLICKED, self.TakeFuel, self)
 self:AddCallback("toggle_power_btn", ui_events.BUTTON_CLICKED, self.TogglePower, self)
+self:AddCallback("show_devices_btn", ui_events.BUTTON_CLICKED, self.ShowDevices, self)
 end
 
 function UIDieselGenerator:Reset(obj_id)
@@ -139,7 +164,7 @@ function UIDieselGenerator:Reset(obj_id)
     self.screens = {
         [1] = "info"
     }
-    
+    self.show_devices = false
 end
 
 function UIDieselGenerator:Close()
@@ -149,7 +174,6 @@ function UIDieselGenerator:Close()
 	end
     self.init = false
     Unregister_UI("UIDieselGenerator")
-    CloseAll_UI()
 end
 
 function UIDieselGenerator:Update()
@@ -158,11 +182,15 @@ function UIDieselGenerator:Update()
     local data = hf_obj_manager.get_data(self.gen_id)
     if not data then return end
     local active_screen = self.screens[self.screen_id]
-
+    local tg = time_global()
     --pr("Showing screen: %s", active_screen)
     if active_screen == "info" then
         local gen_info = build_gen_info(data)
         self.info_box:SetText(gen_info)
+    end 
+    
+    if self.show_devices then
+        update_marker_hud(self.gen_id)
     end
 end
 
@@ -189,7 +217,8 @@ end
 
 function UIDieselGenerator:TogglePower()
     if bind_disel_generator.toggle_power(self.gen_id) then
-        local power_state = hf_obj_manager.get_data(self.gen_id).power_state
+        local data = hf_obj_manager.get_data(self.gen_id)
+        local power_state = data["power_state"]
         local new_power_state = SWAP_POWER_STATE[power_state]
         self.toggle_power_btn:TextControl():SetText(strformat("Toggle Power: %s", capitalise(new_power_state)))
     end
@@ -212,4 +241,237 @@ function UIDieselGenerator:TakeFuel()
         pr("Taking fuel")
         bind_disel_generator.take_fuel(obj, self.gen_id)
     end
+end
+
+function UIDieselGenerator:ShowDevices()
+    pr("on show devices")
+    local data = hf_obj_manager.get_data(self.gen_id)
+    if size_table(data["powerable_devices"]) == 0 then return end
+    
+    pr("setting show devices hud")
+    if not contains(marker_huds, self.gen_id) then
+        init_marker_hud(self.gen_id, data["powerable_devices"])
+    end
+
+    if not self.show_devices then
+        show_marker_hud(self.gen_id)
+        self.show_devices = true
+        self.show_devices_btn:TextControl():SetText("Hide Powerable Devices")
+    else
+        hide_marker_hud(self.gen_id, true)
+        self.show_devices = false
+        self.show_devices_btn:TextControl():SetText("Show Connected Devices")
+    end
+end
+
+-- Marker Huds
+marker_huds = {}
+function init_marker_hud(gen_id, powerable_devices)
+    if not contains(marker_huds, gen_id, true) then
+        marker_huds[gen_id] = UIPowerableDevices(gen_id)
+    end
+end
+
+function show_marker_hud(gen_id)
+    if not contains(marker_huds, gen_id, true) then return end
+    get_hud():AddDialogToRender(marker_huds[gen_id])
+end
+
+function hide_marker_hud(gen_id, remove)
+    if not contains(marker_huds, gen_id, true) then return end
+    if marker_huds[gen_id] then
+        get_hud():RemoveDialogToRender(marker_huds[gen_id])
+        if remove then
+            marker_huds[gen_id] = nil
+        end
+    end
+end
+
+function remove_all_marker_huds()
+    for id, _ in pairs(marker_huds) do
+        hide_marker_hud(id, true)
+    end
+end
+
+function hide_all_marker_huds()
+    if is_empty(marker_huds) then return end
+    for id, _ in pairs(marker_huds) do
+        hide_marker_hud(id)
+    end
+end
+
+function show_all_marker_huds()
+    if is_empty(marker_huds) then return end
+    for id, _ in pairs(marker_huds) do
+        show_marker_hud(id)
+    end
+end
+
+local ui_shown = false
+function on_ui(name)
+    if not contains({"UIInventory", "UIDialog", "UICraft", "UICook", "UIWorkshop", "UITrade"}, name) then return end
+    if not ui_shown then
+        hide_all_marker_huds()
+        ui_shown = true
+    else
+        show_all_marker_huds()
+        ui_shown = false
+    end
+end
+
+function update_marker_hud(gen_id)
+    if not contains(marker_huds, gen_id, true) then return end
+    if marker_huds[gen_id] then
+        marker_huds[gen_id]:Update(true)
+    end
+end
+
+class "UIPowerableDevices" (CUIScriptWnd)
+function UIPowerableDevices:__init(gen_id) super(gen_id)
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_marker_hud.xml")
+    self:AllowMovement(true)
+    self.ratio = (1024/768)/(device().width/device().height)
+
+    self.markers = {}
+    self.devices = {}
+    self.gen_id = gen_id
+    self.powerable_devices = hf_obj_manager.get_data(self.gen_id).powerable_devices
+    self.tmr = 0
+    self.delay = 1000
+    self.show_device = false
+end
+
+function UIPowerableDevices:__finalize()
+    for id, _ in pairs(self.markers) do
+        self.markers[id]:Show(false)
+        self.markers[id] = nil
+    end
+end
+
+function UIPowerableDevices:Update()
+    CUIScriptWnd.Update(self)
+
+    self:UpdateObjects()
+    self:UpdateMarkers()
+end
+
+function UIPowerableDevices:UpdateObjects()
+    local tg = time_global()
+    if self.tmr > tg then
+        return
+    end
+    self.tmr = tg + self.delay
+
+    self.show_device = main_hud_shown()
+
+    for id, sect in pairs(self.powerable_devices) do
+        local obj = get_unknown_object({id=id}, "game")
+        if obj and contains(self.devices, obj:id(), true) then
+            if not self:ValidateDevice(obj) then
+                self.devices[obj:id()] = nil
+            end
+        elseif obj and not contains(self.devices, obj:id(), true) then
+            if self:ValidateDevice(obj) then
+                self.devices[obj:id()] = obj:section()
+            end
+        end
+    end
+end
+
+
+function UIPowerableDevices:UpdateMarkers()
+    -- Init Non existing markers
+    for id, sect in pairs(self.devices) do
+        local obj = get_unknown_object({id=id}, "game")
+        if obj and not contains(self.markers, obj:id(), true)then
+            self.markers[obj:id()] = self.xml:InitStatic(self:GetDeviceIcon(sect), self)
+            self:ApplyScreenRatio(self.markers[obj:id()])
+            self.markers[obj:id()]:SetStretchTexture(true)
+            self.markers[obj:id()]:Show(false)
+        end
+    end
+
+    -- update markers
+    for id, _ in pairs(self.markers) do
+        local obj = get_unknown_object({id=id}, "game")
+        if obj then
+            local pos = vector():set(obj:position()):add(vector():set(0, 0, 0))
+            local vec = game.world2ui(pos, false, false)
+            if self:ScreenPosValid(vec) then
+                self.markers[id]:SetWndPos(vec)
+                self.markers[id]:Show(true)
+            else
+                self.markers[id]:Show(false)
+            end
+        end
+    end
+end
+
+function UIPowerableDevices:ValidateDevice(obj)
+    if not self.show_device then
+        return false
+    end
+
+    local device_data = hf_obj_manager.get_data(obj:id())
+    local genny_data = hf_obj_manager.get_data(self.gen_id)
+    local actor_pos = db.actor:position()
+
+    if genny_data["power_state"] == "broken" then
+        return false
+    end
+
+    local found_gens = find_obj("placeable_disel_generator", actor_pos, SEARCH_RADIUS)
+    local found_gen = is_not_empty(found_gens) and get_nearest(found_gens) or false
+    if found_gen and found_gen:id() == self.gen_id and distance_between(db.actor, found_gen) > (SEARCH_RADIUS / math.pi * 2) then
+        return false
+    end
+
+    if device_data["condition"] <= 0 then
+        return false
+    end
+
+    return true
+end
+
+-- light, lamp, torch, 
+function UIPowerableDevices:GetDeviceIcon(sect)
+    local icon_base = "default"
+    local item_sect = ini_sys:r_string_ex(sect, "item_section")
+    for _, base in pairs({"tv", "lamp", "torch", "light"}) do
+        if string.find(item_sect, base) then
+            icon_base = base
+            break
+        end
+    end
+    if icon_base == "default" then
+        local placeable_type = ini_sys:r_string_ex(item_sect, "placeable_type")
+        for _, base in pairs({"tv", "lamp", "torch", "light"}) do
+            if string.find(placeable_type, base) then
+                icon_base = base
+                break
+            end
+        end
+    end
+    return "marker_"..icon_base
+end
+
+---@author: GhenTuong
+---@addon:Detection Support
+function UIPowerableDevices:ScreenPosValid(vec)
+	return (vec.x ~= -9999) and (vec.y ~= 0) and (vec.x <= 1024) and (vec.y <= 768)
+end
+
+---@author: GhenTuong
+---@addon:Detection Support
+function UIPowerableDevices:ApplyScreenRatio(ele)
+	if (ele) then
+		ele:SetWndSize(vector2():set(ele:GetWidth() * (self.ratio or 1),ele:GetHeight()))
+	end
+end
+
+function on_game_start()
+	RegisterScriptCallback("GUI_on_show",on_ui)
+	RegisterScriptCallback("GUI_on_hide",on_ui)
+    RegisterScriptCallback("actor_on_net_destroy", remove_all_marker_huds)
 end

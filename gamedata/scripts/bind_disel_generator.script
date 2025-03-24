@@ -9,6 +9,7 @@ get_nearest = hfg_utils.get_nearest
 nearest_val = hfg_utils.nearest_val
 print_table = hfg_utils.print_table
 get_keytable = hfg_utils.get_keytable
+get_hf_item_name = hfg_utils.get_hf_item_name
 
 -- Constants
 SEARCH_RADIUS = 50
@@ -153,9 +154,8 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
 
     -- Powerable Devices
     self.power_off_devices = true
-    self.powerable_devices = {} -- get_powerable_devices(self.object:position())
+    self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
     self.power_output = data["power_output"] or MAX_POWER_OUTPUT
-    self.connected_devices = data["connected_devices"] or 0
     self.update_pd_tmr = data["update_pd_tmr"] or 0
 
     -- Fuel
@@ -382,8 +382,14 @@ end
 function placeable_disel_generator_wrapper:ProcessPowerableDevices()
     if not contains({"broken", "off"}, self.power_state) then
         if self.tg > self.update_pd_tmr then
-            self.powerable_devices = get_powerable_devices(self.object:position())
+            local powerable_devices = get_powerable_devices(self.object:position())
+            for id, sect in pairs(powerable_devices) do
+                if not contains(self.powerable_devices, id, true) then
+                    self.powerable_devices[id] = sect
+                end
+            end
             self.update_pd_tmr = self.tg + 1000
+            self:save_data()
         end
 
         if self.tg > self.powerable_device_tmr then
@@ -395,13 +401,9 @@ function placeable_disel_generator_wrapper:ProcessPowerableDevices()
                         if contains(data, "fuel", true) and not contains(data, "infinite_fuel", true) and data["fuel"] < 0.95 then
                             hf_obj_manager.update_data(id, {fuel=1})
                         end
-                        self.connected_devices = self.connected_devices + 1
-                    else
-                        self.connected_devices = self.connected_devices - 1
                     end
                 end
             end
-            self.connected_devices = self.connected_devices >= 0 and self.connected_devices or 0
             self.powerable_device_tmr = self.tg + (3600 * 1000)
         end
         self:save_data()
@@ -411,9 +413,7 @@ function placeable_disel_generator_wrapper:ProcessPowerableDevices()
         pr("turning off devices")
         for id, sect in pairs(self.powerable_devices) do
             hf_obj_manager.update_data(id, {is_on=false})
-            self.connected_devices = self.connected_devices - 1
         end
-        self.connected_devices = self.connected_devices >= 0 and self.connected_devices or 0
         self.power_off_devices = false
         self:save_data()
     end
@@ -484,7 +484,6 @@ function placeable_disel_generator_wrapper:GetGenInfo()
         stored_fuel       = self.stored_fuel,
         time_til_empty    = self.time_til_empty,
         power_output      = self.power_output,
-        connected_devices = self.connected_devices
     }
 end
 
@@ -540,7 +539,6 @@ function placeable_disel_generator_wrapper:save_data()
         last_power_state     = self.last_power_state,
         powerable_device_tmr = self.powerable_device_tmr,
         power_output         = self.power_output,
-        connected_devices    = self.connected_devices,
         stored_fuel          = self.stored_fuel,
         max_fuel             = self.max_fuel,
         fuel_transfer        = self.fuel_transfer,
@@ -574,7 +572,6 @@ function placeable_disel_generator_wrapper:load_data()
     self.last_power_state     = data["last_power_state"]
     self.powerable_device_tmr = data["powerable_device_tmr"]
     self.power_output         = data["power_output"]
-    self.connected_devices    = data["connected_devices"]
     self.stored_fuel          = data["stored_fuel"]
     self.max_fuel             = data["max_fuel"]
     self.fuel_transfer        = data["fuel_transfer"]
@@ -607,12 +604,6 @@ function cond_to_state(cond)
         state = "high"
     end
     return state
-end
-
-function get_hf_item_name(obj_sect, as_str_id)
-    local item_sect = ini_sys:r_string_ex(obj_sect, "item_section")
-    local name = ini_sys:r_string_ex(item_sect, "inv_name")
-    return as_str_id and name or gts(name)
 end
 
 -- Generator Condition 
@@ -927,7 +918,9 @@ function take_fuel(jerrycan, genny_id)
     if stored_fuel <= 0 then return end
     if uses == 10 then return end
 
+    stored_fuel = math.floor(stored_fuel)
     pr("stored_fuel: %s", stored_fuel)
+    
     local fuel_to_take = is_jerrycan_empty and 10 or 10 - jerrycan:get_remaining_uses()
     if stored_fuel - fuel_to_take < 0 then
         for i=1, fuel_to_take do
@@ -1135,9 +1128,8 @@ function on_place_powerable_device(obj_id)
                 local data = hf_obj_manager.get_data(found_gen:id())
                 if not contains(data["powerable_devices"], obj_id, true) then
                     data["powerable_devices"][obj_id] = sect
-                    data["connected_devices"] = data["connected_devices"] + 1
                     hf_obj_manager.update_data(found_gen:id(), data)
-                    pr("adding %s to powerable devices, total devices connected: %s", get_hf_item_name(sect),  data["connected_devices"])
+                    pr("adding %s to powerable devices", get_hf_item_name(sect))
                 end
             end
         end
