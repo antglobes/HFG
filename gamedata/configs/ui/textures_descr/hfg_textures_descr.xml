@@ -4,4 +4,7 @@
         <texture id="ui_hfg_siphon_jerrycan_fuel" x="0"   y="740"   width="132"   height="173"  />
         <texture id="ui_hfg_siphon_barrel_fuel"   x="184" y="499"   width="254"   height="409"  />
     </file>
+    <file name="ui\ui_hfg_icons">
+        <texture id="ui_hfg_diesel_generator"    x="0"   y="0"     width="150"   height="150"  />
+    </file>
 </w>

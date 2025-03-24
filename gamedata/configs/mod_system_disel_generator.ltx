@@ -18,18 +18,17 @@ use_condition                           = false
 use1_functor         				    = placeable_furniture.place_item
 use1_action_functor  					= placeable_furniture.func_place_item
 
-placeable_type                          = prop
+placeable_type                          = generator
 placeable_section                       = placeable_disel_generator
 
 [placeable_disel_generator]:physic_object
 visual                                   = dynamics\disel_generator_1.ogf
-placeable_type                           = prop
 startup_animation                        = idle
 
 script_binding                           = bind_disel_generator.init
 item_section                             = disel_generator_item
 
-ui_on_interaction                        = bind_disel_generator.start_ui
+ui_on_interaction                        = ui_diesel_generator.start_ui
 ui_on_simple_interaction                 = bind_disel_generator.toggle_power
 
 ;fixed_bones                              = link, body, but_belt, l_rotor, r_rotor, tank, top_belt, exhaust

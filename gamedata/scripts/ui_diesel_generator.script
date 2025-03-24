@@ -1,0 +1,215 @@
+--[[
+    Last Edited: 21/03/25
+    Author: antglobes
+    Purpose: Manage Generator UI
+--]]
+
+-- Imports
+split = hfg_utils.split
+capitalise = hfg_utils.capitalise
+find_inv_item = hfg_utils.find_inv_item
+gts = hfg_utils.get_translation
+
+
+-- Constants
+MAX_FUEL = 60
+MAX_POWER_OUTPUT = 5000
+UI_GRAY_1 = utils_xml.get_color("ui_gray_1")
+RED_CLR    = {255, 255, 19, 18}
+ORANGE_CLR = {255, 255, 77, 18}
+YELLOW_CLR = {255, 255, 242, 18}
+GREEN_CLR  = {255, 64, 253, 40}
+
+-- Variables
+GUI = nil
+
+-- Tables
+SWAP_POWER_STATE = {
+    on = "off",
+    off = "on",
+    broken = "broken"
+}
+CONDITION_CLR = {
+    [0]   = RED_CLR,
+    [25]  = RED_CLR,
+    [50]  = ORANGE_CLR,
+    [75]  = YELLOW_CLR,
+    [100] = GREEN_CLR,
+}
+
+-- DEBUGGING
+function pr(str, ...)
+    hfg_utils.dbg_pr("[HFG|Diesel Gen UI]: %s", str, ...)
+end
+
+function get_condition_clr(condition, as_table)
+    condition = condition * 100
+    for _, percent in pairs({0, 25, 50, 75, 100}) do
+        if condition <= percent then
+            return as_table and CONDITION_CLR[percent] or strformat("%c[%s %s %s %s]", unpack(CONDITION_CLR[percent]))
+        end
+    end
+end
+function disp_time(time)
+    local days = math.floor(time/86400)
+    local hours = math.floor(math.fmod(time, 86400)/3600)
+    local minutes = math.floor(math.fmod(time,3600)/60)
+    local seconds = math.floor(math.fmod(time,60))
+    return days, hours, minutes, seconds
+end
+
+
+function build_gen_info(data)
+    local cond = data["condition"]
+
+    local stored_fuel = data["stored_fuel"]
+    local fuel_cond = stored_fuel/MAX_FUEL
+
+    local time_til_empty = data["time_til_empty"] 
+    local D, h, m, s = disp_time(time_til_empty)
+    local hours = h + (D * 24)
+    local time_cond = (hours > 24 and 1) or (hours > 18 and 0.75) or (hours > 12 and 0.5) or (hours > 6 and 0.25) or 0
+
+    local power_output = (data["power_state"] ~= "on" and 0) or data["power_output"]
+    local power_cond = power_output/MAX_POWER_OUTPUT
+
+    local connected_devices = data["connected_devices"] or 0
+
+    local cond_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Condition: "         .. strformat("%s", get_condition_clr(cond))       .. strformat("%s%", round_idp(cond*100, 2))
+    local fuel_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Fuel Stored: "       .. strformat("%s", get_condition_clr(fuel_cond))  .. strformat("%sL", round_idp(stored_fuel, 2))
+    local time_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Time Til Empty: "    .. strformat("%s", get_condition_clr(time_cond))  .. strformat("%s days %shrs %sm %ss Left", D, h, m, s)
+    local power_str  = UI_GRAY_1 .. gts("st_bullet_point") .. " Power Output: "      .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%sv", power_output)
+    local device_str = UI_GRAY_1 .. gts("st_bullet_point") .. " Connected Devices: " .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%s", connected_devices)
+
+    local info_str = strformat("Info:\\n%s\\n%s\\n%s\\n%s\\n%s\\n", cond_str, fuel_str, time_str, power_str, device_str)
+    -- pr("info str: %s", info_str)
+    return info_str
+end
+
+function start_ui(obj_id)
+    if not GUI then
+        GUI = UIDieselGenerator()
+    end
+
+    if GUI and not GUI:IsShown() then
+        GUI:Reset(obj_id)
+        GUI:ShowDialog(true)
+        Register_UI("UIDieselGenerator")
+    end
+end
+
+class "UIDieselGenerator" (CUIScriptWnd)
+function UIDieselGenerator:__init() super()
+    self:InitControls()
+    self:InitCallbacks()
+end
+
+function UIDieselGenerator:InitControls()
+    self:SetWndRect(Frect():set(0,0,1024,768))
+    self:SetAutoDelete(true)
+
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_hfg_diesel_generator.xml")
+
+    self.dialog            = self.xml:InitFrame("dialog", self)
+    self.bg                = self.xml:InitStatic("background", self.dialog)
+    self.frame             = self.xml:InitFrame("frame", self.dialog)
+    self.title             = self.xml:InitTextWnd("title", self.frame)
+    self.info_box          = self.xml:InitTextWnd("info_box", self.frame)
+    self.add_fuel_btn      = self.xml:Init3tButton("add_fuel", self.frame)
+    self.take_fuel_btn     = self.xml:Init3tButton("take_fuel", self.frame)
+    self.toggle_power_btn  = self.xml:Init3tButton("toggle_power", self.frame)
+
+    self:Register(self.add_fuel_btn, "add_fuel_btn")
+    self:Register(self.take_fuel_btn, "take_fuel_btn")
+    self:Register(self.toggle_power_btn, "toggle_power_btn")
+
+    self.bg:SetTextureColor(GetARGB(70, 0, 0, 0))
+end
+
+function UIDieselGenerator:InitCallbacks()
+self:AddCallback("add_fuel_btn", ui_events.BUTTON_CLICKED, self.AddFuel, self)
+self:AddCallback("take_fuel_btn", ui_events.BUTTON_CLICKED, self.TakeFuel, self)
+self:AddCallback("toggle_power_btn", ui_events.BUTTON_CLICKED, self.TogglePower, self)
+end
+
+function UIDieselGenerator:Reset(obj_id)
+    self.gen_id = obj_id
+    self.screen_id = 1
+    self.screens = {
+        [1] = "info"
+    }
+    
+end
+
+function UIDieselGenerator:Close()
+    pr("on close")
+    if (self:IsShown()) then
+		self:HideDialog()
+	end
+    self.init = false
+    Unregister_UI("UIDieselGenerator")
+    CloseAll_UI()
+end
+
+function UIDieselGenerator:Update()
+    CUIScriptWnd.Update(self)
+
+    local data = hf_obj_manager.get_data(self.gen_id)
+    if not data then return end
+    local active_screen = self.screens[self.screen_id]
+
+    --pr("Showing screen: %s", active_screen)
+    if active_screen == "info" then
+        local gen_info = build_gen_info(data)
+        self.info_box:SetText(gen_info)
+    end
+end
+
+function UIDieselGenerator:OnKeyboard(dik, keyboard_action)
+	local res = CUIScriptWnd.OnKeyboard(self,dik,keyboard_action)
+	if (res == false) then
+		local bind = dik_to_bind(dik)
+		if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
+		
+			if dik == DIK_keys.DIK_ESCAPE then
+                pr("esc key pressed")
+				self:Close()
+			end
+
+		end
+	end
+
+	return res
+end
+
+function UIDieselGenerator:Pickup()
+
+end
+
+function UIDieselGenerator:TogglePower()
+    if bind_disel_generator.toggle_power(self.gen_id) then
+        local power_state = hf_obj_manager.get_data(self.gen_id).power_state
+        local new_power_state = SWAP_POWER_STATE[power_state]
+        self.toggle_power_btn:TextControl():SetText(strformat("Toggle Power: %s", capitalise(new_power_state)))
+    end
+end
+
+function UIDieselGenerator:AddFuel()
+    local found_jerrycans = find_inv_item("jerrycan")
+    for idx, obj in pairs(found_jerrycans) do
+        local sect = obj:section()
+        if sect ~= "hfg_jerrycan_diesel_empty" then
+            pr("adding fuel")
+            bind_disel_generator.add_fuel(obj, self.gen_id)
+        end
+    end
+end
+
+function UIDieselGenerator:TakeFuel()
+    local found_jerrycans = find_inv_item("jerrycan")
+    for idx, obj in pairs(found_jerrycans) do
+        pr("Taking fuel")
+        bind_disel_generator.take_fuel(obj, self.gen_id)
+    end
+end
