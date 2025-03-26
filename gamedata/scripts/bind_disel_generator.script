@@ -382,10 +382,13 @@ end
 function placeable_disel_generator_wrapper:ProcessPowerableDevices()
     if not contains({"broken", "off"}, self.power_state) then
         if self.tg > self.update_pd_tmr then
+            empty_table(self.powerable_devices)
             local powerable_devices = get_powerable_devices(self.object:position())
-            for id, sect in pairs(powerable_devices) do
-                if not contains(self.powerable_devices, id, true) then
-                    self.powerable_devices[id] = sect
+            if is_not_empty(powerable_devices) then
+                for id, sect in pairs(powerable_devices) do
+                    if not contains(self.powerable_devices, id, true) then
+                        self.powerable_devices[id] = sect
+                    end
                 end
             end
             self.update_pd_tmr = self.tg + 1000
