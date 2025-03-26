@@ -38,9 +38,9 @@ FUEL_TO_CLR = {
     },
     barrel = {
         [0]   = {255, 255, 19, 18},
-        [30]  = {255, 255, 19, 18}, --"red",
-        [55]  = {255, 255, 77, 18}, --"orange",
-        [80]  = {255, 255, 242, 18}, -- "yellow",
+        [25]  = {255, 255, 19, 18}, --"red",
+        [50]  = {255, 255, 77, 18}, --"orange",
+        [75]  = {255, 255, 242, 18}, -- "yellow",
         [100] = {255, 64, 253, 40}, --"green"
     }
 }
@@ -54,9 +54,9 @@ FUEL_TO_POS = {
     },
     barrel = {
         [0]   = 333,
-        [30]  = 239, --"red",
-        [55]  = 189, --"orange",
-        [80]  = 95,  -- "yellow",
+        [25]  = 239, --"red",
+        [50]  = 189, --"orange",
+        [75]  = 95,  -- "yellow",
         [100] = 45, --"green"
     }
 }
@@ -253,16 +253,19 @@ end
 
 function UISiphon:Setup()
     pr("setup ui elements")
+    pr("setting barrel counter color")
     self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
     local barrel_clrs = FUEL_TO_CLR["barrel"]
-    local fuel_percent = nearest_val(get_keytable(barrel_clrs), round(self.stored_fuel / MAX_FUEL) * 100)
+    local fuel_percent = nearest_val(get_keytable(barrel_clrs), (self.stored_fuel / MAX_FUEL) * 100)
     self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[fuel_percent])))
-
+    pr("set barrel counter pos")
     local barrel_cnt_pos = self.fuel_counter_barrel:GetWndPos()
     local fuel_to_pos = FUEL_TO_POS["barrel"]
-    local barrel_cnt_pos_y = fuel_to_pos[fuel_percent]
+    local barrel_fuel_percent = nearest_val(get_keytable(fuel_to_pos), fuel_percent)
+    local barrel_cnt_pos_y = fuel_to_pos[barrel_fuel_percent]
+    pr(barrel_fuel_percent)
     self.fuel_counter_barrel:SetWndPos(vector2():set(barrel_cnt_pos.x, barrel_cnt_pos_y))
-
+    pr("setting default ui ele values")
     self.operation_text:SetText(strformat(OP_TXT, self.fuel_counter_barrel:GetText()))
 
     self.fuel_trackbar:SetStep(1)
@@ -403,7 +406,8 @@ function UISiphon:OnClickStart()
             pr("updating counter text: barrel")
             self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
             local barrel_clrs = FUEL_TO_CLR["barrel"]
-            local barrel_fuel_percent = nearest_val(get_keytable(barrel_clrs), self.stored_fuel / MAX_FUEL)
+            local barrel_fuel_percent = nearest_val(get_keytable(barrel_clrs), (self.stored_fuel / MAX_FUEL) * 100)
+            pr(self.stored_fuel, barrel_fuel_percent)
             self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[barrel_fuel_percent])))
 
             -- Barrel Pos
@@ -482,7 +486,6 @@ function UISiphon:Close()
 	end
     self.init = false
     Unregister_UI("UISiphon")
-    CloseAll_UI()
 end
 
 function UISiphon:OnKeyboard(dik, keyboard_action)
