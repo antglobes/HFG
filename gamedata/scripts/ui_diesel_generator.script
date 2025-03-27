@@ -14,6 +14,8 @@ get_unknown_object = hfg_utils.get_unknown_object
 find_obj = hfg_utils.find_obj
 get_nearest = hfg_utils.get_nearest
 print_table = hfg_utils.print_table
+gray = demonized_geometry_ray.geometry_ray
+get_direction = hfg_utils.get_direction
 
 -- Constants
 MAX_FUEL = 60
@@ -248,9 +250,9 @@ function UIDieselGenerator:ShowDevices()
     local data = hf_obj_manager.get_data(self.gen_id)
     if size_table(data["powerable_devices"]) == 0 then return end
     
-    pr("setting show devices hud")
+    pr("show devices hud?: %s", self.show_devices)
     if not contains(marker_huds, self.gen_id) then
-        init_marker_hud(self.gen_id, data["powerable_devices"])
+        init_marker_hud(self.gen_id)
     end
 
     if not self.show_devices then
@@ -266,7 +268,7 @@ end
 
 -- Marker Huds
 marker_huds = {}
-function init_marker_hud(gen_id, powerable_devices)
+function init_marker_hud(gen_id)
     if not contains(marker_huds, gen_id, true) then
         marker_huds[gen_id] = UIPowerableDevices(gen_id)
     end
@@ -336,7 +338,6 @@ function UIPowerableDevices:__init(gen_id) super(gen_id)
     self.markers = {}
     self.devices = {}
     self.gen_id = gen_id
-    self.powerable_devices = hf_obj_manager.get_data(self.gen_id).powerable_devices
     self.tmr = 0
     self.delay = 1000
     self.show_device = false
@@ -351,6 +352,7 @@ end
 
 function UIPowerableDevices:Update()
     CUIScriptWnd.Update(self)
+    self.powerable_devices = hf_obj_manager.get_data(self.gen_id).powerable_devices
 
     self:UpdateObjects()
     self:UpdateMarkers()
@@ -367,13 +369,19 @@ function UIPowerableDevices:UpdateObjects()
 
     for id, sect in pairs(self.powerable_devices) do
         local obj = get_unknown_object({id=id}, "game")
-        if obj and contains(self.devices, obj:id(), true) then
-            if not self:ValidateDevice(obj) then
-                self.devices[obj:id()] = nil
-            end
-        elseif obj and not contains(self.devices, obj:id(), true) then
+        if obj then
             if self:ValidateDevice(obj) then
-                self.devices[obj:id()] = obj:section()
+                if not contains(self.devices, obj:id(), true) then
+                    self.devices[id] = obj:section()
+                end
+            else
+                if contains(self.devices, obj:id(), true) then
+                    self.devices[id] = nil
+                end
+                if contains(self.markers, obj:id(), true) then
+                    self.markers[obj:id()]:Show(false)
+                    self.markers[id] = nil
+                end
             end
         end
     end
@@ -384,7 +392,7 @@ function UIPowerableDevices:UpdateMarkers()
     -- Init Non existing markers
     for id, sect in pairs(self.devices) do
         local obj = get_unknown_object({id=id}, "game")
-        if obj and not contains(self.markers, obj:id(), true)then
+        if obj and not contains(self.markers, obj:id(), true) then
             self.markers[obj:id()] = self.xml:InitStatic(self:GetDeviceIcon(sect), self)
             self:ApplyScreenRatio(self.markers[obj:id()])
             self.markers[obj:id()]:SetStretchTexture(true)
@@ -409,9 +417,14 @@ function UIPowerableDevices:UpdateMarkers()
 end
 
 function UIPowerableDevices:ValidateDevice(obj)
+    if not obj then
+        return false
+    end
+
     if not self.show_device then
         return false
     end
+    
 
     local device_data = hf_obj_manager.get_data(obj:id())
     local genny_data = hf_obj_manager.get_data(self.gen_id)
@@ -421,20 +434,54 @@ function UIPowerableDevices:ValidateDevice(obj)
         return false
     end
 
-    local found_gens = find_obj("placeable_disel_generator", actor_pos, SEARCH_RADIUS)
-    local found_gen = is_not_empty(found_gens) and get_nearest(found_gens) or false
-    if found_gen and found_gen:id() == self.gen_id and distance_between(db.actor, found_gen) > (SEARCH_RADIUS / math.pi * 2) then
-        return false
-    end
-
     if device_data["condition"] <= 0 then
         return false
     end
 
+    local found_gens = find_obj("placeable_disel_generator", actor_pos, SEARCH_RADIUS)
+    local found_gen = is_not_empty(found_gens) and get_nearest(found_gens) or false
+
+    if not found_gen then
+        return false
+    end
+
+    if found_gen:id() ~= self.gen_id then
+        return false
+    end
+    
+
+    local dist_to_gen = distance_between(db.actor, found_gen)
+    local gen_radius = (SEARCH_RADIUS / math.pi * 2)
+    if dist_to_gen >= gen_radius then
+        pr("dist to gen: %s, gen radius: %s", dist_to_gen, gen_radius)
+        return false
+    end
+
+    local ray = gray({
+        ray_range = distance_between(db.actor, obj),
+        flags =  2 + 8,
+    })
+    local y_boost = 1.6
+    if IsMoveState("mcCrouch") then
+        y_boost = 1
+        if IsMoveState("mcAccel") then
+            y_boost = 0.3
+        end
+    end
+    local raised_actor_pos = vector():set(actor_pos.x, actor_pos.y + y_boost, actor_pos.z)
+    local obj_pos = obj:position()
+    local dir = get_direction(actor_pos, obj_pos)
+    local result = ray:get(raised_actor_pos, dir)
+    if result.result.material_name then
+        pr("%s obstructing view", result.result.material_name)
+        return false
+    end
+   
+    
     return true
 end
 
--- light, lamp, torch, 
+-- light, lamp, torch, tv
 function UIPowerableDevices:GetDeviceIcon(sect)
     local icon_base = "default"
     local item_sect = ini_sys:r_string_ex(sect, "item_section")

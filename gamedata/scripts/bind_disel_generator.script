@@ -10,6 +10,7 @@ nearest_val = hfg_utils.nearest_val
 print_table = hfg_utils.print_table
 get_keytable = hfg_utils.get_keytable
 get_hf_item_name = hfg_utils.get_hf_item_name
+get_direction = hfg_utils.get_direction
 
 -- Constants
 SEARCH_RADIUS = 50
@@ -241,15 +242,8 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
                         local part_obj = thial_particles.get(self.curr_fx[self.last_cond_state][idx].id)
                         local exhaust_pos = get_bone_pos(self.object, "exhaust")
                         local link_pos =  get_bone_pos(self.object, "body")
-                        local dx = exhaust_pos.x - link_pos.x
-                        local dy = exhaust_pos.y - link_pos.y
-                        local dz = exhaust_pos.z - link_pos.z
-                        local length = math.sqrt(math.pow(dx, 2)) + math.sqrt(math.pow(dy, 2)) + math.sqrt(math.pow(dz, 2))
-                        local nx = dx/length
-                        local ny = dy/length
-                        local nz = dz/length
-                        local norm_dir = vector():set(nx, ny, nz)
                         --pr("dir: %s", vec_to_str(norm_dir))
+                        local norm_dir = get_direction(link_pos, exhaust_pos)
                         part_obj:set_direction(norm_dir)
                     end
                     pr("Playing particle: %s for %s", details["part"], details["duration"]["active"])
