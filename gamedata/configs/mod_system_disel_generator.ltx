@@ -90,7 +90,7 @@ fuel_source                            = true
 
 [placeable_jerrycan_base]:physic_object
 placeable_type                         = prop
-script_binding                         = bind_disel_generator.bind_generator_item
+script_binding                         = bind_generator_item.init
 bounding_box_size                      = 0.167712, 0.371525, 0.570807
 bounding_box_origin                    = 0.001506, 0.282296, -0.008672
 
@@ -104,6 +104,7 @@ item_section                           = hfg_jerrycan_diesel_empty
 
 [tch_on_explode]
 on_explode = bind_disel_generator.set_cond_on_explode
+on_explode = bind_generator_item.set_cond_on_explode
 
 ![wpn_rpg7]:tch_on_explode
 ![wpn_rg-6]:tch_on_explode

@@ -232,7 +232,7 @@ function UIDieselGenerator:AddFuel()
         local sect = obj:section()
         if sect ~= "hfg_jerrycan_diesel_empty" then
             pr("adding fuel")
-            bind_disel_generator.add_fuel(obj, self.gen_id)
+            bind_generator_item.add_fuel(obj, self.gen_id)
         end
     end
 end
@@ -241,7 +241,7 @@ function UIDieselGenerator:TakeFuel()
     local found_jerrycans = find_inv_item("jerrycan")
     for idx, obj in pairs(found_jerrycans) do
         pr("Taking fuel")
-        bind_disel_generator.take_fuel(obj, self.gen_id)
+        bind_generator_item.take_fuel(obj, self.gen_id)
     end
 end
 

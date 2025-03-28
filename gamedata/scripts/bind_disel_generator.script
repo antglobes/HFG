@@ -1,3 +1,9 @@
+--[[
+    Last Edited: 28/03/25
+    Author: antglobes
+    Purpose: Binding and Managing Diesel Generator Object
+--]]
+
 -- Imports
 get_unknown_object = hfg_utils.get_unknown_object
 contains = hfg_utils.contains
@@ -24,15 +30,9 @@ SWAP_POWER_STATE = {
     off = "on",
     broken = "broken"
 }
-GENERATOR_ITEMS = {
-    "hfg_jerrycan_diesel",
-    "hfg_jerrycan_diesel_empty"
-}
 
 -- Variables
 GUI = nil
-placed_generator_items = {}
-
 
 -- DEBUGGING
 function pr(str, ...)
@@ -578,8 +578,6 @@ function placeable_disel_generator_wrapper:load_data()
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
 
-
-
 -- Binder Helpers
 
 function get_bone_pos(obj, bone_name)    
@@ -675,285 +673,6 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
     update_gen_cond(target, cond, power_state, hit_damage)
 end
 
--- Generator Items
-
-function is_fuel_source(sect)
-    return ini_sys:r_bool_ex(sect, "fuel_source", false)
-end
-
-function is_generator_item(sect)
-    return contains(GENERATOR_ITEMS, sect) 
-end
-
-function is_placeable_item(sect)
-    return ini_sys:r_string_ex(sect, "placeable_section") ~= nil
-end
-
-function is_in_generator_item_tbl(id)
-    --pr("id: %s, gen tbl: %s\\n", id, print_table(placed_generator_items))
-    for kind, _ in pairs(placed_generator_items) do
-        if contains(placed_generator_items[kind], id, true) then
-            return true
-        end
-    end
-    return false
-end
-
-function init_generator_item(tbl)
-    local id = tbl["id"]
-    local sect = tbl["sect"]
-    local uses = tbl["uses"]
-    if contains(tbl, "obj", true) then
-        local obj = tbl["obj"]
-        id = obj:id()
-        sect = obj:section()
-        uses = obj:get_remaining_uses()
-    end
-    pr("init gen item")
-    if is_fuel_source(sect) then
-        pr("is fuel source")
-        if not contains(placed_generator_items, "fuel_sources", true) then
-            placed_generator_items["fuel_sources"] = {}
-        end
-        if not contains(placed_generator_items["fuel_sources"], id, true) then
-            placed_generator_items["fuel_sources"][id] = sect
-        end
-        
-        local item_section = ini_sys:r_string_ex(sect, "item_section") or sect
-        local data = {tbl_id=id, item_section=item_section, uses=uses}
-        if is_not_empty({string.find(sect, "empty")}) then
-            data["uses"] = nil
-        end
-        hf_obj_manager.set_data(id, data)
-    end
-end
-
-function replace_generator_item(old_id, new_id)
-    for kind, _ in pairs(placed_generator_items) do
-        if contains(placed_generator_items[kind], old_id, true) then
-            pr("replacing %s to %s", old_id, new_id)
-            local info = placed_generator_items[kind][old_id]
-            placed_generator_items[kind][new_id] = info
-            placed_generator_items[kind][old_id] = nil
-            hf_obj_manager.delete_data(old_id)
-        end
-    end
-end
-
-function update_generator_item(id, info)
-    for kind, info in pairs(placed_generator_items) do
-        if contains(placed_generator_items[kind], id, true) then
-            for k, v in pairs(info) do
-                pr("%s info: %s", kind, print_table(info))
-                if contains(placed_generator_items[kind][id], k, true) then
-                    pr("updating %s's %s to %v", id, k, v)
-                    placed_generator_items[kind][id][k] = v
-                end
-            end
-        end
-    end
-end
-
-function remove_generator_item(id)
-    if not is_in_generator_item_tbl(id) then 
-        pr("Cannot remove id %s from generator item tbl, not present: %s", id)
-        return
-    end
-    local idx
-    for kind, info in pairs(placed_generator_items) do
-        if contains(info, id, true) then
-            idx = kind
-        end
-    end
-    if idx then
-        pr("removing %s from generator item tbl", id)
-        placed_generator_items[idx][id] = nil
-    end
-end
-
-function bind_generator_item(obj)
-    local id = obj:id()
-    pr("init gen item binder, id: %s", id)
-    local data = hf_obj_manager.get_data(id)
-
-    if data and contains(data, "tbl_id", true) then
-        replace_generator_item(data["tbl_id"], id)
-        data["tbl_id"] = id
-        hf_obj_manager.update_data(id, data)
-    end
-    obj:bind_object(placeable_generator_item_wrapper(obj).binder)
-end
-
-class "placeable_generator_item_wrapper" (bind_hf_base.hf_binder_wrapper)
-function placeable_generator_item_wrapper:__init(obj) super(obj)
-    local data = hf_obj_manager.get_data(self.object:id())
-    --pr("data: %s", print_table(data))
-    self.item_section = data["item_section"]
-    self.condition = data["condition"] or 1
-    self.uses = data["uses"]
-
-    self:save_data()
-end
-
-function placeable_generator_item_wrapper:pickup()
-    pr("on pickup")
-    self:load_data()
-
-    local se_obj
-    if ini_sys:r_string_ex(self.item_section, "max_uses") ~= nil then
-        se_obj = alife_create_item(self.item_section, db.actor, {cond=self.condition, uses=self.uses})
-    else
-        se_obj = alife_create_item(self.item_section, db.actor)
-    end
-    local data = hf_obj_manager.get_data(self.object:id())
-    
-    -- Find newly created se_obj, replace existing gen item tbl id with server obj id
-    if data and contains(data, "tbl_id", true) then
-        replace_generator_item(data["tbl_id"], se_obj.id)
-        data["tbl_id"] = se_obj.id
-        hf_obj_manager.update_data(se_obj.id, data)
-    end
-    pr("picking up %s, giving %s uses", se_obj:section_name(), self.uses)
-
-    hf_obj_manager.cleanup_data(self.object:id())
-	alife_release(self.object)
-
-    return true
-end
-
-function placeable_generator_item_wrapper:save_data()
-    hf_obj_manager.update_data(self.object:id(), {
-        item_section         = self.item_section,
-        condition            = self.condition,
-        uses                 = self.uses,
-    })
-end
-
-function placeable_generator_item_wrapper:load_data()
-    local data = hf_obj_manager.get_data(self.object:id())
-    self.item_section         = data["item_section"]
-    self.condition            = data["condition"]
-    self.uses                 = data["uses"]
-end
-
-function add_fuel_cond(obj)
-    local p = obj:parent()
-	if not (p and p:id() == AC_ID) then return end
-    local sect = obj:section()
-    local gen = level.get_target_obj()
-    if gen and gen:section() == "placeable_disel_generator" and distance_between(db.actor, gen) <= 2 then
-        local uses = hf_obj_manager.get_data(obj:id()).uses
-        local power_state = hf_obj_manager.get_data(gen:id()).power_state
-        return is_generator_item(sect) and is_fuel_source(sect) and (uses and uses > 0) and power_state ~= "broken"
-    end
-    actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
-    return false
-    
-end
-
-function add_fuel_func(obj)
-    local found_gen = level.get_target_obj()
-    if not found_gen or (found_gen and found_gen:section() ~= "placeable_disel_generator") then return end
-    local sect = obj:section()
-    pr("adding %s to diesel gen", sect)
-    add_fuel(obj, found_gen:id())
-end
-
-function add_fuel(jerrycan, genny_id)
-    local data = hf_obj_manager.get_data(jerrycan:id())
-    local sect = jerrycan:section()
-    local uses = data["uses"]
-    local fuel_to_add = data["uses"]
-    local stored_fuel = hf_obj_manager.get_data(genny_id).stored_fuel
-    local is_jerrycan_empty = string.find(sect, "empty") and true or false
-
-    if stored_fuel == MAX_FUEL then return end
-    if is_jerrycan_empty then return end
-    if uses == 0 then return end
-
-    if fuel_to_add + stored_fuel > MAX_FUEL then
-        for i=1, fuel_to_add do
-            fuel_to_add = fuel_to_add - 1
-            if fuel_to_add + stored_fuel <= MAX_FUEL then
-                break
-            end
-        end
-    end
-
-    local remaining_uses = uses - fuel_to_add
-    data["uses"] = remaining_uses
-    local update_id = jerrycan:id()
-    utils_item.discharge(jerrycan, fuel_to_add)
-
-    if remaining_uses == 0 then
-        local empty_sect = ini_sys:r_string_ex(sect, "empty_sect")
-        local se_obj = alife_create_item(empty_sect, db.actor)
-        pr("creating %s", empty_sect)
-
-        if data and contains(data, "tbl_id", true) then
-            replace_generator_item(data["tbl_id"], se_obj.id)
-            data["tbl_id"] = se_obj.id
-            data["item_section"] = empty_sect
-            update_id = se_obj.id
-        end
-    end
-    local transfer_occured = remaining_uses < uses
-    pr("transfer occured: %s", transfer_occured)
-    hf_obj_manager.update_data(update_id, data)
-    hf_obj_manager.update_data(genny_id, {stored_fuel=(fuel_to_add + stored_fuel), fuel_transfer=transfer_occured})
-end
-
-
-function take_fuel(jerrycan, genny_id)
-    local data = hf_obj_manager.get_data(jerrycan:id())
-    local sect = jerrycan:section()
-    local stored_fuel = hf_obj_manager.get_data(genny_id).stored_fuel
-    local is_jerrycan_empty = string.find(sect, "empty") and true or false
-    local uses = is_jerrycan_empty and 0 or data["uses"]
-    pr("is jerrycan empty: %s", is_jerrycan_empty)
-    pr("uses: %s", uses)
-    if stored_fuel <= 0 then return end
-    if uses == 10 then return end
-
-    stored_fuel = math.floor(stored_fuel)
-    pr("stored_fuel: %s", stored_fuel)
-    
-    local fuel_to_take = is_jerrycan_empty and 10 or 10 - jerrycan:get_remaining_uses()
-    if stored_fuel - fuel_to_take < 0 then
-        for i=1, fuel_to_take do
-            fuel_to_take = fuel_to_take - 1
-            if stored_fuel - fuel_to_take == 0 then
-                break
-            end
-        end
-    end
-    pr("fuel to take: %s", fuel_to_take)
-    local new_uses = uses + fuel_to_take
-    local update_id = jerrycan:id()
-    if new_uses > 0 then
-        data["uses"] = new_uses
-        pr("creating new jerry can with uses: %s", new_uses)
-        if is_jerrycan_empty then
-            local fuel_sect = "hfg_jerrycan_diesel"
-            local se_obj = alife_create_item(fuel_sect, db.actor, {uses=new_uses})
-
-            if data and contains(data, "tbl_id", true) then
-                replace_generator_item(data["tbl_id"], se_obj.id)
-                data["tbl_id"] = se_obj.id
-                data["item_section"] = fuel_sect
-                update_id = se_obj.id
-            end
-            alife_release(alife_object(jerrycan:id()))
-        else
-            jerrycan:set_remaining_uses(new_uses)
-        end
-        local transfer_occured = new_uses >= uses
-        pr("transfer occured: %s", transfer_occured)
-        hf_obj_manager.update_data(update_id, data)
-        hf_obj_manager.update_data(genny_id, {stored_fuel=(stored_fuel - fuel_to_take), fuel_transfer=transfer_occured})
-    end
-end
-
 -- HFG Light furniture
 
 function is_powerable_device(sect)
@@ -973,8 +692,6 @@ function get_powerable_devices(pos)
     --pr("Found powerable devices: %s", print_table(powerable_devices))
     return powerable_devices
 end
-
-
 
 -- Monkey Patches
 base_toggle_light = ui_furniture_light.toggle_light
@@ -1008,83 +725,6 @@ function ui_furniture_light.toggle_light(obj_id)
     base_toggle_light(obj_id)
 end
 
-base_seperate = bind_item.func_separate
-function bind_item.func_separate(obj)
-    pr("on item seperate")
-    local id = obj:id()
-    local sect = obj:section()
-    if not is_in_generator_item_tbl(id) then
-        pr("base seperate: %s", id)
-        base_seperate(obj)
-        return
-    end
-
-	local uses = obj:get_remaining_uses()
-	if uses and (uses > 1) then
-		local se_obj = alife_create_item(sect, db.actor, {uses = 1})
-		if se_obj then
-            uses = uses - 1
-			obj:set_remaining_uses(uses)
-            --update_generator_item(id, {uses=uses})
-            hf_obj_manager.update_data(id, {uses=uses})
-
-            local info = {
-                id = se_obj.id,
-                sect = sect,
-                uses = 1
-            }
-            init_generator_item(info)
-        end
-    end
-end
-
-base_drag_drop = bind_item.on_item_drag_dropped
-function bind_item.on_item_drag_dropped(obj_1, obj_2, slot_from, slot_to)
-    pr("on item drag dropped")
-    if not (slot_from == EDDListType.iActorBag and slot_to == EDDListType.iActorBag) then
-        return
-    end
-
-    local sec_1 = obj_1:section()
-	local sec_2 = obj_2:section()
-
-    if not is_generator_item(sec_1) then
-        base_drag_drop(obj_1, obj_2, slot_from, slot_to)
-        return
-    end
-	
-	if not ((sec_1 == sec_2) and IsItem("multiuse",sec_1)) then
-		return
-	end
-
-    local uses_1 = obj_1:get_remaining_uses()
-	local uses_2 = obj_2:get_remaining_uses()
-	local max_uses = obj_1:get_max_uses() 
-
-	if not (uses_1 and uses_2 and max_uses) then
-		return
-	end
-
-	local new_uses = uses_1 + uses_2
-	if (new_uses > max_uses) then
-		return
-	end
-	
-	local id_1 = obj_1:id()
-	local id_2 = obj_2:id()
-	
-    local se_obj = alife_object(id_1)
-    if se_obj then
-        pr("combining %s from %s uses to %s uses", sec_2, uses_2, new_uses)
-        alife_release(se_obj)
-        obj_2:set_remaining_uses(new_uses)
-        remove_generator_item(id_1)
-        hf_obj_manager.update_data(id_2, {uses=new_uses})
-        itms_manager.play_item_sound(obj_2)
-	end
-end
-
-
 -- Callbacks
 
 function on_save(mdata)
@@ -1093,21 +733,6 @@ function on_save(mdata)
         if contains(datum, "hf_data", true) then
             pr("hf data: %s, %s", id, print_table(datum))
         end
-    end
-end
-
-function on_item_take(obj)
-    local id = obj:id()
-    local sect = obj:section()
-    if not is_generator_item(sect) or not is_placeable_item(sect) then return end
-    if is_in_generator_item_tbl(id) then return pr("%s is in gen item tbl already", sect) end
-    pr("on item take: %s", sect)
-    init_generator_item({obj=obj})
-end
-
-function use_generator_item(obj)
-    if add_fuel_cond(obj) then
-        add_fuel_func(obj)
     end
 end
 
@@ -1134,11 +759,7 @@ function on_place_powerable_device(obj_id)
 end
 
 function on_game_start()
-    --RegisterScriptCallback("physic_object_on_hit_callback", physic_object_on_hit)
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
-    RegisterScriptCallback("actor_on_item_take", on_item_take)
-    RegisterScriptCallback("actor_on_item_use", use_generator_item)
     RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
-    --RegisterScriptCallback("save_state", on_save)
 end
