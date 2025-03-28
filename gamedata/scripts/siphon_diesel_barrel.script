@@ -58,6 +58,20 @@ FUEL_TO_POS = {
         [50]  = 189, --"orange",
         [75]  = 95,  -- "yellow",
         [100] = 45, --"green"
+    },
+    jerrycan_contents = {
+        [0]   = {y=350, h=0},
+        [25]  = {y=318, h=32},
+        [50]  = {y=287, h=64},
+        [75]  = {y=258, h=93},
+        [100] = {y=223, h=127},
+    },
+    barrel_contents = {
+        [0]   = {y=346, h=0},
+        [25]  = {y=260, h=87},
+        [50]  = {y=173, h=173},
+        [75]  = {y=87,  h=260},
+        [100] = {y=46,  h=300},
     }
 }
 
@@ -238,6 +252,9 @@ function UISiphon:InitControls()
     self.fuel_trackbar = self.xml:InitTrackBar("fuel_trackbar", self.frame)
     self.start_btn = self.xml:Init3tButton("start_btn", self.frame)
     
+    self.fuel_contents_jerrycan = self.xml:InitStatic("fuel_contents_jerrycan", self.frame)
+    self.fuel_contents_barrel = self.xml:InitStatic("fuel_contents_barrel", self.frame)
+
     self:Register(self.fuel_trackbar, "fuel_trackbar")
     self:Register(self.start_btn, "start_btn")
     pr("fininshed controls")
@@ -258,6 +275,7 @@ function UISiphon:Setup()
     local barrel_clrs = FUEL_TO_CLR["barrel"]
     local fuel_percent = nearest_val(get_keytable(barrel_clrs), (self.stored_fuel / MAX_FUEL) * 100)
     self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[fuel_percent])))
+    
     pr("set barrel counter pos")
     local barrel_cnt_pos = self.fuel_counter_barrel:GetWndPos()
     local fuel_to_pos = FUEL_TO_POS["barrel"]
@@ -265,6 +283,16 @@ function UISiphon:Setup()
     local barrel_cnt_pos_y = fuel_to_pos[barrel_fuel_percent]
     pr(barrel_fuel_percent)
     self.fuel_counter_barrel:SetWndPos(vector2():set(barrel_cnt_pos.x, barrel_cnt_pos_y))
+
+    local fuel_to_pos = FUEL_TO_POS["barrel_contents"]
+    local b_fuel_contents_pos = self.fuel_contents_barrel:GetWndPos()
+    local b_fuel_contents_size = {w=self.fuel_contents_barrel:GetWidth(), h=self.fuel_contents_barrel:GetHeight()}
+    local yandh = fuel_to_pos[barrel_fuel_percent]
+    local b_fuel_contents_y, b_fuel_contents_h = yandh.y, yandh.h
+
+    self.fuel_contents_barrel:SetWndPos(vector2():set(b_fuel_contents_pos.x, b_fuel_contents_y))
+    self.fuel_contents_barrel:SetWndSize(vector2():set(b_fuel_contents_size.w, b_fuel_contents_h))
+
     pr("setting default ui ele values")
     self.operation_text:SetText(strformat(OP_TXT, self.fuel_counter_barrel:GetText()))
 
@@ -317,6 +345,17 @@ function UISiphon:Setup()
     local jc_cnt_pos_y = fuel_to_pos[fuel_percent]
     
     self.fuel_counter_jerrycan:SetWndPos(vector2():set(jc_cnt_pos.x, jc_cnt_pos_y))
+
+    -- Set Jerrycan Contents y and h
+    local fuel_to_pos = FUEL_TO_POS["jerrycan_contents"]
+    local jc_fuel_contents_pos = self.fuel_contents_jerrycan:GetWndPos()
+    local jc_fuel_contents_size = {w=self.fuel_contents_jerrycan:GetWidth(), h=self.fuel_contents_jerrycan:GetHeight()}
+    local yandh = fuel_to_pos[fuel_percent]
+    local jc_fuel_contents_y, jc_fuel_contents_h = yandh.y, yandh.h
+
+    self.fuel_contents_jerrycan:SetWndPos(vector2():set(jc_fuel_contents_pos.x, jc_fuel_contents_y))
+    self.fuel_contents_jerrycan:SetWndSize(vector2():set(jc_fuel_contents_size.w, jc_fuel_contents_h))
+
     self.total_empty_volume = (10 * #self.found_jerrycans) - self.total_volume
     self.init = true
 
@@ -402,6 +441,18 @@ function UISiphon:OnClickStart()
             local jc_cnt_pos_y = fuel_to_pos[fuel_percent]
             self.fuel_counter_jerrycan:SetWndPos(vector2():set(jc_cnt_pos.x, jc_cnt_pos_y))
 
+            -- Set Jerrycan Contents y and h
+            pr("updating fuel contents jerrycan")
+            local fuel_to_pos = FUEL_TO_POS["jerrycan_contents"]
+            local jc_fuel_contents_pos = self.fuel_contents_jerrycan:GetWndPos()
+            local jc_fuel_contents_size = {w=self.fuel_contents_jerrycan:GetWidth(), h=self.fuel_contents_jerrycan:GetHeight()}
+            local yandh = fuel_to_pos[fuel_percent]
+            local jc_fuel_contents_y, jc_fuel_contents_h = yandh.y, yandh.h
+        
+            self.fuel_contents_jerrycan:SetWndPos(vector2():set(jc_fuel_contents_pos.x, jc_fuel_contents_y))
+            self.fuel_contents_jerrycan:SetWndSize(vector2():set(jc_fuel_contents_size.w, jc_fuel_contents_h))
+        
+
             -- Barrel Text
             pr("updating counter text: barrel")
             self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
@@ -420,6 +471,17 @@ function UISiphon:OnClickStart()
             pr("Stored Fuel: %s", self.stored_fuel)
             pr("Total Jerrycan Space Available: %s", self.total_empty_volume)
             pr("updating ui elements")
+
+            -- Set Barrel Contents y and h
+            pr("updating fuel contents barrel")
+            local fuel_to_pos = FUEL_TO_POS["barrel_contents"]
+            local b_fuel_contents_pos = self.fuel_contents_barrel:GetWndPos()
+            local b_fuel_contents_size = {w=self.fuel_contents_barrel:GetWidth(), h=self.fuel_contents_barrel:GetHeight()}
+            local yandh = fuel_to_pos[barrel_fuel_percent]
+            local b_fuel_contents_y, b_fuel_contents_h = yandh.y, yandh.h
+        
+            self.fuel_contents_barrel:SetWndPos(vector2():set(b_fuel_contents_pos.x, b_fuel_contents_y))
+            self.fuel_contents_barrel:SetWndSize(vector2():set(b_fuel_contents_size.w, b_fuel_contents_h))
             
             -- Update Barrel Table
             pr("updating barrel table")

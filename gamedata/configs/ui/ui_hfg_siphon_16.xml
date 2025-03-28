@@ -17,6 +17,16 @@
         <text font="letterica18" complex_mode="1" align="c" vert_align="c"/>
     </fuel_counter_barrel>
 
+    <!-- jerrycan insides: width 87,top 223, bottom 355 height 127-->
+    <fuel_contents_jerrycan x="71" y="223" width="87" height="127" stretch="1" complex_desc="0">
+        <texture>ui_hfg_siphon_jerrycan_fuel</texture>
+    </fuel_contents_jerrycan>
+
+    <!-- barrel insides: width 168,top 46, bottom 346 height 300-->
+    <fuel_contents_barrel x="192" y="46" width="166" height="300" stretch="1" complex_desc="0">
+        <texture>ui_hfg_siphon_barrel_fuel</texture>
+    </fuel_contents_barrel>
+
     <operation_text x="44" y="377" width="357" height="25" stretch="1" complex_desc="0">
         <text font="letterica18" complex_mode="1" align="c" vert_align="c"/>
     </operation_text>
