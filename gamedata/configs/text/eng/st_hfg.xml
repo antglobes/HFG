@@ -513,13 +513,13 @@
 	</string>
 	
 	<string id="st_jerrycan_diesel_empty">
-		<text>Empty Diesel Jerrycan)</text>
+		<text>Empty Diesel Jerrycan</text>
 	</string>
 	<string id="st_jerrycan_biodiesel_empty">
-		<text>Empty Bio-Diesel Jerrycan)</text>
+		<text>Empty Bio-Diesel Jerrycan</text>
 	</string>
 	<string id="st_jerrycan_animal_oil_empty">
-		<text>Empty Animal Oil Jerrycan)</text>
+		<text>Empty Animal Oil Jerrycan</text>
 	</string>
 	
 	<string id="st_jerrycan_diesel_empty_descr">

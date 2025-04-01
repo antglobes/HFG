@@ -17,6 +17,8 @@ print_table = hfg_utils.print_table
 get_keytable = hfg_utils.get_keytable
 get_hf_item_name = hfg_utils.get_hf_item_name
 get_direction = hfg_utils.get_direction
+AOE = demonized_aoe.AOE
+
 
 -- Constants
 SEARCH_RADIUS = 50
@@ -267,6 +269,7 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
                                     self.curr_fx[self.last_cond_state][idx] = nil
                                     remove_particle = true
                                     if self.last_cond_state == "broken" and self.current_motion ~= "idle" then
+                                        self:Explode()
                                         self.anim_due = true
                                         self.power_state = self.last_cond_state
                                     end
@@ -451,15 +454,23 @@ function placeable_disel_generator_wrapper:ProcessFuel()
     self:save_data()
 end
 
-function placeable_disel_generator_wrapper:UpdateAnimData(anim_name)
-    pr("Updating anim data for id:%s", self.object:id())
-    local se_obj = alife_object(self.object:id())
-    if se_obj then
-        local data = utils_stpk.get_physic_data(se_obj)
-        pr("From %s to %s", data["skeleton_name"], anim_name)
-        data.skeleton_name = anim_name
-        utils_stpk.set_physic_data(data, se_obj)
+function placeable_disel_generator_wrapper:Explode()
+    local found_generators = find_obj(self.object:section(), self.object:position(), 10)
+    for _, obj in pairs(found_generators) do
+        local data = hf_obj_manager.get_data(obj:id())
+        update_gen_cond(obj, data.condition, data.power_state, 1)
     end
+    AOE({
+        position = self.object:position(),
+        aoe_sound = "anomaly\\fireball_idle",
+        aoe_hit_sound = "anomaly\\fire2",
+        explosion_damage = 2,    
+        damage = 0.75,
+        lifetime = 3,
+        damage_period = 1.5 * 1000,
+        can_panic_npc = true,
+        draftsman_id = AC_ID
+    })
 end
 
 function placeable_disel_generator_wrapper:CleanupParticles()
@@ -758,8 +769,37 @@ function on_place_powerable_device(obj_id)
     end
 end
 
+function set_cond_on_impact_npc(npc, wpn, target)
+    if npc:id() == AC_ID then return end
+    local target_sect = target:section()
+    if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
+    local wpn_sect = wpn:section()
+    local data = hf_obj_manager.get_data(target:id())
+    local power_state = data["power_state"]
+    local cond = data["condition"] or 1
+    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
+    pr("on impact npc: %s", wpn_sect)
+    update_gen_cond(target, cond, power_state, hit_damage)
+end
+
+function on_npc_fired(bullet)
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+    if p_id == AC_ID then return end
+
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then return end
+    set_cond_on_impact_npc(npc, wpn, target)
+end
+
 function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
+    RegisterScriptCallback("bullet_on_impact", on_npc_fired)
 end

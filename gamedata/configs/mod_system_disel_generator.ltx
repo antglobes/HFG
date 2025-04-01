@@ -77,7 +77,7 @@ inv_name                               = st_jerrycan_diesel_empty
 inv_name_short                         = st_jerrycan_diesel_empty
 inv_grid_x                             = 6
 inv_grid_y                             = 7
-inv_weight                             = 8.75
+inv_weight                             = 0.8
 
 use1_functor         				   = placeable_furniture.place_item
 use1_action_functor  				   = placeable_furniture.func_place_item
@@ -113,3 +113,188 @@ on_explode = bind_generator_item.set_cond_on_explode
 ![grenade_smoke]:tch_on_explode
 ![grenade_gd-05]:tch_on_explode
 ![grenade_f1]:tch_on_explode
+
+[hfg_generator_poster]:tch_junk
+class									= II_ATTCH
+kind								    = i_tool
+visual									= dynamics\hfg_generator_poster.ogf
+
+description								= st_hfg_generator_poster_descr
+inv_name								= st_hfg_generator_poster
+inv_name_short							= st_hfg_generator_poster
+
+icons_texture							= ui\ui_hfg_icons
+inv_grid_x								= 9
+inv_grid_y								= 3
+inv_grid_width							= 1
+inv_grid_height							= 2
+
+cost									= 20
+inv_weight								= 0.01
+
+use1_functor         				    = placeable_furniture.place_item
+use1_action_functor  					= placeable_furniture.func_place_item
+
+placeable_type                          = prop
+placeable_section                       = placeable_generator_poster
+
+[placeable_generator_poster]:physic_object
+visual									= dynamics\hfg_generator_poster.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_generator_poster
+
+ui_texture                              = ui_hfg_icon_manual
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
+[hfg_poster_1]:tch_junk
+class									= II_ATTCH
+kind								    = i_tool
+visual									= dynamics\hfg_poster_1.ogf
+
+description								= st_hfg_poster_1_descr
+inv_name								= st_hfg_poster_1
+inv_name_short							= st_hfg_poster_1
+
+icons_texture							= ui\ui_hfg_icons
+inv_grid_x								= 10
+inv_grid_y								= 3
+inv_grid_width							= 1
+inv_grid_height							= 2
+
+cost									= 20
+inv_weight								= 0.01
+
+use1_functor         				    = placeable_furniture.place_item
+use1_action_functor  					= placeable_furniture.func_place_item
+
+placeable_type                          = prop
+placeable_section                       = placeable_poster_1
+
+[hfg_poster_2]:tch_junk
+class									= II_ATTCH
+kind								    = i_tool
+visual									= dynamics\hfg_poster_2.ogf
+
+description								= st_hfg_poster_2_descr
+inv_name								= st_hfg_poster_2
+inv_name_short							= st_hfg_poster_2
+
+icons_texture							= ui\ui_hfg_icons
+inv_grid_x								= 11
+inv_grid_y								= 3
+inv_grid_width							= 1
+inv_grid_height							= 2
+
+cost									= 20
+inv_weight								= 0.01
+
+use1_functor         				    = placeable_furniture.place_item
+use1_action_functor  					= placeable_furniture.func_place_item
+
+placeable_type                          = prop
+placeable_section                       = placeable_poster_2
+
+[hfg_poster_3]:tch_junk
+class									= II_ATTCH
+kind								    = i_tool
+visual									= dynamics\hfg_poster_3.ogf
+
+description								= st_hfg_poster_3_descr
+inv_name								= st_hfg_poster_3
+inv_name_short							= st_hfg_poster_3
+
+icons_texture							= ui\ui_hfg_icons
+inv_grid_x								= 12
+inv_grid_y								= 3
+inv_grid_width							= 1
+inv_grid_height							= 2
+
+cost									= 20
+inv_weight								= 0.01
+
+use1_functor         				    = placeable_furniture.place_item
+use1_action_functor  					= placeable_furniture.func_place_item
+
+placeable_type                          = prop
+placeable_section                       = placeable_poster_3
+
+[hfg_poster_4]:tch_junk
+class									= II_ATTCH
+kind								    = i_tool
+visual									= dynamics\hfg_poster_4.ogf
+
+description								= st_hfg_poster_4_descr
+inv_name								= st_hfg_poster_4
+inv_name_short							= st_hfg_poster_4
+
+icons_texture							= ui\ui_hfg_icons
+inv_grid_x								= 13
+inv_grid_y								= 3
+inv_grid_width							= 1
+inv_grid_height							= 2
+
+cost									= 20
+inv_weight								= 0.01
+
+use1_functor         				    = placeable_furniture.place_item
+use1_action_functor  					= placeable_furniture.func_place_item
+
+placeable_type                          = prop
+placeable_section                       = placeable_poster_4
+
+[placeable_poster_1]:physic_object
+visual									= dynamics\hfg_poster_1.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_1
+
+ui_texture                              = ui_hfg_icon_poster_1
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
+[placeable_poster_2]:physic_object
+visual									= dynamics\hfg_poster_2.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_2
+
+ui_texture                              = ui_hfg_icon_poster_2
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
+[placeable_poster_3]:physic_object
+visual									= dynamics\hfg_poster_3.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_3
+
+ui_texture                              = ui_hfg_icon_poster_3
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
+[placeable_poster_4]:physic_object
+visual									= dynamics\hfg_poster_4.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_4
+
+ui_texture                              = ui_hfg_icon_poster_4
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057

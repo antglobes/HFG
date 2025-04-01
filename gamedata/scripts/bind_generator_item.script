@@ -8,6 +8,8 @@
 contains = hfg_utils.contains
 AOE = demonized_aoe.AOE
 gts = hfg_utils.get_translation
+get_unknown_object = hfg_utils.get_unknown_object
+find_obj = hfg_utils.find_obj
 
 -- Constants
 GENERATOR_ITEMS = {
@@ -159,6 +161,11 @@ function placeable_generator_item_wrapper:update(delta)
 
         if self.uses == 0 and self.condition == 0.01 then
             pr("exploding")
+            local found_jerrycans = find_obj(self.object:section(), self.object:position(), 10)
+            for _, obj in pairs(found_jerrycans) do
+                hf_obj_manager.update_data(obj:id(), {condition=0.01})
+            end
+            
             AOE({
                 position = self.object:position(),
                 explosion_sound = "weapons\\explo\\dynamite_boom",
@@ -172,7 +179,7 @@ function placeable_generator_item_wrapper:update(delta)
                 can_panic_npc = true,
                 draftsman_id = AC_ID
             })
-
+            
             local data = hf_obj_manager.get_data(self.object:id())
             remove_generator_item(data["tbl_id"])
             hf_obj_manager.cleanup_data(self.object:id())
@@ -228,13 +235,23 @@ function add_fuel_cond(obj)
     local p = obj:parent()
 	if not (p and p:id() == AC_ID) then return end
     local sect = obj:section()
+    
+    if not is_generator_item(sect) and not is_fuel_source(sect) then
+        return false
+    end
+
     local gen = level.get_target_obj()
-    if gen and gen:section() == "placeable_disel_generator" and distance_between(db.actor, gen) <= 2 then
+    if gen and gen:section() == "placeable_disel_generator" then
+
+        if distance_between(db.actor, gen) > 2 then
+            actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
+            return false
+        end
+
         local uses = hf_obj_manager.get_data(obj:id()).uses
         local power_state = hf_obj_manager.get_data(gen:id()).power_state
-        return is_generator_item(sect) and is_fuel_source(sect) and (uses and uses > 0) and power_state ~= "broken"
+        return (uses and uses > 0) and power_state ~= "broken"
     end
-    actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
     return false
     
 end
@@ -467,7 +484,7 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
 
     local data = hf_obj_manager.get_data(target:id())
     local wpn_sect = wpn:section()
-    local cond = data["condition"] or 1
+    local cond = data and data["condition"] or 0
     local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
     pr("on impact jerrycan: %s, %s", cond, hit_damage)
     update_jerrycan_cond(target, cond, hit_damage)
@@ -501,6 +518,41 @@ function set_cond_on_explode(obj)
     end   
 end
 
+function set_cond_on_impact_npc(npc, wpn, target)
+    if npc:id() == AC_ID then return end
+    
+    local targ_sect = target:section()
+    local item_sect = ini_sys:r_string_ex(targ_sect, "item_section")
+    if not item_sect then return end
+
+    pr("on npc weapon fired: %s", item_sect)
+    if not is_generator_item(item_sect) then return end
+    if not is_fuel_source(item_sect) then return end
+
+    local data = hf_obj_manager.get_data(target:id())
+    local wpn_sect = wpn:section()
+    local cond = data["condition"] or 1
+    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
+    pr("on impact jerrycan: %s, %s", cond, hit_damage)
+    update_jerrycan_cond(target, cond, hit_damage)
+end
+
+function on_npc_fired(bullet)
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+    if p_id == AC_ID then return end
+
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then return end
+    set_cond_on_impact_npc(npc, wpn, target)
+end
+
+
 function on_game_start()
     RegisterScriptCallback("actor_on_item_take", on_item_take)
     RegisterScriptCallback("actor_on_item_use", use_generator_item)
@@ -508,4 +560,5 @@ function on_game_start()
     RegisterScriptCallback("load_state", on_load)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
+    RegisterScriptCallback("bullet_on_impact", on_npc_fired)
 end

@@ -11,5 +11,10 @@
         <texture id="ui_hfg_icon_lamp"           x="400"  y="150"   width="50"    height="50" />
         <texture id="ui_hfg_icon_torch"          x="350"  y="200"   width="50"    height="50" />
         <texture id="ui_hfg_icon_light"          x="400"  y="200"   width="50"    height="50" />
+        <texture id="ui_hfg_icon_manual"         x="453"  y="159"   width="50"    height="100" />
+        <texture id="ui_hfg_icon_poster_1"       x="507"  y="158"   width="50"    height="100" />
+        <texture id="ui_hfg_icon_poster_2"       x="555"  y="155"   width="50"    height="100" />
+        <texture id="ui_hfg_icon_poster_3"       x="607"  y="155"   width="50"    height="100" />
+        <texture id="ui_hfg_icon_poster_4"       x="652"  y="157"   width="50"    height="100" />
     </file>
 </w>
