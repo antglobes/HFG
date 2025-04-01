@@ -7,6 +7,7 @@
 		This generator has been touched with some stalker magic and has been retrofitted for 'household use'.\n
 		%c[ui_gray_1]PROPERTIES:\n
 		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
 		%c[d_purple] • %c[ui_gray_1] Capable of outputting up to 5KW \n
 		%c[d_purple] • %c[ui_gray_1] Requires Diesel, Kerosene or Biodiesel to operate\n
 		%c[d_purple] • %c[ui_gray_1] Full Tank Lasts 9 hours\n
@@ -503,7 +504,9 @@
 	</string>
 	
 	<string id="st_jerrycan_diesel_descr">
-		<text>10L of Diesel</text>
+		<text>Holds up to 10L of Diesel\n\
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		</text>
 	</string>
 	<string id="st_jerrycan_biodiesel_descr">
 		<text>10L of Bio-Diesel</text>
@@ -523,7 +526,9 @@
 	</string>
 	
 	<string id="st_jerrycan_diesel_empty_descr">
-		<text>Empty Jerrycan used for diesel but can be used for other fluids, now it's empty</text>
+		<text>Empty Jerrycan used for diesel but can be used for other fluids, now it's empty
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		</text>
 	</string>
 	<string id="st_jerrycan_biodiesel_empty_descr">
 		<text>Empty Jerrycan used for bio-diesel but can be used for other fluids, now it's empty</text>
@@ -570,4 +575,60 @@
 	<string id="st_siphon_kit">
 		<text>Siphoning Kit</text>
 	</string>
+	
+	
+	<string id="st_hfg_poster_1">
+		<text>DO NOT LEAVE A FUEL CONTAINER OPEN</text>
+	</string>
+	<string id="st_hfg_poster_1_descr">
+		<text>
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		Title: DO NOT LEAVE A FUEL CONTAINER OPEN\n
+		Author: S. S. Gadzhiev\n
+		Artist: V.L. Kondrat'ev\n
+		Year: 1973\n
+		Country of Origin: Soviet Union\n
+		Extra: "Agreed with the Labor Safety Department of the Central Committee of the Trade Union of Power Plant and Electrical Industry Workers"\n
+		</text>
+	</string>
+	
+	<string id="st_hfg_poster_2">
+		<text>Katapult Petrol</text>
+	</string>
+	<string id="st_hfg_poster_2_descr">
+		<text>
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		Title: Katapult Petrol\n
+		Artist: F. Freiwillig\n
+		Year: 1955\n
+		Country of Origin: Czechoslovakia\n
+		</text>
+	</string>
+	
+	<string id="st_hfg_poster_3">
+		<text>Alcohol is the Cause of Injuries at Work</text>
+	</string>
+	<string id="st_hfg_poster_3_descr">
+		<text>
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		Title: Alcohol is the Cause of Injuries at Work\n
+		Artist: A. V. Terman\n
+		Year: 1987\n
+		Country of Origin: Russian SFSR\n
+		</text>
+	</string>
+	
+	<string id="st_hfg_poster_4">
+		<text>Don't Test Voltage With Your Finger</text>
+	</string>
+	<string id="st_hfg_poster_4_descr">
+		<text>
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		Title: Don't Test Voltage With Your Finger\n
+		Artist: Unknown\n
+		Year: Unknown\n
+		Country of Origin: Unknown\n</text>
+	</string>
+	
+	
 </string_table>

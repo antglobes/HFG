@@ -153,7 +153,7 @@ bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
 [hfg_poster_1]:tch_junk
 class									= II_ATTCH
-kind								    = i_tool
+kind								    = i_tool 
 visual									= dynamics\hfg_poster_1.ogf
 
 description								= st_hfg_poster_1_descr
@@ -174,6 +174,19 @@ use1_action_functor  					= placeable_furniture.func_place_item
 
 placeable_type                          = prop
 placeable_section                       = placeable_poster_1
+
+[placeable_poster_1]:physic_object
+visual									= dynamics\hfg_poster_1.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_1
+
+ui_texture                              = ui_hfg_icon_poster_1
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
 [hfg_poster_2]:tch_junk
 class									= II_ATTCH
@@ -199,6 +212,19 @@ use1_action_functor  					= placeable_furniture.func_place_item
 placeable_type                          = prop
 placeable_section                       = placeable_poster_2
 
+[placeable_poster_2]:physic_object
+visual									= dynamics\hfg_poster_2.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_2
+
+ui_texture                              = ui_hfg_icon_poster_2
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
 [hfg_poster_3]:tch_junk
 class									= II_ATTCH
 kind								    = i_tool
@@ -223,6 +249,19 @@ use1_action_functor  					= placeable_furniture.func_place_item
 placeable_type                          = prop
 placeable_section                       = placeable_poster_3
 
+[placeable_poster_3]:physic_object
+visual									= dynamics\hfg_poster_3.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_poster_3
+
+ui_texture                              = ui_hfg_icon_poster_3
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
 [hfg_poster_4]:tch_junk
 class									= II_ATTCH
 kind								    = i_tool
@@ -246,45 +285,6 @@ use1_action_functor  					= placeable_furniture.func_place_item
 
 placeable_type                          = prop
 placeable_section                       = placeable_poster_4
-
-[placeable_poster_1]:physic_object
-visual									= dynamics\hfg_poster_1.ogf
-placeable_type                          = prop
-base_rotation                           = 0
-
-script_binding                          = bind_hf_base.init
-item_section                            = hfg_poster_1
-
-ui_texture                              = ui_hfg_icon_poster_1
-
-bounding_box_size                        = 0.623829, 0.747018, 0.016213
-bounding_box_origin                      = 0.005518, 0.011798, -0.005057
-
-[placeable_poster_2]:physic_object
-visual									= dynamics\hfg_poster_2.ogf
-placeable_type                          = prop
-base_rotation                           = 0
-
-script_binding                          = bind_hf_base.init
-item_section                            = hfg_poster_2
-
-ui_texture                              = ui_hfg_icon_poster_2
-
-bounding_box_size                        = 0.623829, 0.747018, 0.016213
-bounding_box_origin                      = 0.005518, 0.011798, -0.005057
-
-[placeable_poster_3]:physic_object
-visual									= dynamics\hfg_poster_3.ogf
-placeable_type                          = prop
-base_rotation                           = 0
-
-script_binding                          = bind_hf_base.init
-item_section                            = hfg_poster_3
-
-ui_texture                              = ui_hfg_icon_poster_3
-
-bounding_box_size                        = 0.623829, 0.747018, 0.016213
-bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
 [placeable_poster_4]:physic_object
 visual									= dynamics\hfg_poster_4.ogf
