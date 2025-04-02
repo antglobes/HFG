@@ -35,10 +35,50 @@ SWAP_POWER_STATE = {
 
 -- Variables
 GUI = nil
+placed_generators = {}
 
 -- DEBUGGING
 function pr(str, ...)
     hfg_utils.dbg_pr("[HFG|Bind Disel Gen]: %s", str, ...)
+end
+
+function in_generator_tbl(id)
+    return contains(placed_generators, id, true)
+end
+
+function init_generator(id)
+    if not in_generator_tbl(id) then
+        local data = {tbl_id=id}
+        placed_generators[id] = data
+        hf_obj_manager.set_data(id, data)
+        pr("init generator tbl: %s", id)
+    end
+end
+
+function update_generator(id, data)
+    if not in_generator_tbl(id) then return end
+    local tbl_data = placed_generators[id]
+    for k, v in pairs(data) do
+        tbl_data[k] = v
+    end
+    placed_generators[id] = tbl_data
+    pr("updating generator tbl: %s", id)
+end
+
+function replace_generator(old_id, new_id)
+    if in_generator_tbl(old_id) then
+        local info = placed_generators[old_id]
+        placed_generators[new_id] = info
+        placed_generators[old_id] = nil
+        hf_obj_manager.delete_data(old_id)
+        pr("replacing %s with %s", old_id, new_id)
+    end
+end
+
+function remove_generator(id)
+    if not in_generator_tbl(id) then return end
+    placed_generators[id] = nil
+    pr("removing %s", id)
 end
 
 function toggle_power(obj_id)
@@ -501,10 +541,16 @@ function placeable_disel_generator_wrapper:pickup()
     local item_section = ini_sys:r_string_ex(self.object:section(), "item_section")
     pr("binder cond: %s", self.condition)
     local se_obj = alife_create(item_section, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), AC_ID, false)
-    local data = utils_stpk.get_item_data(se_obj)
-    data.condition = self.condition
-    utils_stpk.set_item_data(data, se_obj)
+    local item_data = utils_stpk.get_item_data(se_obj)
+    item_data.condition = self.condition
+    utils_stpk.set_item_data(item_data, se_obj)
     alife():register(se_obj)
+
+    -- Replace gen id
+    local data = hf_obj_manager.get_data(self.object:id())
+    replace_generator(data["tbl_id"], se_obj.id)
+    data["tbl_id"] = se_obj.id
+    hf_obj_manager.update_data(se_obj.id, data)
 
     -- Clean up HF-related data
     hf_obj_manager.cleanup_data(self.object:id())
@@ -526,7 +572,7 @@ end
 
 function placeable_disel_generator_wrapper:save_data()
     --pr("save data")
-    hf_obj_manager.update_data(self.object:id(), {
+    local data = {
         power_state          = self.power_state,
         anim_due             = self.anim_due,
         anim_in_progress     = self.anim_in_progress,
@@ -553,8 +599,12 @@ function placeable_disel_generator_wrapper:save_data()
         time_til_empty       = self.time_til_empty,
         drain_rate           = self.drain_rate,
         update_pd_tmr        = self.update_pd_tmr,
-    })
-    --pr("Genny data: %s\n", print_table(data))
+    }
+    local curr_data = hf_obj_manager.get_data(self.object:id())
+    if curr_data and contains(curr_data, "tbl_id", true) then
+        update_generator(curr_data["tbl_id"], data)
+    end
+    hf_obj_manager.update_data(self.object:id(), data)
 end
 
 function placeable_disel_generator_wrapper:load_data()
@@ -797,9 +847,19 @@ function on_npc_fired(bullet)
     set_cond_on_impact_npc(npc, wpn, target)
 end
 
+function on_item_take(obj)
+    local id = obj:id()
+    local sect = obj:section()
+    if sect ~= "disel_generator_item" then return end
+    if in_generator_tbl(id) then return end
+    pr("on item take: %s", sect)
+    init_generator(id)
+end
+
 function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
     RegisterScriptCallback("bullet_on_impact", on_npc_fired)
+    RegisterScriptCallback("actor_on_item_take", on_item_take)
 end
