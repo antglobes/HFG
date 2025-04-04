@@ -1,0 +1,112 @@
+contains = hfg_utils.contains
+
+LANIMS = {
+    halogen_broken = "light_galogen_br_01",
+    halogen_broken_idle = "light_galogen_br_idle",
+    halogen_idle = "light_galogen_idle"
+}
+
+SCRIPT_LIGHT_FIELDS = {
+    "color", 
+    "shadow ",
+    "volumetric",
+    "volumetric_quality", 
+    "volumetric_distance",
+    "volumetric_intensity",
+    "range", 
+    "type", 
+    "lanim", 
+    "hud_mode", 
+    "enabled", 
+}
+
+script_lights = {}
+
+function create_script_light(data)
+    local sl = {}
+    sl.pos = data["pos"]
+    sl.dir = data["dir"]
+
+    sl.light = script_light()
+    sl.light.texture = data["texture"]
+    sl.light.color = data["color"]
+    sl.light.shadow = data["shadow"]
+    sl.light.volumetric = data["volumetric"]
+    sl.light.volumetric_quality = data["volumetric_quality"]
+    sl.light.volumetric_distance = data["volumetric_distance"]
+    sl.light.volumetric_intensity = data["volumetric_intensity"]
+    sl.light.range = data["range"]
+    sl.light.type = data["type"] -- 0 direct 1 point 2 spot 3 omnipart 4 reflected
+    sl.light.lanim = data["lanim"]
+    sl.light.brightness = data["brightness"]
+    sl.light.hud_mode = data["hud_mode"]
+    sl.light.enabled = data["enabled"]
+
+    sl.light:set_position(sl.pos)
+    sl.light:set_direction(sl.dir)
+    return sl
+end
+
+function in_script_lights(id)
+    return contains(script_lights, id, true)
+end
+
+function init_script_light(id, data)
+    if in_script_lights(id) then return end
+    local sl = create_script_light(data)
+    script_lights[id] = sl
+end
+
+function update_script_light(id, data)
+    if in_script_lights(id) then return end
+    for k, v in pairs(data) do
+        if contains(SCRIPT_LIGHT_FIELDS, k) then
+            script_lights[id]["light"][k] = v
+        else
+            script_lights[id][k] = v
+        end
+    end
+end
+
+function remove_script_light(id)
+    if in_script_lights(id) then return end
+    script_lights[id] = nil
+end
+
+function spawn_script_light()
+    local cam_pos = device().cam_pos
+    local cam_dir = device().cam_dir
+    local dist = level.get_target_dist()
+    local spawn_pos = vector():mad(cam_pos, cam_dir,dist)
+    local data = {
+        pos = spawn_pos,
+        dir = vector():set(0, -0.97, 0),
+        texture = "lights_big_beam_03",
+        color = fcolor():set(1, 1, 1, 1),
+        shadow = true,
+        volumetric = false,
+        volumetric_quality = 1,
+        volumetric_distance = dist,
+        volumetric_intensity = 1,
+        range = spawn_pos:distance_to(db.actor:position()),
+        type = 1,
+        lanim = LANIMS["halogen_broken"],
+        brightness = 1,
+        hud_mode = false,
+        enabled = true
+    }
+    init_script_light(#script_lights + 1, data)
+end
+
+function update_sl()
+    for id, sl in pairs(script_lights) do
+        if sl.light.enabled then
+            sl.light:update()
+        end
+    end
+end
+
+AddUniqueCall(update_sl)
+
+-- sl:set_direction(device().cam_dir, device().cam_right)
+-- hi

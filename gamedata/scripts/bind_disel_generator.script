@@ -18,6 +18,7 @@ get_keytable = hfg_utils.get_keytable
 get_hf_item_name = hfg_utils.get_hf_item_name
 get_direction = hfg_utils.get_direction
 AOE = demonized_aoe.AOE
+clamp_rand = hfg_utils.clamp_rand
 
 
 -- Constants
@@ -31,6 +32,12 @@ SWAP_POWER_STATE = {
     on = "off",
     off = "on",
     broken = "broken"
+}
+GENERATOR_BONE_NAMES = {
+    "link", "body", "but_belt", "l_rotor",
+    "r_rotor", "tank", "top_belt", "exhaust",
+    "battery", "wires", "turbine", "engine",
+    "pipes", "fan", "frame-a", "frame-b"
 }
 
 -- Variables
@@ -126,10 +133,11 @@ class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_disel_generator_wrapper:__init(obj) super(obj)
     
     local data = hf_obj_manager.get_data(self.object:id())
-
+   
     -- Object Fields
     self.section = self.object:section()
-    self.condition = contains(data, "condition", true) and data["condition"] or 1
+    self.condition = (contains(data, "condition", true) and data["condition"]) or 1
+    self.damaged_parts = data["damaged_parts"] or {}
     
     -- Object State
     self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
@@ -599,6 +607,7 @@ function placeable_disel_generator_wrapper:save_data()
         time_til_empty       = self.time_til_empty,
         drain_rate           = self.drain_rate,
         update_pd_tmr        = self.update_pd_tmr,
+        damaged_parts        = self.damaged_parts,
     }
     local curr_data = hf_obj_manager.get_data(self.object:id())
     if curr_data and contains(curr_data, "tbl_id", true) then
@@ -636,6 +645,7 @@ function placeable_disel_generator_wrapper:load_data()
     self.time_til_empty       = data["time_til_empty"]
     self.drain_rate           = data["drain_rate"]
     self.update_pd_tmr        = data["update_pd_tmr"]
+    self.damaged_parts        = data["damaged_parts"]
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
 end
 
@@ -707,6 +717,7 @@ function set_cond_on_explode(obj)
         local gen = table.remove(found_objs, i)
         if gen then
             local data = hf_obj_manager.get_data(gen:id())
+            if data["anim_in_progress"] then return end
             local power_state = data["power_state"]
             local cond = data["condition"] or 1
             local hit_damage = ini_sys:r_float_ex(explo_sect, "blast_impulse") / 100
@@ -727,6 +738,7 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
     if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
     local wpn_sect = wpn:section()
     local data = hf_obj_manager.get_data(target:id())
+    if data["anim_in_progress"] then return end
     local power_state = data["power_state"]
     local cond = data["condition"] or 1
     local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
@@ -786,6 +798,159 @@ function ui_furniture_light.toggle_light(obj_id)
     base_toggle_light(obj_id)
 end
 
+function bone_to_part_name(bone_name)
+    local part_name = "hfg_prt_"
+    if contains({"link", "body", "frame-a", "frame-b"}, bone_name) then
+        part_name = part_name .. "frame"
+
+    elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
+        part_name = part_name .. bone_name
+
+    elseif contains({"but_belt", "top_belt"}, bone_name) then
+        part_name = part_name .. "band"
+    end
+    return part_name
+end
+
+base_disassembly_item = item_parts.disassembly_item
+function item_parts.disassembly_item(obj, obj_d)
+    local sect = obj:section()
+    if sect ~= "disel_generator_item" then
+        pr("not diassembleing gen")
+        base_disassembly_item(obj, obj_d)
+        return
+    end
+
+    local data = hf_obj_manager.get_data(obj:id())
+    local damaged_parts = data["damaged_parts"]
+    if is_empty(damaged_parts) then
+        pr("damaged parts is empty")
+        base_disassembly_item(obj, obj_d)
+        return
+    end
+
+    local function disassemble_gen()
+        pr("diassembling: %s", sect)
+        pr("assigning bone damage to part")
+        local parts = itms_manager.ini_parts:r_string_ex("nor_parts_list", sect)
+        if (not parts) then return true end
+        local parts_tbl = str_explode(parts,",")
+        if (game_achievements.has_achievement("recycler")) and (math.random(1,100) <= 33) then
+            table.insert(parts_tbl, parts_tbl[math.random(#parts_tbl)])
+        end
+    
+        local degr_val = GetItemList("disassemble")[obj_d:section()]
+        utils_item.degrade( obj_d , degr_val )
+        utils_item.discharge( obj )
+        game_statistics.increment_statistic("items_disassembled")
+        actor_effects.play_item_fx("disassemble_metal_fast")
+
+        local cond = obj:condition()
+        local broken_parts = {}
+        local created_parts = {}
+        for i=1,#parts_tbl do
+            if ini_sys:section_exist(parts_tbl[i]) then
+                if IsItem("part" ,parts_tbl[i]) and utils_item.is_degradable(nil, parts_tbl[i]) then
+
+                    for bone_name, damage in pairs(damaged_parts) do
+                        local part_name = bone_to_part_name(bone_name)
+                        --pr("part name: %s damage: %s, part: %s", part_name, damage, parts_tbl[i])
+                        if part_name and part_name == parts_tbl[i] then
+
+                            local reduced_con = clamp_rand(1 - damage, 0, cond)
+                            if reduced_con > 0 then
+                                pr("creating damaged part %s with %s cond", parts_tbl[i], reduced_con)
+                                local se_obj = alife_create(parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                                local item_data = utils_stpk.get_item_data(se_obj)
+                                item_data.condition = item_parts.get_suitable_part_con(sect, reduced_con)
+                                utils_stpk.set_item_data(item_data,se_obj)
+                                alife():register(se_obj)
+
+                                created_parts[#created_parts + 1] = part_name
+                            else
+                                pr("%s is broken and will be scrapped", parts_tbl[i])
+                                broken_parts[#broken_parts + 1] = part_name
+                            end
+                        end
+                    end
+
+                    if not contains(created_parts, parts_tbl[i]) and not contains(broken_parts, parts_tbl[i]) then
+                        pr("creating regular part %s with %s cond", parts_tbl[i], cond)
+                        local se_obj = alife_create(parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                        local item_data = utils_stpk.get_item_data(se_obj)
+                        item_data.condition = item_parts.get_suitable_part_con(sect, cond)
+                        utils_stpk.set_item_data(item_data,se_obj)
+                        alife():register(se_obj)
+                        created_parts[#created_parts + 1] = parts_tbl[i]
+                    end
+                end
+            end
+        end
+
+        local name = ui_item.get_sec_name(sect)      
+        local parts_text = "\\n"
+        local given_parts = "fail"
+        if is_empty(created_parts) and is_empty(broken_parts) then
+            parts_text = gts("st_hfg_no_gen_parts")
+
+        else
+            given_parts = "success"
+
+            if is_not_empty(broken_parts) then
+                pr("Scraaping broken parts")
+                local child_broken_parts = {}
+                -- Turn broken parts into their sub parts e.g. tank into rubber and plastic
+                for _, b_prt in pairs(broken_parts) do
+                    local b_parts = itms_manager.ini_parts:r_string_ex("nor_parts_list", b_prt)
+                    if b_parts then
+                        local b_parts_tbl = str_explode(b_parts,",")
+
+                        if (game_achievements.has_achievement("recycler")) and (math.random(1,100) <= 33) then
+                            table.insert(b_parts_tbl, b_parts_tbl[math.random(#b_parts_tbl)])
+                        end
+                        local degr_val = GetItemList("disassemble")[obj_d:section()]
+                        utils_item.degrade( obj_d , degr_val )
+                        game_statistics.increment_statistic("items_disassembled")
+                        actor_effects.play_item_fx("disassemble_metal_fast")
+                
+                        for i=1,#b_parts_tbl do
+                            if ini_sys:section_exist(b_parts_tbl[i]) then
+                                if IsItem("part", b_parts_tbl[i]) then
+                                    pr("broken part: %s", b_parts_tbl[i])
+                                    local bp_se_obj = alife_create(b_parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                                    local bp_item_data = utils_stpk.get_item_data(bp_se_obj)
+                                    bp_item_data.condition = item_parts.get_suitable_part_con(b_parts_tbl[i], cond)
+                                    utils_stpk.set_item_data(bp_item_data, bp_se_obj)
+                                    alife():register(bp_se_obj)
+                                    created_parts[#created_parts + 1] = parts_tbl[i]
+                                else
+                                    alife_create_item(b_parts_tbl[i], db.actor)
+                                end
+                                child_broken_parts[#child_broken_parts + 1] = b_parts_tbl[i]
+                            end
+                        end
+                    end
+
+                    parts_text = parts_text .. item_parts.create_disassemble_list(child_broken_parts) .. "\\n"
+                end
+            
+            if is_not_empty(created_parts) then
+                parts_text = parts_text .. item_parts.create_disassemble_list(created_parts) .. "\\n"
+            end
+
+            end
+        end
+
+        actor_menu.set_item_news(given_parts, "weapon_ammo", "st_dis_text_11", name, gts("st_dis_text_9"), parts_text)
+        pr("parts created")
+        return true
+    end
+    
+    local delay = actor_effects.is_animations_on() and 3 or 0
+    CreateTimeEvent("hfg_time_event","delay_disassembly", delay, disassemble_gen)
+
+end
+
 -- Callbacks
 
 function on_save(mdata)
@@ -825,6 +990,7 @@ function set_cond_on_impact_npc(npc, wpn, target)
     if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
     local wpn_sect = wpn:section()
     local data = hf_obj_manager.get_data(target:id())
+    if data["anim_in_progress"] then return end
     local power_state = data["power_state"]
     local cond = data["condition"] or 1
     local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
@@ -856,10 +1022,68 @@ function on_item_take(obj)
     init_generator(id)
 end
 
+function on_gen_impact(bullet)
+    local bullet_pos = bullet.position
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then return end
+    if target:section() ~= "placeable_disel_generator" then return end
+
+    local closest_bone
+    local closest_dist
+    for _, bone_name in pairs(GENERATOR_BONE_NAMES) do
+        local bone_pos = get_bone_pos(target, bone_name)
+        local dist = bone_pos:distance_to(bullet_pos)
+        if not closest_bone or dist < closest_dist then
+            closest_bone = bone_name
+            closest_dist = dist
+        end
+    end
+
+    if npc:id() == AC_ID then
+        set_cond_on_impact(npc, wpn)
+    else
+        set_cond_on_impact_npc(npc, wpn, target)
+    end
+
+    pr("%s hit gen at %s and %s is the closest bone", sect, vec_to_str(bullet_pos), closest_bone)
+
+    local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1]
+    local data = hf_obj_manager.get_data(target:id())
+    local damaged_parts = data["damaged_parts"]
+
+    if contains(damaged_parts, closest_bone, true) then
+        pr("updating damaged parts")
+        pr("%s", print_table(damaged_parts))
+        for part_name, damage in pairs(damaged_parts) do
+            pr("part name: %s, dmage: %s", part_name, damage)
+            if part_name == closest_bone then
+                pr("part found")
+                local new_damaged = damage + hit_damage
+                pr("new damage: %s", new_damaged)
+                data["damaged_parts"][part_name] = clamp(new_damaged, 0, 1)
+            end
+        end
+    else
+        pr("new damaged part")
+        data["damaged_parts"][closest_bone] = hit_damage
+    end
+
+    hf_obj_manager.update_data(target:id(), data)
+end
+
 function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
     RegisterScriptCallback("bullet_on_impact", on_npc_fired)
+    RegisterScriptCallback("bullet_on_impact", on_gen_impact)
     RegisterScriptCallback("actor_on_item_take", on_item_take)
 end

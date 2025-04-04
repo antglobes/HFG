@@ -231,6 +231,13 @@ function get_direction(pos_1, pos_2)
     return norm_dir
 end
 
+function clamp_rand(val, min, max)
+    if (val < min) or (val > max) then
+        return math.random(min, max)
+    end
+    return val
+end
+
 -- DEBUG print
 
 function print_table(tbl)

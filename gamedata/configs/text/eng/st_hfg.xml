@@ -630,5 +630,8 @@
 		Country of Origin: Unknown\n</text>
 	</string>
 	
+	<string id="st_hfg_no_gen_parts">
+		<text>Generator too broken to scrap for parts</text>
+	</string>
 	
 </string_table>
