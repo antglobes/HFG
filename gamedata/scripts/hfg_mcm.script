@@ -1,0 +1,66 @@
+AddScriptCallback("hfg_on_option_change")
+
+print_table = hfg_utils.print_table
+
+defaults = {
+    max_fuel = 60,
+    max_power_output = 5000,
+    generator_search_radius = 50,
+    generator_broken_cond = 0.1,
+    siphon_activation_range = 3,
+}
+
+function pr(str, ...)
+    hfg_utils.dbg_pr("[HFG|MCM: %s", str, ...)
+end
+
+function get_config(key)
+    if ui_mcm then return ui_mcm.get("hfg/"..key) else return defaults[key] end
+end
+
+function debugging_enabled()
+	return get_config("enable_debug")
+end
+
+function on_mcm_load()
+    return { id="hfg", sh=true, gr={
+        {id="title", type="slide", link="ui_options_slider_player", text="", size={512, 50}, spacing=20},
+        {id="max_fuel", type="track", val=2, min=0, max=100, step=1, def=60},
+        {id="max_power_output", type="track", val=2, min=0, max=100000, step=100, def=5000}, --1
+        {id="generator_search_radius", type="track", val=2, min=0, max=100, step=1, def=50},
+        {id="generator_broken_cond", type="track", val=2, min=0, max=1, step=0.1, def=0.1},
+        {id="siphon_activation_range", type="track", val=2, min=0.5, max=5, step=0.1, def=3},
+        {id="enable_debug", type="check", val=1, def=false},
+        {id="debug_level", type="list", val=0, def="player", precondition={debugging_enabled},
+				content={
+					{"player", "player"},
+					{"dev", "dev"},
+					{"all", "all"}
+				}
+			}
+    }
+}
+end
+
+
+
+function on_option_change()
+    printf("On option Change")
+    pr("Loading Options:")
+    local options = {
+        search_radius = get_config("generator_search_radius"),
+        broken_cond = get_config("generator_broken_cond"),
+        max_fuel = get_config("max_fuel"),
+        max_power_output = get_config("max_power_output"),
+        enable_debug = get_config("enable_debug"),
+        debug_level = get_config("debug_level"),
+        siphon_range = get_config("siphon_activation_range")
+    }
+    SendScriptCallback("hfg_on_option_change", options)
+    pr("%s", print_table(options))
+end
+
+function on_game_start()
+    RegisterScriptCallback("on_option_change", on_option_change)
+    on_option_change()
+end
