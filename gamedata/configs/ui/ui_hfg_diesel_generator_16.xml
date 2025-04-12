@@ -16,31 +16,65 @@
         <text font="letterica25" complex_mode="1" align="c" vert_align="c"/>
     </title>
 
-    <info_box x="0" y="30" width="200" height="200" stretch="1" complex_desc="0">
+    <info_box x="0" y="30" width="200" height="150" stretch="1" complex_desc="0">
         <text font="letterica18" complex_mode="1" align="l" vert_align="c"/>
     </info_box>
 
-    <add_fuel x="5" y="240" width="175" height="25" check_mode="0" stretch="1">
+    <add_fuel x="5" y="180" width="175" height="25" check_mode="0" stretch="1">
         <window_name>button_add_fuel</window_name>
         <text font="letterica18">Add Fuel</text>
         <texture>ui_button_ordinary</texture>
     </add_fuel>
 
-    <take_fuel x="5" y="270" width="175" height="25" check_mode="0" stretch="1">
+    <take_fuel x="5" y="210" width="175" height="25" check_mode="0" stretch="1">
         <window_name>button_take_fuel</window_name>
         <text font="letterica18">Take Fuel</text>
         <texture>ui_button_ordinary</texture>
     </take_fuel>
 
-    <toggle_power x="5" y="300" width="175" height="25" check_mode="0" stretch="1">
+    <toggle_power x="5" y="240" width="175" height="25" check_mode="0" stretch="1">
         <window_name>button_toggle_power</window_name>
         <text font="letterica18">Toggle Power: On</text>
         <texture>ui_button_ordinary</texture>
     </toggle_power>
 
-    <show_devices x="5" y="330" width="175" height="25" check_mode="0" stretch="1">
+    <show_devices x="5" y="270" width="175" height="25" check_mode="0" stretch="1">
         <window_name>button_show_devices</window_name>
         <text font="letterica18">Show Connected Devices</text>
         <texture>ui_button_ordinary</texture>
     </show_devices>
+
+    <show_repair x="5" y="300" width="175" height="25" check_mode="0" stretch="1">
+        <window_name>button_show_repair</window_name>
+        <text font="letterica18">Show Repairable Devices</text>
+        <texture>ui_button_ordinary</texture>
+    </show_repair>
+
+    <!-- Repair Sub UI -->
+    <repair_title x="0" y="5" width="200" height="25" stretch="1" complex_desc="0">
+        <text font="letterica25" complex_mode="1" align="c" vert_align="c"/>
+    </repair_title>
+
+    <repair_list x="0" y="30" width="200" height="260" item_height="80" can_select="1">
+        <font font="letterica16"/>
+    </repair_list>
+
+    <repair_btn x="7" y="310" width="77" height="25" check_mode="0" stretch="1">
+        <window_name>button_repair</window_name>
+        <text font="letterica18">Repair</text>
+        <texture>ui_button_ordinary</texture>
+    </repair_btn>
+
+    <replace_btn x="100" y="310" width="77" height="25" check_mode="0" stretch="1">
+        <window_name>button_replace</window_name>
+        <text font="letterica18">Replace</text>
+        <texture>ui_button_ordinary</texture>
+    </replace_btn>
+
+    <back_btn x="5" y="340" width="175" height="25" check_mode="0" stretch="1">
+        <window_name>button_back</window_name>
+        <text font="letterica18">Back</text>
+        <texture>ui_button_ordinary</texture>
+    </back_btn>
+
 </w>

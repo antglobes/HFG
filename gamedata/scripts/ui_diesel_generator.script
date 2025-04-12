@@ -16,11 +16,17 @@ get_nearest = hfg_utils.get_nearest
 print_table = hfg_utils.print_table
 gray = demonized_geometry_ray.geometry_ray
 get_direction = hfg_utils.get_direction
+lerp_vec_2d = hfg_utils.lerp_vec_2d
+set_debug_level = hfg_utils.set_debug_level
+filter_debug_msg = hfg_utils.filter_debug_msg
+bone_to_part_name = hfg_utils.bone_to_part_name
+itr_inv = hfg_utils.itr_inv
 
 -- Constants
 MAX_FUEL = 60
 MAX_POWER_OUTPUT = 5000
 SEARCH_RADIUS = 50
+MIN_PART_FUNC_COND = 0.4
 UI_GRAY_1 = utils_xml.get_color("ui_gray_1")
 RED_CLR    = {255, 255, 19, 18}
 ORANGE_CLR = {255, 255, 77, 18}
@@ -30,6 +36,8 @@ GREEN_CLR  = {255, 64, 253, 40}
 -- Variables
 GUI = nil
 local clr_cache = {}
+local dbg_lvl = "dev"
+local mouse_cache = {}
 
 -- Tables
 SWAP_POWER_STATE = {
@@ -44,9 +52,18 @@ CONDITION_CLR = {
     [75]  = YELLOW_CLR,
     [100] = GREEN_CLR,
 }
-
+HUDS = {
+    show_devices = UIPowerableDevices
+}
+BTN_TEXT = {
+    show_devices = {
+        show = "Hide Powerable Devices",
+        hide = "Show Connected Devices"
+    }
+}
 -- DEBUGGING
 function pr(str, ...)
+    if not filter_debug_msg(dbg_lvl) then return end
     hfg_utils.dbg_pr("[HFG|Diesel Gen UI]: %s", str, ...)
 end
 
@@ -54,9 +71,9 @@ function change_alpha(clr, a)
     if not clr and a ~= nil then return end
 
     if not clr_cache[clr .. "_" .. a] then
-        b = bit.band(clr, 255)
-        g = bit.band(bit.rshift(clr, 8), 255)
-        r = bit.band(bit.rshift(clr, 16), 255)
+        local b = bit.band(clr, 255)
+        local g = bit.band(bit.rshift(clr, 8), 255)
+        local r = bit.band(bit.rshift(clr, 16), 255)
         clr_cache[clr .. "_" .. a] = GetARGB(a, r, g, b)
     end
 
@@ -71,6 +88,7 @@ function get_condition_clr(condition, as_table)
         end
     end
 end
+
 function disp_time(time)
     local days = math.floor(time/86400)
     local hours = math.floor(math.fmod(time, 86400)/3600)
@@ -99,7 +117,7 @@ function build_gen_info(data)
     local cond_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Condition: "         .. strformat("%s", get_condition_clr(cond))       .. strformat("%s%", round_idp(cond*100, 2))
     local fuel_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Fuel Stored: "       .. strformat("%s", get_condition_clr(fuel_cond))  .. strformat("%sL", round_idp(stored_fuel, 2))
     local time_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Time Til Empty: "    .. strformat("%s", get_condition_clr(time_cond))  .. strformat("%s days %shrs %sm %ss", D, h, m, s)
-    local power_str  = UI_GRAY_1 .. gts("st_bullet_point") .. " Power Output: "      .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%sv", power_output)
+    local power_str  = UI_GRAY_1 .. gts("st_bullet_point") .. " Power Output: "      .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%sv", round_idp(power_output, 2))
     local device_str = UI_GRAY_1 .. gts("st_bullet_point") .. " Connected Devices: " .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%s", connected_devices)
 
     local info_str = strformat("%s\\n%s\\n%s\\n%s\\n%s\\n", cond_str, fuel_str, time_str, power_str, device_str)
@@ -141,35 +159,127 @@ function UIDieselGenerator:InitControls()
     self.take_fuel_btn     = self.xml:Init3tButton("take_fuel", self.frame)
     self.toggle_power_btn  = self.xml:Init3tButton("toggle_power", self.frame)
     self.show_devices_btn  = self.xml:Init3tButton("show_devices", self.frame)
+    self.show_repair_btn   = self.xml:Init3tButton("show_repair", self.frame)
 
     self:Register(self.add_fuel_btn, "add_fuel_btn")
     self:Register(self.take_fuel_btn, "take_fuel_btn")
     self:Register(self.toggle_power_btn, "toggle_power_btn")
     self:Register(self.show_devices_btn, "show_devices_btn")
+    self:Register(self.show_repair_btn, "show_repair_btn")
 
     local bg_clr = self.bg:GetTextureColor()
     self.bg:SetTextureColor(change_alpha(bg_clr, 100))
-
     self.title:SetText("Diesel Generator Info:")
+
+    -- Repair UI
+    self.repair_frame      = self.xml:InitFrame("frame", self.dialog)
+    self.repair_title      = self.xml:InitTextWnd("repair_title", self.repair_frame)
+    self.repair_list       = self.xml:InitListBox("repair_list", self.repair_frame)
+    self.repair_btn        = self.xml:Init3tButton("repair_btn", self.repair_frame)
+    self.replace_btn       = self.xml:Init3tButton("replace_btn", self.repair_frame)
+    self.back_btn          = self.xml:Init3tButton("back_btn", self.repair_frame)
+
+    self:Register(self.repair_list, "repair_list")
+    self:Register(self.repair_btn, "repair_btn")
+    self:Register(self.replace_btn, "replace_btn")
+    self:Register(self.back_btn, "back_btn")
+
+    self.repair_title:SetText("Part Info")
+    self.repair_frame:Show(false)
 end
 
 function UIDieselGenerator:InitCallbacks()
-self:AddCallback("add_fuel_btn", ui_events.BUTTON_CLICKED, self.AddFuel, self)
-self:AddCallback("take_fuel_btn", ui_events.BUTTON_CLICKED, self.TakeFuel, self)
-self:AddCallback("toggle_power_btn", ui_events.BUTTON_CLICKED, self.TogglePower, self)
-self:AddCallback("show_devices_btn", ui_events.BUTTON_CLICKED, self.ShowDevices, self)
+    self:AddCallback("add_fuel_btn", ui_events.BUTTON_CLICKED, self.AddFuel, self)
+    self:AddCallback("take_fuel_btn", ui_events.BUTTON_CLICKED, self.TakeFuel, self)
+    self:AddCallback("toggle_power_btn", ui_events.BUTTON_CLICKED, self.TogglePower, self)
+    self:AddCallback("show_devices_btn", ui_events.BUTTON_CLICKED, self.ShowDevices, self)
+    self:AddCallback("show_repair_btn", ui_events.BUTTON_CLICKED, self.ShowRepair, self)
+    -- Repair UI
+    self:AddCallback("repair_list", ui_events.LIST_ITEM_CLICKED, self.RepairList, self)
+    self:AddCallback("repair_btn", ui_events.BUTTON_CLICKED, self.RepairBtn, self)
+    self:AddCallback("replace_btn", ui_events.BUTTON_CLICKED, self.ReplaceBtn, self)
+    self:AddCallback("back_btn", ui_events.BUTTON_CLICKED, self.BackBtn, self)
 end
+
+function UIDieselGenerator:LoadPartInfo()
+    pr("on load part info")
+    self.repair_list:RemoveAll()
+    local obj = get_unknown_object({id=self.gen_id}, "game")
+    local bones = obj and obj:list_bones()
+    --pr("gen bones: %s", print_table(bones))
+    --pr("bone num: %s", size_table(bones))
+    for i=0, size_table(bones) - 1 do
+        if not contains({"link", "frame-a", "frame-b", "but_belt"}, bones[i]) then
+            local part_info = self:GetPartInfo(i, bones[i])
+            local item = repair_item(i, part_info) 
+            self.repair_list:AddExistingItem(item)
+        end
+    end
+end
+
+function UIDieselGenerator:GetPartInfo(b_id, b_name)
+    -- pr("Getting part info for: %s %s", b_id, b_name)
+    local damaged_parts = hf_obj_manager.get_data(self.gen_id).damaged_parts
+    local is_damaged = contains(damaged_parts, b_name, true)
+    local cond = 1
+    local band_bones = {"but_belt", "top_belt"}
+    local frame_bones = {"link", "body", "frame-a", "frame-b"}
+    if contains(frame_bones, b_name) then
+        for _, bone_name in pairs(frame_bones) do
+            if contains(damaged_parts, bone_name, true) then
+                cond = cond + (1 - damaged_parts[bone_name]) / #frame_bones
+            else
+                cond = cond + 1 /#frame_bones
+            end
+        end
+        cond = cond / 2
+    elseif contains(band_bones, b_name) then
+        for _, bone_name in pairs(band_bones) do
+            if contains(damaged_parts, bone_name, true) then
+                cond = cond + (1 - damaged_parts[bone_name]) / #band_bones
+            else
+                cond = cond + 1 /#band_bones
+            end
+        end 
+        cond = cond / 2   
+    else
+        cond = is_damaged and 1 - damaged_parts[b_name] or cond
+    end
+
+    --    cond = clamp(cond, 0, hf_obj_manager.get_data(self.gen_id).condition)
+    cond = (cond >= 0 and cond <= 1) and cond or 0
+    local part_name = bone_to_part_name(b_name)
+    local comps = itms_manager.ini_parts:r_string_ex("nor_parts_list", part_name)
+    local comp_tbl = comps and str_explode(comps, ",") or {}
+
+    local info = {
+        bone_id = b_id,
+        bone_name = b_name,
+        part_name = part_name,
+        condition = cond,
+        repairable = cond >= 0.25,
+        functional = cond >= MIN_PART_FUNC_COND,
+        components = comp_tbl
+    }
+    --pr("info tabl: %s", print_table(info))
+    return info
+end
+
 
 function UIDieselGenerator:Reset(obj_id)
     self.gen_id = obj_id
     self.screen_id = 1
     self.screens = {
-        [1] = "info"
+        [1] = "info",
+        [2] = "repair"
     }
     self.show_devices = false
+    self.show_repair = false
+    self.repair_list:RemoveAll()
 end
 
 function UIDieselGenerator:Close()
+    set_debug_level("all")
     pr("on close")
     if (self:IsShown()) then
 		self:HideDialog()
@@ -187,12 +297,39 @@ function UIDieselGenerator:Update()
     local tg = time_global()
     --pr("Showing screen: %s", active_screen)
     if active_screen == "info" then
+        if not self.frame:IsShown() then
+            self.frame:Show(true)
+        end
+        self.repair_frame:Show(false)
+
         local gen_info = build_gen_info(data)
         self.info_box:SetText(gen_info)
+
+    elseif active_screen == "repair" then
+        if self.frame:IsShown() then
+            self.frame:Show(false)
+        end
+        self.repair_frame:Show(true)
+
+        self:UpdatePartInfo()
     end 
     
     if self.show_devices then
         update_marker_hud(self.gen_id)
+    end
+end
+
+function UIDieselGenerator:UpdatePartInfo()
+    if self.repair_list:GetSize() == 0 then return end
+    -- pr("updating part info")
+    -- pr("repair list size: %s", self.repair_list:GetSize())
+    for i=0, self.repair_list:GetSize() - 1 do
+        local itm = self.repair_list:GetItemByIndex(i)
+        local old_part_info = itm["part_info"]
+        local part_info = self:GetPartInfo(old_part_info["bone_id"], old_part_info["bone_name"])
+        itm.condition:SetText(strformat("Condition: %s%", round_idp(part_info["condition"] * 100, 2)))
+        itm.repairable:SetText(strformat("Repairable: %s", part_info["repairable"] and "Yes" or "No"))
+        itm.functional:SetText(strformat("Functional: %s", part_info["functional"] and "Yes" or "No"))
     end
 end
 
@@ -227,6 +364,7 @@ function UIDieselGenerator:TogglePower()
 end
 
 function UIDieselGenerator:AddFuel()
+    set_debug_level("all")
     local found_jerrycans = find_inv_item("jerrycan")
     for idx, obj in pairs(found_jerrycans) do
         local sect = obj:section()
@@ -238,6 +376,7 @@ function UIDieselGenerator:AddFuel()
 end
 
 function UIDieselGenerator:TakeFuel()
+    set_debug_level("all")
     local found_jerrycans = find_inv_item("jerrycan")
     for idx, obj in pairs(found_jerrycans) do
         pr("Taking fuel")
@@ -245,38 +384,199 @@ function UIDieselGenerator:TakeFuel()
     end
 end
 
+function UIDieselGenerator:ToggleMarkerHud(marker_type)
+    if not contains(marker_huds, self.gen_id) then
+        init_marker_hud(self.gen_id, HUDS[marker_type])
+    end
+
+    if not self[marker_type] then
+        show_marker_hud(self.gen_id)
+        self[marker_type] = true
+        self[marker_type .. "btn"]:TextControl():SetText(BTN_TEXT[marker_type]["show"])
+    else
+        hide_marker_hud(self.gen_id, true)
+        self[marker_type] = false
+        self[marker_type .. "btn"]:TextControl():SetText(BTN_TEXT[marker_type]["hide"])
+    end
+end
+
 function UIDieselGenerator:ShowDevices()
+    set_debug_level("dev")
     pr("on show devices")
     local data = hf_obj_manager.get_data(self.gen_id)
     if size_table(data["powerable_devices"]) == 0 then return end
-    
     pr("show devices hud?: %s", self.show_devices)
-    if not contains(marker_huds, self.gen_id) then
-        init_marker_hud(self.gen_id)
+    self:ToggleMarkerHud("show_devices")
+end
+
+function UIDieselGenerator:ShowRepair()
+    self.screen_id = 2
+    self:LoadPartInfo()
+end
+
+function UIDieselGenerator:BackBtn()
+    self.screen_id = 1
+end
+
+function UIDieselGenerator:RepairBtn()
+    local item = self.repair_list:GetSelectedItem()
+    if not item then return end
+
+    local repair_type = ini_sys:r_string_ex(item["part_name"], "repair_type")
+    local ini_repair = ini_file_ex("items\\items\\items_repair.ltx")
+    local repair_kit
+    local best_support_item
+
+    local found_repair_kits = {}
+    local found_support_items = {}
+    itr_inv(db.actor, function(_, obj)
+        local sect = obj:section()
+        if ini_repair:section_exist(sect) and repair_type == ini_repair:r_string_ex(sect, "repair_only") then
+            found_repair_kits[#found_repair_kits + 1] = obj
+        elseif ini_sys:r_string_ex(sect, "repair_part_bonus") ~= nil then
+            found_support_items[#found_support_items + 1] = obj
+        end
+    end)
+
+    repair_kit = found_repair_kits[#found_repair_kits]
+    if is_not_empty(found_support_items) then
+        local highest_bonus
+        for idx, obj in pairs(found_support_items) do
+            local bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus")
+            if not highest_bonus or bonus > highest_bonus then
+                best_support_item = obj
+                highest_bonus = bonus
+            end
+        end
     end
 
-    if not self.show_devices then
-        show_marker_hud(self.gen_id)
-        self.show_devices = true
-        self.show_devices_btn:TextControl():SetText("Hide Powerable Devices")
-    else
-        hide_marker_hud(self.gen_id, true)
-        self.show_devices = false
-        self.show_devices_btn:TextControl():SetText("Show Connected Devices")
+    local part_cond = item["condition"]
+    local support_item_cond = best_support_item:condition() or ini_sys:r_float_ex(best_support_item:section(),"repair_part_bonus") or ini_sys:r_float_ex(repair_kit:section(),"repair_part_bonus")
+    local add_cond = ini_sys:r_float_ex(repair_kit:section(), "repair_add_condition") or 0
+    local total_cond = part_cond + support_item_cond + add_cond
+    item:set_condition(clamp(total_cond, 0, 100) / 100)
+    
+    if best_support_item then
+        utils_item.discharge(best_support_item)
     end
+
+    if IsItem("multiuse", nil, repair_kit) then
+		utils_item.discharge(repair_kit) 
+	else
+		utils_item.degrade(repair_kit, 0.2)
+	end
+	
+    actor_effects.play_item_fx(repair_kit:section() .. "_dummy")
+    game_statistics.increment_statistic("self_repairs")
 end
+
+function UIDieselGenerator:ReplaceBtn()
+    pr("on replace")
+    local item = self.repair_list:GetSelectedItem()
+    if not item then return end
+    local replacements = {}
+    local part_info = item["part_info"]
+    itr_inv(db.actor, function(_, obj)
+        local sect = obj:section()
+        if sect == part_info["part_name"] then
+            replacements[obj:id()] = obj:condition() or 1
+        end
+    end)
+    
+
+    if is_empty(replacements) then
+        pr("%s not found in inv", part_info["part_name"])
+        return 
+    end
+
+    local replace_id
+    local highest_cond
+    for id, condition in pairs(replacements) do
+        if not highest_cond or highest_cond < condition then
+            highest_cond = condition
+            replace_id = id
+        end
+    end
+
+    if highest_cond <= part_info["condition"] then
+        pr("%s is higher than found part", part_info["part_name"])
+        return
+    end
+
+    alife_release(alife_object(replace_id))
+    pr("replacing %s condition: %s to be %s", part_info["part_name"], part_info["condition"], highest_cond)
+    local data = hf_obj_manager.get_data(self.gen_id)
+    data["damaged_parts"][part_info["bone_name"]] = highest_cond
+    hf_obj_manager.update_data(self.gen_id, data)
+
+    self:LoadPartInfo()
+end
+-- ---------------------------------------------------------------------------
+
+class "repair_item" (CUIListBoxItem)
+function repair_item:__init(idx, part_info) super(idx, part_info)
+    pr("init repair item")
+    self.idx = idx
+    self.part_info = part_info
+
+    self:SetWndSize(vector2():set(200, 70))
+    local width = self:GetWidth()
+    local height = self:GetHeight()
+    self:GetTextItem():SetText("")
+
+    local icon_w = 50
+    local icon_h = icon_w
+    self.icon = self:AddIconField(1)
+    --pr("ui_" .. part_info["part_name"])
+    self.icon:InitTexture("ui_" .. part_info["part_name"])
+    self.icon:SetStretchTexture(true)
+    self.icon:SetWndPos(vector2():set(width / 2 - icon_w / 2, (height / 2 - icon_h / 2) + 10))
+    self.icon:SetWndSize(vector2():set(icon_w, icon_h))
+    local icon_clr = self.icon:GetTextureColor()
+    self.icon:SetTextureColor(change_alpha(icon_clr, 200))
+
+    self.part_name = self:AddTextField(gts(ini_sys:r_string_ex(part_info["part_name"], "inv_name")), 1)
+    self.part_name:SetTextAlignment(CGameFont.alCenter)
+    local part_name_len = #part_info["part_name"]
+    local part_w = part_name_len % 2 == 0 and part_name_len or part_name_len - 1
+    local part_h = 10
+    self.part_name:SetWndPos(vector2():set(0, 10))
+    self.part_name:SetWndSize(vector2():set(width, part_h))
+
+    self.condition = self:AddTextField(strformat("Condition: %s%", round_idp(part_info["condition"] * 100, 2)), 1)
+    self.condition:SetTextAlignment(CGameFont.alleft)
+    self.condition:SetWndPos(vector2():set(0, 25))
+    self.condition:SetWndSize(vector2():set(width, part_h))
+
+    local repairable = part_info["repairable"]
+    self.repairable = self:AddTextField(strformat("Repairable: %s", repairable and "Yes" or "No"), 1)
+    self.repairable:SetTextAlignment(CGameFont.alLeft)
+    self.repairable:SetWndPos(vector2():set(0, 40))
+    self.repairable:SetWndSize(vector2():set(width, part_h))
+
+    local functional = part_info["functional"]
+    self.functional = self:AddTextField(strformat("Functional: %s", functional and "Yes" or "No"), 1)
+    self.functional:SetTextAlignment(CGameFont.alLeft)
+    self.functional:SetWndPos(vector2():set(0, 55))
+    self.functional:SetWndSize(vector2():set(width, part_h))
+end
+
+function repair_item:__finalize()
+end
+
+-- ============================================================================
 
 -- Marker Huds
 marker_huds = {}
-function init_marker_hud(gen_id)
-    if not contains(marker_huds, gen_id, true) then
-        marker_huds[gen_id] = UIPowerableDevices(gen_id)
+function init_marker_hud(id, hud)
+    if not contains(marker_huds, id, true) then
+        marker_huds[id] = hud(id)
     end
 end
 
-function show_marker_hud(gen_id)
-    if not contains(marker_huds, gen_id, true) then return end
-    get_hud():AddDialogToRender(marker_huds[gen_id])
+function show_marker_hud(id)
+    if not contains(marker_huds, id, true) then return end
+    get_hud():AddDialogToRender(marker_huds[id])
 end
 
 function hide_marker_hud(gen_id, remove)
@@ -406,6 +706,8 @@ function UIPowerableDevices:UpdateMarkers()
         if obj then
             local pos = vector():set(obj:position()):add(vector():set(0, 0, 0))
             local vec = game.world2ui(pos, false, false)
+            local old_vec = self.markers[id]:GetWndPos()
+            vec = lerp_vec_2d(old_vec, vec, device().f_time_delta * 10)
             if self:ScreenPosValid(vec) then
                 self.markers[id]:SetWndPos(vec)
                 self.markers[id]:Show(true)
@@ -417,6 +719,7 @@ function UIPowerableDevices:UpdateMarkers()
 end
 
 function UIPowerableDevices:ValidateDevice(obj)
+    set_debug_level("all")
     if not obj then
         return false
     end
@@ -517,8 +820,27 @@ function UIPowerableDevices:ApplyScreenRatio(ele)
 	end
 end
 
+function on_option_change(options)
+    --pr("Received options: %s", print_table(options))
+    SEARCH_RADIUS = options["search_radius"]
+    MAX_FUEL = options["max_fuel"]
+    MAX_POWER_OUTPUT = options["max_power_output"]
+    BROKEN_COND = options["broken_cond"]
+end
+
+function cache_mouse(x, y, disabled, flags)
+    mouse_cache = {
+        x = x,
+        y = y,
+        disabled = disabled,
+        override = flags.ret_value
+    }
+end
+
 function on_game_start()
 	RegisterScriptCallback("GUI_on_show",on_ui)
 	RegisterScriptCallback("GUI_on_hide",on_ui)
     RegisterScriptCallback("actor_on_net_destroy", remove_all_marker_huds)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("on_before_mouse_move", cache_mouse)
 end

@@ -1,3 +1,10 @@
+--[[
+    Last Edited: 08/04/25
+    Author: antglobes
+    Purpose: Utiliy Functions (Commonly used functions in codebase)
+--]]
+
+
 dbg_lvl = "dev"
 
 function split(str, sep)
@@ -169,6 +176,20 @@ function find_inv_item(key)
     return tmp
 end
 
+function bone_to_part_name(bone_name)
+    local part_name = "hfg_prt_"
+    if contains({"link", "body", "frame-a", "frame-b"}, bone_name) then
+        part_name = part_name .. "frame"
+
+    elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
+        part_name = part_name .. bone_name
+
+    elseif contains({"but_belt", "top_belt"}, bone_name) then
+        part_name = part_name .. "band"
+    end
+    return part_name
+end
+
 function get_nearest(tbl, pos)
     local closest_idx
     local closest_dist
@@ -231,11 +252,282 @@ function get_direction(pos_1, pos_2)
     return norm_dir
 end
 
+function lerp(a, b, f)
+	return (1 - f) * a + (f * b)
+end
+
+function lerp_vec(a, b, f)
+    local x = lerp(a.x, b.x, f)
+    local y = lerp(a.y, b.y, f)
+    local z = lerp(a.z, b.z, f)
+    return vector():set(x, y, z)
+end
+
+function lerp_vec_2d(a, b, f)
+    local x = lerp(a.x, b.x, f)
+    local y = lerp(a.y, b.y, f)
+    return vector2():set(x, y)
+end
+
+function vec2_similar(a, b, eps)
+    eps = eps or 0.01
+    return math.abs(a.x - b.x) < eps and math.abs(a.y - b.y)
+end
+
+
 function clamp_rand(val, min, max)
     if (val < min) or (val > max) then
         return math.random(min, max)
     end
     return val
+end
+
+
+function valid_screen_pos(pos)
+	return (pos.x ~= -9999) and (pos.y ~= 0) and (pos.x <= 1024) and (pos.y <= 768)
+end
+
+-- demonized aoe
+function volumetric_check(obj, dist_sqrt)
+    local ray_pos = vector():set(obj:position()):add(vector():set(0, 0.4, 0))
+    local ray_dir = IsStalker(obj) and vector():set(utils_obj.safe_bone_pos(obj, "bip01_spine") or obj:position():add(vector():set(0, 0.4, 0))):sub(ray_pos):normalize()
+    local ray = demonized_geometry_ray.geometry_ray({
+        ray_range = dist_sqrt,
+    })
+    local res = ray:get(ray_pos, ray_dir)
+    if not demonized_geometry_ray.similar(res.distance, dist_sqrt, 0.01) then
+        return false
+    end
+    return true
+end
+-- test_funcs.is_object_visible()
+function is_object_visible(id)
+    local visible = false
+    local obj = get_unknown_object({id=id}, "game")
+    if obj then
+        printf("object found")
+        local max_dist = ui_options.get("video/advanced/optimize_dynamic_geom") * 100
+        local dist_to_actor = distance_between(db.actor, obj)
+
+        if dist_to_actor < max_dist then
+            printf("object within distance")
+            local pos = vector():set(obj:position()):add(vector():set(0, 0, 0))
+            local vec = game.world2ui(pos, false, false)
+
+            if valid_screen_pos(vec) then
+                printf("valid screen pos")
+                visible = volumetric_check(obj, math.sqrt(dist_to_actor))
+                printf("checked if behind wall")
+            else
+                printf("invalid screen pos")
+            end
+        else
+            printf("out of distance")
+        end
+    else
+        printf("obj not found")
+    end
+    printf("Is %s visible: %s?", id, visible)
+    return visible
+end
+
+
+function get_bone_pos(obj, bone_name)    
+    --  local bid = obj:get_bone_id(bone_name)
+    --  local bpos = obj:bone_position(bid)
+    --  return bpos
+    return utils_obj.safe_bone_pos(obj, bone_name)
+end
+
+function table_extend(a, b)
+    -- if is_empty(b) return a end
+     for i=1, #b do
+         a[#a + 1] = b[i]
+      end
+     return a
+ end
+
+--[[
+bullet_info = {
+    wpn_id    = bullet.weapon_id,
+    p_id      = bullet.parent_id,
+    t_id      = bullet.target_id,
+    pos       = bullet.position,
+    ammo_sect = bullet.section,
+    speed     = bullet.speed,
+
+}
+]]
+
+-- Group Bones for actor/npc
+
+bone_groups = {
+    outfit_no_helmet = {
+        "bip01_pelvis",     "bip01_spine",      "bip01_spine1",     "bip01_spine2",     "bip01_l_clavicle",
+        "bip01_l_upperarm", "bip01_l_forearm",  "bip01_l_hand",     "bip01_l_finger0",
+        "bip01_l_finger01", "bip01_l_finger02", "bip01_l_finger1",  "bip01_l_finger11",
+        "bip01_l_finger12", "bip01_l_finger2",  "bip01_l_finger21", "bip01_l_finger22",
+        "bip01_r_clavicle", "bip01_r_upperarm", "bip01_r_forearm",  "bip01_r_hand",
+        "bip01_r_finger0",  "bip01_r_finger01", "bip01_r_finger02", "bip01_r_finger1",
+        "bip01_r_finger11",  "bip01_r_finger12", "bip01_r_finger2",  "bip01_r_finger21",
+        "bip01_r_finger22",  "bip01_l_thigh",    "bip01_l_calf",     "bip01_l_foot",    
+        "bip01_l_toe0",      "bip01_r_thigh",    "bip01_r_calf",     "bip01_r_foot",   "bip01_r_toe0",   
+    },
+    helmet = {
+        "bip01_neck", "bip01_head", "eyelid_1", "eye_left", "eye_right", "jaw_1"
+    }
+}
+bone_groups["outfit_attached_helmet"] = table_extend(bone_groups["outfit_no_helmet"], bone_groups["helmet"])
+
+---Author: Antglobes
+---Orginal Formula: Balathruin
+---Sourced: https://pastebin.com/raw/spv4YzaZ 
+function calc_hit_damage(bullet_info)
+    pr("Calculating hit damage")
+    local npc = get_unknown_object({id=bullet_info.p_id}, "game")
+    local wpn = get_unknown_object({id=bullet_info.wpn_id}, "game")
+    local target = get_unknown_object({id=bullet_info.t_id}, "game")
+    if not (npc and wpn and target) then return end
+    pr("bullet info: %s", print_table(bullet_info))
+    local ini_damages = ini_file_ex("creatures\\damages.ltx")
+    local ammo_sect = bullet_info.ammo_sect
+    local wpn_sect = wpn:section()
+    pr("Getting ap values: using %s %s", ammo_sect, wpn_sect)
+    local k_ap = ini_sys:r_float_ex(ammo_sect, "k_ap")
+
+    local ap_modifier = ini_sys:r_float_ex(wpn_sect, "ap_modifier") or 0
+    local AP = k_ap * ap_modifier
+    pr("getting closest bone to impact pos")
+    local bullet_pos = bullet_info.pos
+    local closest_bone
+    local closest_dist
+    for bone_id, bone_name in pairs(target:list_bones()) do
+        local bone_pos = get_bone_pos(target, bone_name)
+        local dist = bone_pos:distance_to(bullet_pos)
+        if not closest_bone or dist < closest_dist then
+            closest_bone = {id=bone_id, name=bone_name}
+            closest_dist = dist
+        end
+    end
+
+    local BoneArmor = 0 -- 1
+    local ap_scale = 0  -- 2
+    local hit_fraction = 0  -- 3
+    local hit_scale = 0  -- 4
+    pr("Getting weapon values")
+    local hit_power = parse_list(ini_sys, wpn_sect, "hit_power")[1]
+    local k_hit = ini_sys:r_float_ex(ammo_sect, "k_hit")
+    local bullet_hit_power_k = 0
+
+    if utils_item.has_attached_silencer(wpn) then
+        local silencer_sect = utils_item.get_param(wpn_sect, wpn:id(), "silencer_name", "string")
+        bullet_hit_power_k = ini_sys:r_float_ex(silencer_sect, "bullet_hit_power_k")
+    end
+
+    local HitPower = hit_power * k_hit * bullet_hit_power_k
+    local muzzle_velocity = ini_sys:r_float_ex(wpn_sect, "bullet_speed")
+    local impact_velocity = bullet_info["speed"]
+    local scale_factor = impact_velocity / muzzle_velocity
+
+    local visual = npc:get_visual_name()
+    pr("gettng target values")
+    if target:id() == AC_ID then
+        pr("for actor")
+        -- Check if armour is covering the hit bone
+        local outfit = db.actor:get_current_outfit()
+        local helmet = db.actor:item_in_slot(12)
+
+        hit_scale = parse_list(ini_sys, "actor_damage", closest_bone.name)[1]
+
+        if not outfit or not helmet then -- Assume actor is not wearing armor
+            BoneArmor = parse_list(ini_sys, "actor_damage", closest_bone.name)[2]
+            ap_scale = ini_sys:r_float_ex("actor_armor_novice", "ap_scale")
+            hit_fraction = ini_damages:r_float_ex("stalker_hero_1", "hit_fraction_npc")
+        else
+            local outfit_type = ini_sys:r_bool_ex(outfit:section(), "helmet_available", false) and  "outfit_no_helmet" or "outfit_attached_helmet"
+            if outfit_type == "outfit_no_helmet" then -- 
+        
+                if contains(bone_groups[outfit_type], closest_bone.name) then -- If actor was hit somewhere the outfit covers
+                    BoneArmor = outfit:GetBoneArmor(closest_bone.id)
+                    local aps_sect_outfit = ini_sys:r_float_ex(outfit:section(), "bones_koeff_protection")
+                    ap_scale = ini_damages:r_float_ex(aps_sect_outfit, "ap_scale")
+                    hit_fraction = ini_sys:r_float_ex(outfit:section(), "hit_fraction_actor")
+
+                elseif contains(bone_groups["helmet"], closest_bone.name) then 
+                    BoneArmor = helmet:GetBoneArmor(closest_bone.id)
+                    local aps_sect_helmet = ini_sys:r_float_ex(helmet:section(), "bones_koeff_protection")
+                    ap_scale = ini_damages:r_float_ex(aps_sect_helmet, "ap_scale")
+                    hit_fraction = ni_sys:r_float_ex(helmet:section(), "hit_fraction_actor")
+                end
+
+            elseif outfit_type == "outfit_attached_helmet" then
+                if contains(bone_groups[outfit_type], closest_bone.name) then -- If actor was hit somewhere the outfit covers
+                    BoneArmor = outfit:GetBoneArmor(closest_bone.id)
+                    local aps_sect_outfit = ini_sys:r_float_ex(outfit:section(), "bones_koeff_protection")
+                    ap_scale = ini_damages:r_float_ex(aps_sect_outfit, "ap_scale")
+                    hit_fraction = ini_sys:r_float_ex(outfit:section(), "hit_fraction_actor")
+                end
+            end
+        end
+
+    elseif IsMonster(target) then
+        pr("for mutant")
+        local name = ini_sys:r_string_ex(npc:section(), "species")
+        local dmg_sects = {strformat("m_%s_damage", name), strformat("m_%s_damage", capitalise(name))}
+        for _, dmg_sect in pairs(dmg_sects) do
+            if ini_sys:section_exist(dmg_sect) then
+                local dmg_str = ini_sys:r_string_ex(dmg_sect, closest_bone.name)
+                hit_scale = str_explode(dmg_str, ",")[1]
+            end
+        end
+        BoneArmor = ini_sys:r_float_ex(name .. "_protections", "skin_armor")
+        hit_fraction = ini_sys:r_float_ex(name .. "_protections", "hit_fraction_monster")
+
+    elseif IsStalker(target) then
+        pr("for npc stalker")
+        local visual_data = game.get_visual_userdata(visual)
+        local damages_sect = visual_data:r_string_ex("bone_protection", "bones_protection_sect")
+    
+        hit_fraction = ini_damages:r_float_ex(damages_sect, "hit_fraction_npc")
+        ap_scale = ini_damages:r_float_ex(damages_sect, "ap_scale") or 0
+        local dmg_list = parse_list(ini_sys, "stalker_damage", closest_bone.name)        
+        hit_scale = dmg_list[1]
+        BoneArmor = dmg_list[2]
+    end
+
+    --BoneArmor = clamp(BoneArmor, 0, 1) -- 1
+    --ap_scale = clamp(ap_scale, 0, 1) -- 2
+    --hit_fraction = clamp(hit_fraction, 0, 1) -- 3
+    --hit_scale = clamp(hit_scale, 0, 1) -- 4
+    pr("calculation values: %s", print_table({
+        k_ap = k_ap,
+        ap_modifier = ap_modifier,
+        ap = AP,
+        wpn_hit_power = hit_power,
+        ammo_hit_power = k_hit,
+        suppress_hit_power = bullet_hit_power_k,
+        base_hit_power = HitPower,
+        muzzle_velocity = muzzle_velocity,
+        impact_velocity = impact_velocity,
+        scale_factor = scale_factor,
+        bone_armour = BoneArmor,
+        ap_scale = ap_scale,
+        hit_fraction = hit_fraction,
+        hit_scale = hit_scale
+    }))
+    local d_hit_power = 0
+    if IsMonster(target) then
+        d_hit_power = (AP - BoneArmor) / AP
+    else
+        d_hit_power = (AP - BoneArmor) / (AP * ap_scale)
+       
+    end
+    d_hit_power = clamp(d_hit_power, hit_fraction, 1)
+    pr("clamped d_hit power: %s", d_hit_power)
+    HitPower = HitPower * d_hit_power * hit_scale
+    pr("base calc hit power: %s", HitPower)
+   
+    return HitPower > 0 and HitPower or 0
 end
 
 -- DEBUG print
@@ -245,11 +537,14 @@ function print_table(tbl)
     return utils_data.print_table(tbl, nil, true)
 end
 
+function get_config(key)
+    return hfg_mcm.get_config(key)
+end
 
 function dbg_pr(header, str, ...)
-    --if get_config("enable_debug") then
-    printf(header, strformat(str, ...))
-    --end
+    if get_config("enable_debug") then
+        printf(header, strformat(str, ...))
+    end
 end
 
 function pr(str, ...)
@@ -259,15 +554,15 @@ end
 
 
 function mcm_debug_level()
-	return DEV_DEBUG and "all" or "player" --  get_config("debug_level") or
+	return get_config("debug_level") or "player"
 end
 
 function filter_debug_msg(debug_level)
 	local mcm_dbg_lvl = mcm_debug_level()
 	local accepted_debug_msgs = {
 		["player"] = {"player"},
-		["dev"] = {"player", "dev"},
-		["all"] = {"player", "dev", "all"}
+		["dev"]    = {"player", "dev"},
+		["all"]    = {"player", "dev", "all"}
 	}
 	return contains(accepted_debug_msgs[mcm_dbg_lvl], debug_level)
 end

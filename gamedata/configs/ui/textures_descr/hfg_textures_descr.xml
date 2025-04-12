@@ -16,5 +16,21 @@
         <texture id="ui_hfg_icon_poster_2"       x="555"  y="155"   width="50"    height="100" />
         <texture id="ui_hfg_icon_poster_3"       x="607"  y="155"   width="50"    height="100" />
         <texture id="ui_hfg_icon_poster_4"       x="652"  y="157"   width="50"    height="100" />
+
+        <texture id="ui_hfg_prt_tank"          x="0"    y="150"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_turbine"       x="50"   y="150"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_engine"        x="100"  y="150"   width="50"    height="50" />
+
+        <texture id="ui_hfg_prt_wires"         x="0"    y="200"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_frame"         x="50"   y="200"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_battery"       x="100"  y="200"   width="50"    height="50" />
+
+        <texture id="ui_hfg_prt_fan"           x="0"    y="250"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_exhaust"       x="50"   y="250"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_band"          x="100"  y="250"   width="50"    height="50" />
+
+        <texture id="ui_hfg_prt_pipes"         x="0"    y="300"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_l_rotor"       x="50"   y="300"   width="50"    height="50" />
+        <texture id="ui_hfg_prt_r_rotor"       x="100"  y="300"   width="50"    height="50" />
     </file>
 </w>

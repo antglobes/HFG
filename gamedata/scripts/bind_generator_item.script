@@ -1,5 +1,5 @@
 --[[
-    Last Edited: 28/03/25
+    Last Edited: 08/04/25
     Author: antglobes
     Purpose: Adding Persistance Between Placeable Items and Inventory Items
 --]]
@@ -10,6 +10,10 @@ AOE = demonized_aoe.AOE
 gts = hfg_utils.get_translation
 get_unknown_object = hfg_utils.get_unknown_object
 find_obj = hfg_utils.find_obj
+is_obj_visible = hfg_utils.is_object_visible
+get_nearest = hfg_utils.get_nearest
+set_debug_level = hfg_utils.set_debug_level
+filter_debug_msg = hfg_utils.filter_debug_msg
 
 -- Constants
 GENERATOR_ITEMS = {
@@ -17,12 +21,15 @@ GENERATOR_ITEMS = {
     "hfg_jerrycan_diesel_empty"
 }
 MAX_FUEL = 60
+SEARCH_RADIUS = 50
 
 -- Variables
 placed_generator_items = {}
+local dbg_lvl = "dev"
 
 -- DEBUGGING
 function pr(str, ...)
+    if not filter_debug_msg(dbg_lvl) then return end
     hfg_utils.dbg_pr("[HFG|Bind Gen Item]: %s", str, ...)
 end
 
@@ -49,6 +56,7 @@ function is_in_generator_item_tbl(id)
 end
 
 function init_generator_item(tbl)
+    set_debug_level("all")
     local id = tbl["id"]
     local sect = tbl["sect"]
     local uses = tbl["uses"]
@@ -78,6 +86,7 @@ function init_generator_item(tbl)
 end
 
 function replace_generator_item(old_id, new_id)
+    set_debug_level("dev")
     for kind, _ in pairs(placed_generator_items) do
         if contains(placed_generator_items[kind], old_id, true) then
             pr("replacing %s to %s", old_id, new_id)
@@ -90,6 +99,7 @@ function replace_generator_item(old_id, new_id)
 end
 
 function update_generator_item(id, info)
+    set_debug_level("all")
     for kind, info in pairs(placed_generator_items) do
         if contains(placed_generator_items[kind], id, true) then
             for k, v in pairs(info) do
@@ -104,6 +114,7 @@ function update_generator_item(id, info)
 end
 
 function remove_generator_item(id)
+    set_debug_level("dev")
     if not is_in_generator_item_tbl(id) then 
         pr("Cannot remove id %s from generator item tbl, not present: %s", id)
         return
@@ -121,6 +132,7 @@ function remove_generator_item(id)
 end
 
 function init(obj)
+    set_debug_level("all")
     local id = obj:id()
     pr("init gen item binder, id: %s", id)
     local data = hf_obj_manager.get_data(id)
@@ -148,6 +160,7 @@ function placeable_generator_item_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
     self:load_data()
 
+    set_debug_level("all")
     local tg = time_global()
 
     if is_fuel_source(self.item_section) then
@@ -190,6 +203,7 @@ function placeable_generator_item_wrapper:update(delta)
 end
 
 function placeable_generator_item_wrapper:pickup()
+    set_debug_level("all")
     pr("on pickup")
     self:load_data()
 
@@ -257,6 +271,7 @@ function add_fuel_cond(obj)
 end
 
 function add_fuel_func(obj)
+    set_debug_level("all")
     local found_gen = level.get_target_obj()
     if not found_gen or (found_gen and found_gen:section() ~= "placeable_disel_generator") then return end
     local sect = obj:section()
@@ -265,6 +280,7 @@ function add_fuel_func(obj)
 end
 
 function add_fuel(jerrycan, genny_id)
+    set_debug_level("dev")
     local data = hf_obj_manager.get_data(jerrycan:id())
     local sect = jerrycan:section()
     local uses = data["uses"]
@@ -310,6 +326,7 @@ end
 
 
 function take_fuel(jerrycan, genny_id)
+    set_debug_level("dev")
     local data = hf_obj_manager.get_data(jerrycan:id())
     local sect = jerrycan:section()
     local stored_fuel = hf_obj_manager.get_data(genny_id).stored_fuel
@@ -359,9 +376,14 @@ function take_fuel(jerrycan, genny_id)
     end
 end
 
+
+
+
+
 -- Monkey Patches
 base_separate = bind_item.func_separate
 function bind_item.func_separate(obj)
+    set_debug_level("all")
     pr("on item separate")
     local id = obj:id()
     local sect = obj:section()
@@ -392,6 +414,7 @@ end
 
 base_drag_drop = bind_item.on_item_drag_dropped
 function bind_item.on_item_drag_dropped(obj_1, obj_2, slot_from, slot_to)
+    set_debug_level("all")
     pr("on item drag dropped")
     if not (slot_from == EDDListType.iActorBag and slot_to == EDDListType.iActorBag) then
         return
@@ -436,8 +459,23 @@ function bind_item.on_item_drag_dropped(obj_1, obj_2, slot_from, slot_to)
 	end
 end
 
+base_func_tool = item_repair.func_tool
+function item_repair.func_tool(obj)
+    set_debug_level("all")
+    local found_generators = find_obj("placeable_disel_generator", db.actor:position(), SEARCH_RADIUS)
+    local found_gen = get_nearest(found_generators)
+    local gen_id = found_gen:id()
+    if not found_gen or not is_obj_visible(gen_id) then
+        base_func_tool(obj)
+        return
+    end
+    pr("opening repair ui")
+    ui_diesel_generator.start_repair_ui(gen_id)
+end
+
 -- Callbacks
 function on_item_take(obj)
+    set_debug_level("all")
     local id = obj:id()
     local sect = obj:section()
     if not is_generator_item(sect) or not is_placeable_item(sect) then return end
@@ -470,6 +508,7 @@ function update_jerrycan_cond(jc, cond, hit_damage)
 end
 
 function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, grenade_type)
+    set_debug_level("dev")
     if obj:id() ~= AC_ID then return end
     local target = level.get_target_obj()
     if not target then return end
@@ -478,10 +517,9 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
     local item_sect = ini_sys:r_string_ex(targ_sect, "item_section")
     if not item_sect then return end
 
-    pr("on actor weapon fired: %s", item_sect)
     if not is_generator_item(item_sect) then return end
     if not is_fuel_source(item_sect) then return end
-
+    pr("on actor weapon fired: %s", item_sect)
     local data = hf_obj_manager.get_data(target:id())
     local wpn_sect = wpn:section()
     local cond = data and data["condition"] or 0
@@ -491,6 +529,7 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
 end
 
 function set_cond_on_explode(obj)
+    set_debug_level("dev")
     local explo_sect = obj:section()
     pr("explosive item on explode: %s", explo_sect)
     local found_objs = {}
@@ -519,16 +558,16 @@ function set_cond_on_explode(obj)
 end
 
 function set_cond_on_impact_npc(npc, wpn, target)
+    set_debug_level("dev")
     if npc:id() == AC_ID then return end
     
     local targ_sect = target:section()
     local item_sect = ini_sys:r_string_ex(targ_sect, "item_section")
     if not item_sect then return end
 
-    pr("on npc weapon fired: %s", item_sect)
     if not is_generator_item(item_sect) then return end
     if not is_fuel_source(item_sect) then return end
-
+    pr("on npc weapon fired: %s", item_sect)
     local data = hf_obj_manager.get_data(target:id())
     local wpn_sect = wpn:section()
     local cond = data["condition"] or 1
@@ -552,6 +591,10 @@ function on_npc_fired(bullet)
     set_cond_on_impact_npc(npc, wpn, target)
 end
 
+function on_option_change(options)
+    SEARCH_RADIUS = options["search_radius"]
+    MAX_FUEL = options["max_fuel"]
+end
 
 function on_game_start()
     RegisterScriptCallback("actor_on_item_take", on_item_take)
@@ -561,4 +604,5 @@ function on_game_start()
     RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("bullet_on_impact", on_npc_fired)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
 end

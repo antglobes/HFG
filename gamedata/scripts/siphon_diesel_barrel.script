@@ -1,5 +1,5 @@
 --[[
-    Last Edited: 28/03/25
+    Last Edited: 08/04/25
     Author: antglobes
     Purpose: Manage Siphoning Diesel from explosive barrel
 --]]
@@ -17,6 +17,8 @@ replace_generator_item = bind_generator_item.replace_generator_item
 add_functor = custom_functor_autoinject.add_functor
 itr_inv = hfg_utils.itr_inv
 throttle = hfg_utils.throttle
+set_debug_level = hfg_utils.set_debug_level
+filter_debug_msg = hfg_utils.filter_debug_msg
 
 -- Constants
 MAX_FUEL = 60
@@ -26,6 +28,7 @@ OP_TXT = "Siphon %s from barrel"
 -- Variables
 GUI = nil
 fuel_barrels = {}
+local dbg_lvl = "dev"
 
 -- Tables
 FUEL_TO_CLR = {
@@ -77,6 +80,7 @@ FUEL_TO_POS = {
 
 -- DEBUGGING
 function pr(str, ...)
+    if not filter_debug_msg(dbg_lvl) then return end
     hfg_utils.dbg_pr("[HFG|Siphon Diesel Barrel]: %s", str, ...)
 end
 
@@ -99,6 +103,7 @@ function calc_stored_fuel()
 end
 
 function init_fuel_barrel(obj)
+    set_debug_level("all")
     local id = obj:id()
     if not contains(fuel_barrels, id, true) then
         pr("init fuel barrel: %s", id)
@@ -117,12 +122,14 @@ function init_fuel_barrel(obj)
 end
 
 function reinit_fuel_barrel(obj)
+    set_debug_level("all")
     pr("reinit fuel barrel: %s", obj:id())
     remove_fuel_barrel(obj)
     return init_fuel_barrel(obj)
 end
 
 function remove_fuel_barrel(obj)
+    set_debug_level("all")
     if contains(fuel_barrels, obj:id(), true) then
         pr("removing %s from fuel barrels", obj:id())
         if not fuel_barrels[obj:id()]["has_exploded"] then
@@ -149,6 +156,7 @@ function siphon_fuel_menu(obj)
 end
 
 function siphon_fuel_func(obj)
+    set_debug_level("dev")
     -- Barrel
     local found_barrels = find_obj("explosive_barrel", db.actor:position(), SIPHON_RANGE)
     local found_barrel = get_nearest(found_barrels)
@@ -196,6 +204,7 @@ end
 add_functor("siphon_fuel", siphon_fuel_cond, siphon_fuel_menu, nil, siphon_fuel_func)
 
 function start_siphon_ui(id)
+    set_debug_level("all")
     pr("starting siphon ui")
     
     if not GUI then
@@ -212,6 +221,7 @@ end
 
 class "UISiphon" (CUIScriptWnd)
 function UISiphon:__init() super()
+    set_debug_level("all")
     pr("init siphon ui")
     if not self.init then
         self:InitControls()
@@ -222,6 +232,7 @@ function UISiphon:__init() super()
 end
 
 function UISiphon:Reset(id)
+    set_debug_level("all")
     pr("reinit siphon ui")
 	self.barrel_id = id
     self.stored_fuel = fuel_barrels[id]["stored_fuel"] or 0
@@ -237,6 +248,7 @@ end
 
 
 function UISiphon:InitControls()
+    set_debug_level("all")
     pr("init siphon controls")
 	self:SetWndRect(Frect():set(0,0,1024,768))
     self:SetAutoDelete(true)
@@ -261,6 +273,7 @@ function UISiphon:InitControls()
 end
 
 function UISiphon:InitCallbacks()
+    set_debug_level("all")
     pr("init siphon callbacks")
     self:AddCallback("fuel_trackbar", ui_events.BUTTON_CLICKED, self.OnTrackBarMove, self)
     self:AddCallback("switch_btn", ui_events.BUTTON_CLICKED, self.OnClickSwitch, self)
@@ -269,6 +282,7 @@ function UISiphon:InitCallbacks()
 end
 
 function UISiphon:Setup()
+    set_debug_level("all")
     pr("setup ui elements")
     pr("setting barrel counter color")
     self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
@@ -367,6 +381,7 @@ function UISiphon:Setup()
 end
 
 function UISiphon:OnTrackBarMove()
+    set_debug_level("all")
     pr("on trackbar move")
     self.fuel_to_move = self.fuel_trackbar:GetFValue()
     local operation_txt = strformat(OP_TXT, strformat("%sL", self.fuel_to_move))
@@ -374,6 +389,7 @@ function UISiphon:OnTrackBarMove()
 end
 
 function UISiphon:OnClickStart()
+    set_debug_level("all")
     pr("on click start")
     if self.fuel_to_move == 0 then pr("no fuel to move") return end
     local fuel_to_move = self.fuel_to_move
@@ -542,6 +558,7 @@ function UISiphon:OnClickStart()
 end
 
 function UISiphon:Close()
+    set_debug_level("all")
     pr("on close")
     if (self:IsShown()) then
 		self:HideDialog()
@@ -592,6 +609,10 @@ function on_load(m_data)
     copy_table(fuel_barrels, t)
 end
 
+function on_option_change(options)
+    SIPHON_RANGE = options["siphon_range"]
+    MAX_FUEL = options["max_fuel"]
+end
 
 function on_game_start()
     --RegisterScriptCallback("physic_object_on_hit_callback", physic_object_on_hit)
@@ -599,4 +620,5 @@ function on_game_start()
     RegisterScriptCallback("actor_on_update", actor_on_update)
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
 end

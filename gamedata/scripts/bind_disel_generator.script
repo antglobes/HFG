@@ -1,5 +1,5 @@
 --[[
-    Last Edited: 28/03/25
+    Last Edited: 08/04/25
     Author: antglobes
     Purpose: Binding and Managing Diesel Generator Object
 --]]
@@ -19,14 +19,23 @@ get_hf_item_name = hfg_utils.get_hf_item_name
 get_direction = hfg_utils.get_direction
 AOE = demonized_aoe.AOE
 clamp_rand = hfg_utils.clamp_rand
-
+get_config = hfg_utils.get_config
+set_debug_level = hfg_utils.set_debug_level
+filter_debug_msg = hfg_utils.filter_debug_msg
+bone_to_part_name = hfg_utils.bone_to_part_name
+get_bone_pos = hfg_utils.get_bone_pos
 
 -- Constants
-SEARCH_RADIUS = 50
 MIN_COND = 0.01
+
+-- MCM Variables
+SEARCH_RADIUS = 50
+
 BROKEN_COND = 0.1
 MAX_FUEL = 60
 MAX_POWER_OUTPUT = 5000
+
+-- Tables
 FUEL_SECTIONS = {"batteries_dead"}
 SWAP_POWER_STATE = {
     on = "off",
@@ -43,9 +52,11 @@ GENERATOR_BONE_NAMES = {
 -- Variables
 GUI = nil
 placed_generators = {}
+local dbg_lvl = "dev"
 
 -- DEBUGGING
 function pr(str, ...)
+    if not filter_debug_msg(dbg_lvl) then return end
     hfg_utils.dbg_pr("[HFG|Bind Disel Gen]: %s", str, ...)
 end
 
@@ -58,6 +69,7 @@ function init_generator(id)
         local data = {tbl_id=id}
         placed_generators[id] = data
         hf_obj_manager.set_data(id, data)
+        set_debug_level("dev")
         pr("init generator tbl: %s", id)
     end
 end
@@ -69,7 +81,7 @@ function update_generator(id, data)
         tbl_data[k] = v
     end
     placed_generators[id] = tbl_data
-    pr("updating generator tbl: %s", id)
+    set_debug_level("all")
 end
 
 function replace_generator(old_id, new_id)
@@ -78,6 +90,7 @@ function replace_generator(old_id, new_id)
         placed_generators[new_id] = info
         placed_generators[old_id] = nil
         hf_obj_manager.delete_data(old_id)
+        set_debug_level("dev")
         pr("replacing %s with %s", old_id, new_id)
     end
 end
@@ -85,10 +98,12 @@ end
 function remove_generator(id)
     if not in_generator_tbl(id) then return end
     placed_generators[id] = nil
+    set_debug_level("all")
     pr("removing %s", id)
 end
 
 function toggle_power(obj_id)
+    set_debug_level("dev")
     pr("Toggle Genny Power")
     local data = hf_obj_manager.get_data(obj_id)
     --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
@@ -125,6 +140,7 @@ end
 -- Diesel Generator Binder
 
 function init(obj)
+    set_debug_level("all")
     pr("Initalising genny")
     obj:bind_object(placeable_disel_generator_wrapper(obj).binder)
 end
@@ -249,6 +265,7 @@ end
 
 function placeable_disel_generator_wrapper:ProcessPowerState(cond_state)
     -- On Power State Switch
+    set_debug_level("all")
     if self.last_power_state ~= self.power_state then
         pr("processing power state")
         self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state]))
@@ -262,6 +279,7 @@ function placeable_disel_generator_wrapper:ProcessPowerState(cond_state)
 end
 
 function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
+    set_debug_level("all")
     if self.power_state == "on" or (self.power_state == "broken" and self.current_motion ~= "idle") then
         -- If Condition Has Changed enough for a particle update
         if cond_state ~= self.last_cond_state then
@@ -349,6 +367,7 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
 end
 
 function placeable_disel_generator_wrapper:ProcessAnims()
+    set_debug_level("all")
     if self.anim_due then
         if not self.anim_in_progress then
             pr("Setting Anim Control Vars")
@@ -425,6 +444,7 @@ function placeable_disel_generator_wrapper:ProcessAnims()
 end
 
 function placeable_disel_generator_wrapper:ProcessPowerableDevices()
+    set_debug_level("dev")
     if not contains({"broken", "off"}, self.power_state) then
         if self.tg > self.update_pd_tmr then
             empty_table(self.powerable_devices)
@@ -468,13 +488,13 @@ function placeable_disel_generator_wrapper:ProcessPowerableDevices()
 end
 
 function placeable_disel_generator_wrapper:ProcessFuel()
+    set_debug_level("dev")
     if self.stored_fuel == 0 then
         if self.power_state == "on" and not self.anim_in_progress then
             pr("no fuel switching off")
             self.power_state = "off"
             self.anim_due = true
         end
-        return
     end
 
     local percent_full = self.stored_fuel / self.max_fuel
@@ -490,7 +510,7 @@ function placeable_disel_generator_wrapper:ProcessFuel()
     end
 
     if self.power_state == "broken" then
-        self.time_til_empty = -1
+        self.time_til_empty = 0
     end
 
     if self.power_state == "on" and self.time_til_empty > 0 then
@@ -517,11 +537,12 @@ function placeable_disel_generator_wrapper:Explode()
         lifetime = 3,
         damage_period = 1.5 * 1000,
         can_panic_npc = true,
-        draftsman_id = AC_ID
+        -- draftsman_id = AC_ID
     })
 end
 
 function placeable_disel_generator_wrapper:CleanupParticles()
+    set_debug_level("dev")
     if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
         pr("power off removing particles")
         local fx = self.curr_fx[self.last_cond_state]
@@ -544,6 +565,7 @@ function placeable_disel_generator_wrapper:GetGenInfo()
 end
 
 function placeable_disel_generator_wrapper:pickup()
+    set_debug_level("dev")
     pr("on pickup")
     self:load_data()
     local item_section = ini_sys:r_string_ex(self.object:section(), "item_section")
@@ -567,6 +589,7 @@ function placeable_disel_generator_wrapper:pickup()
 end
 
 function placeable_disel_generator_wrapper:net_destroy()
+    set_debug_level("dev")
     pr("on net destory")
     self:save_data()
     if self.snd and contains(self.snd, "last_played", true) then
@@ -651,13 +674,6 @@ end
 
 -- Binder Helpers
 
-function get_bone_pos(obj, bone_name)    
-    local bid = obj:get_bone_id(bone_name)
-    local bpos = obj:bone_position(bid)
-    --pr("%s pos: %s", bone_name, vec_to_str(bpos))
-    return bpos
-end
-
 function cond_to_state(cond)
     local state = "high"
     if cond <= 10 then
@@ -675,6 +691,7 @@ end
 -- Generator Condition 
 
 function update_gen_cond(gen, cond, power_state, hit_damage)
+    set_debug_level("dev")
     if power_state ~= "broken" then
         local anim_due = false
         local loss_cond = cond - hit_damage
@@ -698,6 +715,7 @@ function update_gen_cond(gen, cond, power_state, hit_damage)
 end
 
 function set_cond_on_explode(obj)
+    set_debug_level("dev")
     local explo_sect = obj:section()
     pr("explosive_item_on_explode: %s", explo_sect)
     local found_objs = {}
@@ -731,6 +749,7 @@ function set_cond_on_explode(obj)
 end
 
 function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, grenade_type)
+    set_debug_level("dev")
     if obj:id() ~= AC_ID then return end
     local target = level.get_target_obj()
     if not target then return end
@@ -744,6 +763,115 @@ function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, gren
     local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
     pr("on impact: %s", wpn_sect)
     update_gen_cond(target, cond, power_state, hit_damage)
+end
+
+function set_cond_on_impact_npc(npc, wpn, target)
+    set_debug_level("all")
+    if npc:id() == AC_ID then return end
+    local target_sect = target:section()
+    if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
+    local wpn_sect = wpn:section()
+    local data = hf_obj_manager.get_data(target:id())
+    if data["anim_in_progress"] then return end
+    local power_state = data["power_state"]
+    local cond = data["condition"] or 1
+    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
+    pr("on impact npc: %s", wpn_sect)
+    update_gen_cond(target, cond, power_state, hit_damage)
+end
+
+function on_npc_fired(bullet)
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+    if p_id == AC_ID then return end
+
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then return end
+    set_cond_on_impact_npc(npc, wpn, target)
+end
+
+
+
+function on_gen_impact(bullet)
+    set_debug_level("dev")
+    local bullet_pos = bullet.position
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then return end
+    if target:section() ~= "placeable_disel_generator" then return end
+    local data = hf_obj_manager.get_data(target:id())
+    if data["anim_in_progress"] then return end
+
+    -- Get Closest Bone to Bullet Impact Pos
+    local closest_bone
+    local closest_dist
+    for _, bone_name in pairs(GENERATOR_BONE_NAMES) do
+        local bone_pos = get_bone_pos(target, bone_name)
+        local dist = bone_pos:distance_to(bullet_pos)
+        if not closest_bone or dist < closest_dist then
+            closest_bone = bone_name
+            closest_dist = dist
+        end
+    end
+
+    pr("%s hit gen at %s and %s is the closest bone", sect, vec_to_str(bullet_pos), closest_bone)
+
+    -- Calculate hit damage and apply it to bone
+   
+    local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1] / math.random(1, 10)
+    local damaged_parts = data["damaged_parts"]
+
+    if contains(damaged_parts, closest_bone, true) then
+        pr("updating damaged parts")
+        pr("%s", print_table(damaged_parts))
+        for bone_name, damage in pairs(damaged_parts) do
+            pr("part name: %s, dmage: %s", bone_name, damage)
+            if bone_name == closest_bone then
+                pr("part found")
+                local new_damaged = damage + hit_damage
+                pr("new damage: %s", new_damaged)
+                data["damaged_parts"][bone_name] = new_damaged
+            end
+        end
+    else
+        pr("new damaged part")
+        data["damaged_parts"][closest_bone] = hit_damage
+    end
+
+    hf_obj_manager.update_data(target:id(), data)
+
+    pr("Calculating Total/Avergae Part Damage")
+    local part_damage = {}
+    for id, name in pairs(target:list_bones()) do
+        local part_name = bone_to_part_name(name)
+        if not contains(part_damage, part_name) then
+            if contains(damaged_parts, name, true) then
+                part_damage[part_name] = damaged_parts[name]
+            else
+                part_damage[part_name] = 0
+            end
+        end
+    end
+
+    local total_damage = 0
+    for part_name, damage in pairs(part_damage) do
+        total_damage = total_damage + damage
+    end
+    local avg_damage = total_damage / size_table(part_damage)
+    pr("avg dmg: %s, total dmg: %s", avg_damage, total_damage)
+    update_gen_cond(target, data["condition"], data["power_state"], avg_damage)
 end
 
 -- HFG Light furniture
@@ -769,6 +897,7 @@ end
 -- Monkey Patches
 base_toggle_light = ui_furniture_light.toggle_light
 function ui_furniture_light.toggle_light(obj_id)
+    set_debug_level("dev")
     pr("on toggle light")
     local se_obj = alife_object(obj_id)
     local found_gens = find_obj("placeable_disel_generator", se_obj.position, SEARCH_RADIUS)
@@ -798,22 +927,9 @@ function ui_furniture_light.toggle_light(obj_id)
     base_toggle_light(obj_id)
 end
 
-function bone_to_part_name(bone_name)
-    local part_name = "hfg_prt_"
-    if contains({"link", "body", "frame-a", "frame-b"}, bone_name) then
-        part_name = part_name .. "frame"
-
-    elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
-        part_name = part_name .. bone_name
-
-    elseif contains({"but_belt", "top_belt"}, bone_name) then
-        part_name = part_name .. "band"
-    end
-    return part_name
-end
-
 base_disassembly_item = item_parts.disassembly_item
 function item_parts.disassembly_item(obj, obj_d)
+    set_debug_level("dev")
     local sect = obj:section()
     if sect ~= "disel_generator_item" then
         pr("not diassembleing gen")
@@ -857,7 +973,7 @@ function item_parts.disassembly_item(obj, obj_d)
                         --pr("part name: %s damage: %s, part: %s", part_name, damage, parts_tbl[i])
                         if part_name and part_name == parts_tbl[i] then
 
-                            local reduced_con = clamp_rand(1 - damage, 0, cond)
+                            local reduced_con = clamp_rand(round(1 - damage) * 100, 0, round(cond * 100)) / 100
                             if reduced_con > 0 then
                                 pr("creating damaged part %s with %s cond", parts_tbl[i], reduced_con)
                                 local se_obj = alife_create(parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
@@ -954,6 +1070,7 @@ end
 -- Callbacks
 
 function on_save(mdata)
+    set_debug_level("all")
     pr("on save")
     for id, datum in pairs(mdata["se_object"]) do
         if contains(datum, "hf_data", true) then
@@ -963,6 +1080,7 @@ function on_save(mdata)
 end
 
 function on_place_powerable_device(obj_id)
+    set_debug_level("all")
     local pos = db.actor:position()
     local se_obj = alife_object(obj_id)
     local sect = se_obj:section_name()
@@ -984,36 +1102,10 @@ function on_place_powerable_device(obj_id)
     end
 end
 
-function set_cond_on_impact_npc(npc, wpn, target)
-    if npc:id() == AC_ID then return end
-    local target_sect = target:section()
-    if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
-    local wpn_sect = wpn:section()
-    local data = hf_obj_manager.get_data(target:id())
-    if data["anim_in_progress"] then return end
-    local power_state = data["power_state"]
-    local cond = data["condition"] or 1
-    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
-    pr("on impact npc: %s", wpn_sect)
-    update_gen_cond(target, cond, power_state, hit_damage)
-end
 
-function on_npc_fired(bullet)
-    local sect = bullet.section
-    local wpn_id = bullet.weapon_id
-    local p_id = bullet.parent_id
-    local t_id = bullet.target_id
-    if p_id == AC_ID then return end
-
-    local npc = get_unknown_object({id=p_id}, "game")
-    local wpn = get_unknown_object({id=wpn_id}, "game")
-    local target = get_unknown_object({id=t_id}, "game")
-
-    if not (npc and wpn and target) then return end
-    set_cond_on_impact_npc(npc, wpn, target)
-end
 
 function on_item_take(obj)
+    set_debug_level("all")
     local id = obj:id()
     local sect = obj:section()
     if sect ~= "disel_generator_item" then return end
@@ -1022,68 +1114,20 @@ function on_item_take(obj)
     init_generator(id)
 end
 
-function on_gen_impact(bullet)
-    local bullet_pos = bullet.position
-    local sect = bullet.section
-    local wpn_id = bullet.weapon_id
-    local p_id = bullet.parent_id
-    local t_id = bullet.target_id
-
-    local npc = get_unknown_object({id=p_id}, "game")
-    local wpn = get_unknown_object({id=wpn_id}, "game")
-    local target = get_unknown_object({id=t_id}, "game")
-
-    if not (npc and wpn and target) then return end
-    if target:section() ~= "placeable_disel_generator" then return end
-
-    local closest_bone
-    local closest_dist
-    for _, bone_name in pairs(GENERATOR_BONE_NAMES) do
-        local bone_pos = get_bone_pos(target, bone_name)
-        local dist = bone_pos:distance_to(bullet_pos)
-        if not closest_bone or dist < closest_dist then
-            closest_bone = bone_name
-            closest_dist = dist
-        end
-    end
-
-    if npc:id() == AC_ID then
-        set_cond_on_impact(npc, wpn)
-    else
-        set_cond_on_impact_npc(npc, wpn, target)
-    end
-
-    pr("%s hit gen at %s and %s is the closest bone", sect, vec_to_str(bullet_pos), closest_bone)
-
-    local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1]
-    local data = hf_obj_manager.get_data(target:id())
-    local damaged_parts = data["damaged_parts"]
-
-    if contains(damaged_parts, closest_bone, true) then
-        pr("updating damaged parts")
-        pr("%s", print_table(damaged_parts))
-        for part_name, damage in pairs(damaged_parts) do
-            pr("part name: %s, dmage: %s", part_name, damage)
-            if part_name == closest_bone then
-                pr("part found")
-                local new_damaged = damage + hit_damage
-                pr("new damage: %s", new_damaged)
-                data["damaged_parts"][part_name] = clamp(new_damaged, 0, 1)
-            end
-        end
-    else
-        pr("new damaged part")
-        data["damaged_parts"][closest_bone] = hit_damage
-    end
-
-    hf_obj_manager.update_data(target:id(), data)
+function on_option_change(options)
+    --pr("Received options: %s", print_table(options))
+    SEARCH_RADIUS = options["search_radius"]
+    BROKEN_COND = options["broken_cond"]
+    MAX_FUEL = options["max_fuel"]
+    MAX_POWER_OUTPUT = options["max_power_output"]
 end
 
 function on_game_start()
     RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
-    RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
     RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
-    RegisterScriptCallback("bullet_on_impact", on_npc_fired)
+    --RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
+    --RegisterScriptCallback("bullet_on_impact", on_npc_fired)
     RegisterScriptCallback("bullet_on_impact", on_gen_impact)
     RegisterScriptCallback("actor_on_item_take", on_item_take)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
 end
