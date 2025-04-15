@@ -376,10 +376,6 @@ function take_fuel(jerrycan, genny_id)
     end
 end
 
-
-
-
-
 -- Monkey Patches
 base_separate = bind_item.func_separate
 function bind_item.func_separate(obj)
