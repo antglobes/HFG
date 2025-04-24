@@ -386,7 +386,7 @@ end
 
 function UIDieselGenerator:ToggleMarkerHud(marker_type)
     if not contains(marker_huds, self.gen_id) then
-        init_marker_hud(self.gen_id, HUDS[marker_type])
+        init_marker_hud(self.gen_id, UIPowerableDevices)
     end
 
     if not self[marker_type] then
@@ -421,28 +421,65 @@ end
 function UIDieselGenerator:RepairBtn()
     local item = self.repair_list:GetSelectedItem()
     if not item then return end
+    pr("on repair")
+    local part_info = item.part_info
+    local part_sect = part_info["part_name"]
+    local part_name = gts(ini_sys:r_string_ex(part_sect, "inv_name"))
 
-    local repair_type = ini_sys:r_string_ex(item["part_name"], "repair_type")
+    local data = hf_obj_manager.get_data(self.gen_id)
+    local bone_name
+    local part_damaged = false
+    if is_not_empty(data["damaged_parts"]) then
+        for b_name, _ in pairs(data["damaged_parts"]) do
+            local damaged_part_name = bone_to_part_name(b_name)
+            if damaged_part_name == part_sect then
+                part_damaged = true
+                bone_name = b_name
+            end
+        end
+    end
+
+    if not part_damaged then
+        actor_menu.set_msg(1, gts("st_part_perfect", part_name), 3)
+        return
+    end
+
+    if not part_info["repairable"] then
+        actor_menu.set_msg(1, gts("st_part_unrepairable", part_name), 3)
+        return
+    end
+
+    local repair_type = ini_sys:r_string_ex(part_sect, "repair_type")
     local ini_repair = ini_file_ex("items\\items\\items_repair.ltx")
-    local repair_kit
     local best_support_item
 
     local found_repair_kits = {}
     local found_support_items = {}
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
-        if ini_repair:section_exist(sect) and repair_type == ini_repair:r_string_ex(sect, "repair_only") then
+        if ini_repair:section_exist(sect) and contains(parse_list(ini_repair, sect, "repair_only"), repair_type) then
             found_repair_kits[#found_repair_kits + 1] = obj
-        elseif ini_sys:r_string_ex(sect, "repair_part_bonus") ~= nil then
+        end
+    end)
+
+    if is_empty(found_repair_kits) then
+        actor_menu.set_msg(1, gts("st_repair_kit_missing", part_name), 3)    
+        return
+    end
+
+    local repair_kit = found_repair_kits[#found_repair_kits]
+    local support_items = parse_list(ini_repair, repair_kit:section(), "repair_parts_sections")
+    itr_inv(db.actor, function(_, obj)
+        local sect = obj:section()
+        if contains(support_items, sect) then
             found_support_items[#found_support_items + 1] = obj
         end
     end)
 
-    repair_kit = found_repair_kits[#found_repair_kits]
     if is_not_empty(found_support_items) then
         local highest_bonus
         for idx, obj in pairs(found_support_items) do
-            local bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus")
+            local bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus") or 0
             if not highest_bonus or bonus > highest_bonus then
                 best_support_item = obj
                 highest_bonus = bonus
@@ -450,11 +487,25 @@ function UIDieselGenerator:RepairBtn()
         end
     end
 
-    local part_cond = item["condition"]
-    local support_item_cond = best_support_item:condition() or ini_sys:r_float_ex(best_support_item:section(),"repair_part_bonus") or ini_sys:r_float_ex(repair_kit:section(),"repair_part_bonus")
+    local part_cond = 1 - data["damaged_parts"][bone_name]
+    pr("part_cond:%s", part_cond)
+    local support_item_cond = 0
+    if best_support_item then 
+        support_item_cond = best_support_item:condition() or ini_sys:r_float_ex(best_support_item:section(),"repair_part_bonus") 
+    else
+        support_item_cond = ini_sys:r_float_ex(repair_kit:section(),"repair_part_bonus")
+    end
     local add_cond = ini_sys:r_float_ex(repair_kit:section(), "repair_add_condition") or 0
     local total_cond = part_cond + support_item_cond + add_cond
-    item:set_condition(clamp(total_cond, 0, 100) / 100)
+    local item_cond = 1 - clamp(total_cond, part_cond, 1)
+    pr("total cond: %s. item_cond:%s", total_cond, item_cond)
+    if item_cond == 0 then
+        data["damaged_parts"][bone_name] = nil
+    else
+        data["damaged_parts"][bone_name] = item_cond
+    end
+    hf_obj_manager.update_data(self.gen_id, data)
+
     
     if best_support_item then
         utils_item.discharge(best_support_item)
@@ -468,6 +519,9 @@ function UIDieselGenerator:RepairBtn()
 	
     actor_effects.play_item_fx(repair_kit:section() .. "_dummy")
     game_statistics.increment_statistic("self_repairs")
+    utils_obj.play_sound("interface\\inv_repair_kit_use_fast")
+
+    self:LoadPartInfo()
 end
 
 function UIDieselGenerator:ReplaceBtn()
@@ -476,16 +530,37 @@ function UIDieselGenerator:ReplaceBtn()
     if not item then return end
     local replacements = {}
     local part_info = item["part_info"]
+    local part_sect = part_info["part_name"]
+    local part_name = gts(ini_sys:r_string_ex(part_sect, "inv_name"))
+
+    local data = hf_obj_manager.get_data(self.gen_id)
+    local bone_name
+    local part_damaged = false
+    if is_not_empty(data["damaged_parts"]) then
+        for b_name, _ in pairs(data["damaged_parts"]) do
+            local damaged_part_name = bone_to_part_name(b_name)
+            if damaged_part_name == part_sect then
+                part_damaged = true
+                bone_name = b_name
+            end
+        end
+    end
+
+    if not part_damaged then
+        actor_menu.set_msg(1, gts("st_part_perfect", part_name), 3)
+        return
+    end
+
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
-        if sect == part_info["part_name"] then
+        if sect == part_sect then
             replacements[obj:id()] = obj:condition() or 1
         end
     end)
     
 
     if is_empty(replacements) then
-        pr("%s not found in inv", part_info["part_name"])
+        actor_menu.set_msg(1, gts("st_replacement_missing", part_name), 3)
         return 
     end
 
@@ -498,16 +573,24 @@ function UIDieselGenerator:ReplaceBtn()
         end
     end
 
-    if highest_cond <= part_info["condition"] then
-        pr("%s is higher than found part", part_info["part_name"])
+    local part_cond = 1 - data["damaged_parts"][bone_name]
+    if highest_cond <= part_cond then
+        actor_menu.set_msg(1, gts("st_highest_part", part_name), 3)
         return
     end
 
     alife_release(alife_object(replace_id))
-    pr("replacing %s condition: %s to be %s", part_info["part_name"], part_info["condition"], highest_cond)
-    local data = hf_obj_manager.get_data(self.gen_id)
-    data["damaged_parts"][part_info["bone_name"]] = highest_cond
+
+    local item_cond = 1 - highest_cond
+    if item_cond == 0 then
+        data["damaged_parts"][bone_name] = nil
+    else
+        data["damaged_parts"][bone_name] = item_cond
+    end
+    pr("replacing %s condition: %s to be %s", part_name, part_cond, item_cond)
+
     hf_obj_manager.update_data(self.gen_id, data)
+    utils_obj.play_sound("interface\\inv_disassemble_metal_fast_1")
 
     self:LoadPartInfo()
 end
