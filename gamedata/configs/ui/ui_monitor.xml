@@ -1,0 +1,13 @@
+<w>
+    <monitor>
+        <screen>
+            <background x="0.0" y="0.0" width="0.473" height="0.385" stretch="1"> <!-- width="0.473" height="0.35" -->
+                <texture shader="hud\p3d">ui_hfg_monitor_background</texture>
+            </background>
+
+            <progress_bar x="0.03" y="0.3" width="0.4" height="0.05" stretch="1">
+                <texture shader="hud\p3d">ui_hfg_monitor_background</texture>
+            </progress_bar>
+        </screen>
+    </monitor>
+</w>
