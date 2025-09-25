@@ -4,40 +4,42 @@
     Purpose: Manage Generator UI
 --]]
 
--- Imports
-split = hfg_utils.split
-capitalise = hfg_utils.capitalise
-find_inv_item = hfg_utils.find_inv_item
-gts = hfg_utils.get_translation
-contains = hfg_utils.contains
-get_unknown_object = hfg_utils.get_unknown_object
-find_obj = hfg_utils.find_obj
-get_nearest = hfg_utils.get_nearest
-print_table = hfg_utils.print_table
+-- Lib Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+
+gts = get_translation
+
+-- Script Imports
 gray = demonized_geometry_ray.geometry_ray
-get_direction = hfg_utils.get_direction
-lerp_vec_2d = hfg_utils.lerp_vec_2d
-set_debug_level = hfg_utils.set_debug_level
-filter_debug_msg = hfg_utils.filter_debug_msg
+
+-- Utils
 bone_to_part_name = hfg_utils.bone_to_part_name
-itr_inv = hfg_utils.itr_inv
+get_config = hfg_utils.get_config
 
 -- Constants
 MAX_FUEL = 60
 MAX_POWER_OUTPUT = 5000
 SEARCH_RADIUS = 50
-MIN_PART_FUNC_COND = 0.4
+PART_FUNC_COND = 0.4
+PART_REPAIR_COND = 0.25
 UI_GRAY_1 = utils_xml.get_color("ui_gray_1")
 RED_CLR    = {255, 255, 19, 18}
 ORANGE_CLR = {255, 255, 77, 18}
 YELLOW_CLR = {255, 255, 242, 18}
 GREEN_CLR  = {255, 64, 253, 40}
+LOG_HEADER = "[HFG|Gen UI]"
 
 -- Variables
 GUI = nil
 local clr_cache = {}
-local dbg_lvl = "dev"
+local dbg_pr = nil
 local mouse_cache = {}
+ini_repair = ini_file_ex("items\\items\\items_repair.ltx")
 
 -- Tables
 SWAP_POWER_STATE = {
@@ -57,14 +59,30 @@ HUDS = {
 }
 BTN_TEXT = {
     show_devices = {
-        show = "Hide Powerable Devices",
+        show = "Hide Connected Devices",
         hide = "Show Connected Devices"
     }
 }
 -- DEBUGGING
-function pr(str, ...)
-    if not filter_debug_msg(dbg_lvl) then return end
-    hfg_utils.dbg_pr("[HFG|Diesel Gen UI]: %s", str, ...)
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
 end
 
 function change_alpha(clr, a)
@@ -114,10 +132,10 @@ function build_gen_info(data)
 
     local connected_devices = size_table(data["powerable_devices"]) or 0
 
-    local cond_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Condition: "         .. strformat("%s", get_condition_clr(cond))       .. strformat("%s%", round_idp(cond*100, 2))
-    local fuel_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Fuel Stored: "       .. strformat("%s", get_condition_clr(fuel_cond))  .. strformat("%sL", round_idp(stored_fuel, 2))
+    local cond_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Condition: "         .. strformat("%s", get_condition_clr(cond))       .. strformat("%s%", round_dp(cond*100, 2))
+    local fuel_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Fuel Stored: "       .. strformat("%s", get_condition_clr(fuel_cond))  .. strformat("%sL", round_dp(stored_fuel, 2))
     local time_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Time Til Empty: "    .. strformat("%s", get_condition_clr(time_cond))  .. strformat("%s days %shrs %sm %ss", D, h, m, s)
-    local power_str  = UI_GRAY_1 .. gts("st_bullet_point") .. " Power Output: "      .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%sv", round_idp(power_output, 2))
+    local power_str  = UI_GRAY_1 .. gts("st_bullet_point") .. " Power Output: "      .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%sW", round_dp(power_output, 0))
     local device_str = UI_GRAY_1 .. gts("st_bullet_point") .. " Connected Devices: " .. strformat("%s", get_condition_clr(power_cond)) .. strformat("%s", connected_devices)
 
     local info_str = strformat("%s\\n%s\\n%s\\n%s\\n%s\\n", cond_str, fuel_str, time_str, power_str, device_str)
@@ -202,71 +220,28 @@ function UIDieselGenerator:InitCallbacks()
 end
 
 function UIDieselGenerator:LoadPartInfo()
-    pr("on load part info")
+    dbg("debug", "on load part info")
     self.repair_list:RemoveAll()
-    local obj = get_unknown_object({id=self.gen_id}, "game")
-    local bones = obj and obj:list_bones()
-    --pr("gen bones: %s", print_table(bones))
-    --pr("bone num: %s", size_table(bones))
-    for i=0, size_table(bones) - 1 do
-        if not contains({"link", "frame-a", "frame-b", "but_belt"}, bones[i]) then
-            local part_info = self:GetPartInfo(i, bones[i])
-            local item = repair_item(i, part_info) 
-            self.repair_list:AddExistingItem(item)
-        end
+    local parts = hf_obj_manager.get_data(self.gen_id).parts
+    --dbg("dev", "Receving parts: %s", parts)
+    local idx = 0
+    for part_name, part_info in pairs(parts) do
+        local part_info = self:GetPartInfo(part_info)
+        local item = repair_item(idx, part_info) 
+        self.repair_list:AddExistingItem(item)
+        idx = idx + 1
     end
 end
 
-function UIDieselGenerator:GetPartInfo(b_id, b_name)
-    -- pr("Getting part info for: %s %s", b_id, b_name)
-    local damaged_parts = hf_obj_manager.get_data(self.gen_id).damaged_parts
-    local is_damaged = contains(damaged_parts, b_name, true)
-    local cond = 1
-    local band_bones = {"but_belt", "top_belt"}
-    local frame_bones = {"link", "body", "frame-a", "frame-b"}
-    if contains(frame_bones, b_name) then
-        for _, bone_name in pairs(frame_bones) do
-            if contains(damaged_parts, bone_name, true) then
-                cond = cond + (1 - damaged_parts[bone_name]) / #frame_bones
-            else
-                cond = cond + 1 /#frame_bones
-            end
-        end
-        cond = cond / 2
-    elseif contains(band_bones, b_name) then
-        for _, bone_name in pairs(band_bones) do
-            if contains(damaged_parts, bone_name, true) then
-                cond = cond + (1 - damaged_parts[bone_name]) / #band_bones
-            else
-                cond = cond + 1 /#band_bones
-            end
-        end 
-        cond = cond / 2   
-    else
-        cond = is_damaged and 1 - damaged_parts[b_name] or cond
-    end
-
-    --    cond = clamp(cond, 0, hf_obj_manager.get_data(self.gen_id).condition)
-    cond = (cond >= 0 and cond <= 1) and cond or 0
-    local part_name = bone_to_part_name(b_name)
-    local comps = itms_manager.ini_parts:r_string_ex("nor_parts_list", part_name)
-    local comp_tbl = comps and str_explode(comps, ",") or {}
-
-    local info = {
-        bone_id = b_id,
-        bone_name = b_name,
-        part_name = part_name,
-        condition = cond,
-        repairable = cond >= 0.25,
-        functional = cond >= MIN_PART_FUNC_COND,
-        components = comp_tbl
-    }
-    --pr("info tabl: %s", print_table(info))
-    return info
+function UIDieselGenerator:GetPartInfo(part_info)
+    part_info.repairable = part_info.condition >= PART_REPAIR_COND
+    part_info.functional = part_info.condition >= PART_FUNC_COND
+    return part_info
 end
 
 
 function UIDieselGenerator:Reset(obj_id)
+    dbg("dev", "gen id: %s", obj_id)
     self.gen_id = obj_id
     self.screen_id = 1
     self.screens = {
@@ -276,11 +251,11 @@ function UIDieselGenerator:Reset(obj_id)
     self.show_devices = false
     self.show_repair = false
     self.repair_list:RemoveAll()
+    self:SetPowerStateText()
 end
 
 function UIDieselGenerator:Close()
-    set_debug_level("all")
-    pr("on close")
+    dbg("debug", "on close")
     if (self:IsShown()) then
 		self:HideDialog()
 	end
@@ -323,13 +298,21 @@ function UIDieselGenerator:UpdatePartInfo()
     if self.repair_list:GetSize() == 0 then return end
     -- pr("updating part info")
     -- pr("repair list size: %s", self.repair_list:GetSize())
+    local parts = hf_obj_manager.get_data(self.gen_id).parts
     for i=0, self.repair_list:GetSize() - 1 do
         local itm = self.repair_list:GetItemByIndex(i)
-        local old_part_info = itm["part_info"]
-        local part_info = self:GetPartInfo(old_part_info["bone_id"], old_part_info["bone_name"])
-        itm.condition:SetText(strformat("Condition: %s%", round_idp(part_info["condition"] * 100, 2)))
-        itm.repairable:SetText(strformat("Repairable: %s", part_info["repairable"] and "Yes" or "No"))
-        itm.functional:SetText(strformat("Functional: %s", part_info["functional"] and "Yes" or "No"))
+        local part_name = itm["part_info"].name
+        local new_part_info = parts[part_name]
+        local part_info = self:GetPartInfo(new_part_info)
+        if itm["part_info"].condition ~= part_info.condition then
+            itm.condition:SetText(strformat("Condition: %s%", round_idp(part_info["condition"] * 100, 2)))
+        end
+        if itm["part_info"].repairable ~= part_info.repairable then
+           itm.repairable:SetText(strformat("Repairable: %s", part_info["repairable"] and "Yes" or "No")) 
+        end
+        if itm["part_info"].functional ~= part_info.functional then
+            itm.functional:SetText(strformat("Functional: %s", part_info["functional"] and "Yes" or "No"))
+        end
     end
 end
 
@@ -340,7 +323,7 @@ function UIDieselGenerator:OnKeyboard(dik, keyboard_action)
 		if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
 		
 			if dik == DIK_keys.DIK_ESCAPE then
-                pr("esc key pressed")
+                dbg("info", "esc key pressed")
 				self:Close()
 			end
 
@@ -354,32 +337,34 @@ function UIDieselGenerator:Pickup()
 
 end
 
+function UIDieselGenerator:SetPowerStateText()
+    local data = hf_obj_manager.get_data(self.gen_id)
+    local power_state = data["power_state"]
+    local new_power_state = SWAP_POWER_STATE[power_state]
+    self.toggle_power_btn:TextControl():SetText(strformat("Toggle Power: %s", capitalise(new_power_state)))
+end
+
 function UIDieselGenerator:TogglePower()
     if bind_disel_generator.toggle_power(self.gen_id) then
-        local data = hf_obj_manager.get_data(self.gen_id)
-        local power_state = data["power_state"]
-        local new_power_state = SWAP_POWER_STATE[power_state]
-        self.toggle_power_btn:TextControl():SetText(strformat("Toggle Power: %s", capitalise(new_power_state)))
+        self:SetPowerStateText()
     end
 end
 
 function UIDieselGenerator:AddFuel()
-    set_debug_level("all")
     local found_jerrycans = find_inv_item("jerrycan")
     for idx, obj in pairs(found_jerrycans) do
         local sect = obj:section()
         if sect ~= "hfg_jerrycan_diesel_empty" then
-            pr("adding fuel")
+            dbg("debug", "adding fuel")
             bind_generator_item.add_fuel(obj, self.gen_id)
         end
     end
 end
 
 function UIDieselGenerator:TakeFuel()
-    set_debug_level("all")
     local found_jerrycans = find_inv_item("jerrycan")
     for idx, obj in pairs(found_jerrycans) do
-        pr("Taking fuel")
+        dbg("debug", "Taking fuel")
         bind_generator_item.take_fuel(obj, self.gen_id)
     end
 end
@@ -388,24 +373,23 @@ function UIDieselGenerator:ToggleMarkerHud(marker_type)
     if not contains(marker_huds, self.gen_id) then
         init_marker_hud(self.gen_id, UIPowerableDevices)
     end
-
+    dbg("dev", "marker type: %s", marker_type)
     if not self[marker_type] then
         show_marker_hud(self.gen_id)
         self[marker_type] = true
-        self[marker_type .. "btn"]:TextControl():SetText(BTN_TEXT[marker_type]["show"])
+        self[marker_type .. "_btn"]:TextControl():SetText(BTN_TEXT[marker_type]["show"])
     else
         hide_marker_hud(self.gen_id, true)
         self[marker_type] = false
-        self[marker_type .. "btn"]:TextControl():SetText(BTN_TEXT[marker_type]["hide"])
+        self[marker_type .. "_btn"]:TextControl():SetText(BTN_TEXT[marker_type]["hide"])
     end
 end
 
 function UIDieselGenerator:ShowDevices()
-    set_debug_level("dev")
-    pr("on show devices")
+    dbg("debug", "on show devices")
     local data = hf_obj_manager.get_data(self.gen_id)
     if size_table(data["powerable_devices"]) == 0 then return end
-    pr("show devices hud?: %s", self.show_devices)
+    dbg("dev", "show devices hud?: %s", self.show_devices)
     self:ToggleMarkerHud("show_devices")
 end
 
@@ -419,105 +403,123 @@ function UIDieselGenerator:BackBtn()
 end
 
 function UIDieselGenerator:RepairBtn()
+    dbg("debug", "on repair")
     local item = self.repair_list:GetSelectedItem()
     if not item then return end
-    pr("on repair")
     local part_info = item.part_info
-    local part_sect = part_info["part_name"]
-    local part_name = gts(ini_sys:r_string_ex(part_sect, "inv_name"))
+    local part_name = part_info["name"]
+    local part_cond = part_info["condition"]
+    local item_name = gts(ini_sys:r_string_ex(part_name, "inv_name"))
+    dbg("info", "attempting to repair %s", item_name)
 
-    local data = hf_obj_manager.get_data(self.gen_id)
-    local bone_name
-    local part_damaged = false
-    if is_not_empty(data["damaged_parts"]) then
-        for b_name, _ in pairs(data["damaged_parts"]) do
-            local damaged_part_name = bone_to_part_name(b_name)
-            if damaged_part_name == part_sect then
-                part_damaged = true
-                bone_name = b_name
-            end
-        end
-    end
-
-    if not part_damaged then
-        actor_menu.set_msg(1, gts("st_part_perfect", part_name), 3)
+     if part_cond >= 0.95  then
+        actor_menu.set_msg(1, gts("st_part_perfect", item_name), 3)
+        dbg("info", "Part perfect")
         return
     end
 
     if not part_info["repairable"] then
-        actor_menu.set_msg(1, gts("st_part_unrepairable", part_name), 3)
+        actor_menu.set_msg(1, gts("st_part_unrepairable", item_name), 3)
         return
     end
 
-    local repair_type = ini_sys:r_string_ex(part_sect, "repair_type")
-    local ini_repair = ini_file_ex("items\\items\\items_repair.ltx")
-    local best_support_item
-
     local found_repair_kits = {}
     local found_support_items = {}
+    local repair_type = ini_sys:r_string_ex(item_name, "repair_type")
+    dbg("dev", "finding repair kits")
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
         if ini_repair:section_exist(sect) and contains(parse_list(ini_repair, sect, "repair_only"), repair_type) then
-            found_repair_kits[#found_repair_kits + 1] = obj
+            found_repair_kits[#found_repair_kits + 1].obj = obj
+            found_repair_kits[#found_repair_kits + 1].sect = sect
+            found_repair_kits[#found_repair_kits + 1].uses = obj:get_remaining_uses()
+            found_repair_kits[#found_repair_kits + 1].add = ini_sys:r_float_ex(sect, "repair_add_condition") or 0
+            found_repair_kits[#found_repair_kits + 1].bonus = ini_sys:r_float_ex(sect, "repair_part_bonus") or 0
+            found_support_items = parse_list(ini_repair, sect, "repair_parts_sections")
         end
     end)
 
     if is_empty(found_repair_kits) then
-        actor_menu.set_msg(1, gts("st_repair_kit_missing", part_name), 3)    
+        actor_menu.set_msg(1, gts("st_repair_kit_missing", item_name), 3)    
         return
     end
 
-    local repair_kit = found_repair_kits[#found_repair_kits]
-    local support_items = parse_list(ini_repair, repair_kit:section(), "repair_parts_sections")
+    dbg("dev", "finding support items")
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
-        if contains(support_items, sect) then
-            found_support_items[#found_support_items + 1] = obj
+        if contains(found_support_items, sect) then
+            found_support_items[#found_support_items + 1].obj = obj
+            found_support_items[#found_support_items + 1].sect = sect
+            found_support_items[#found_support_items + 1].bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus") or 0
         end
     end)
 
+    local best_support_item = {}
     if is_not_empty(found_support_items) then
+        dbg("dev", "getting support items with highest bonus")
         local highest_bonus
-        for idx, obj in pairs(found_support_items) do
-            local bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus") or 0
+        for idx, support_item in pairs(found_support_items) do
+            local bonus = support_item.bonus
             if not highest_bonus or bonus > highest_bonus then
-                best_support_item = obj
+                best_support_item = support_item
                 highest_bonus = bonus
             end
         end
+        dbg("dev", "found %s with bonus %s", best_support_item.sect, best_support_item.bonus)
     end
 
-    local part_cond = 1 - data["damaged_parts"][bone_name]
-    pr("part_cond:%s", part_cond)
+    dbg("dev", "finding repair kit with lowest uses")
+    local worst_repair_kit = {}
+    if #found_repair_kits == 1 then
+        worst_repair_kit = found_repair_kits[#found_repair_kits]
+    else
+        local lowest_uses
+        for idx, repair_kit in pairs(found_repair_kits) do
+            local uses = repair_kit.uses or 0
+            if not lowest_uses or uses < lowest_uses then
+                worst_repair_kit = repair_kit
+                lowest_uses = uses
+            end
+        end
+    end
+    
+    if not worst_repair_kit then
+        actor_menu.set_msg(1, gts("st_repair_kit_missing", item_name), 3)    
+        return
+    end
+    dbg("dev", "found repair kit with uses: %s", worst_repair_kit.sect )
+    dbg("dev", "part_cond:%s", part_cond)
     local support_item_cond = 0
     if best_support_item then 
-        support_item_cond = best_support_item:condition() or ini_sys:r_float_ex(best_support_item:section(),"repair_part_bonus") 
+        support_item_cond = best_support_item.obj:condition() or best_support_item.bonus
     else
-        support_item_cond = ini_sys:r_float_ex(repair_kit:section(),"repair_part_bonus")
+        support_item_cond = worst_repair_kit.bonus
     end
-    local add_cond = ini_sys:r_float_ex(repair_kit:section(), "repair_add_condition") or 0
+    dbg("dev", "support item cond: %s", support_item_cond)
+    local add_cond =  worst_repair_kit.add 
     local total_cond = part_cond + support_item_cond + add_cond
-    local item_cond = 1 - clamp(total_cond, part_cond, 1)
-    pr("total cond: %s. item_cond:%s", total_cond, item_cond)
-    if item_cond == 0 then
-        data["damaged_parts"][bone_name] = nil
-    else
-        data["damaged_parts"][bone_name] = item_cond
-    end
+    local item_cond = clamp(total_cond, part_cond, 1)
+    dbg("dev", "add cond: %s, total cond: %s. item_cond:%s", add_cond, total_cond, item_cond)
+
+    dbg("dev", "updating hf data")
+    local data = hf_obj_manager.get_data(self.gen_id)
+    data["parts"][part_name].condition = item_cond
     hf_obj_manager.update_data(self.gen_id, data)
 
-    
     if best_support_item then
-        utils_item.discharge(best_support_item)
+        utils_item.discharge(best_support_item.obj)
+        dbg("dev", "discharging use from: %s", best_support_item.sect)
     end
 
-    if IsItem("multiuse", nil, repair_kit) then
-		utils_item.discharge(repair_kit) 
+    if IsItem("multiuse", nil, worst_repair_kit.obj) then
+		utils_item.discharge( worst_repair_kit.obj) 
+        dbg("dev", "discharging use from: %s", worst_repair_kit.sect)
 	else
-		utils_item.degrade(repair_kit, 0.2)
+		utils_item.degrade( worst_repair_kit.obj, 0.2)
+        dbg("dev", "degrading %s by 0.2", worst_repair_kit.sect)
 	end
 	
-    actor_effects.play_item_fx(repair_kit:section() .. "_dummy")
+    actor_effects.play_item_fx( worst_repair_kit.sect .. "_dummy")
     game_statistics.increment_statistic("self_repairs")
     utils_obj.play_sound("interface\\inv_repair_kit_use_fast")
 
@@ -525,42 +527,29 @@ function UIDieselGenerator:RepairBtn()
 end
 
 function UIDieselGenerator:ReplaceBtn()
-    pr("on replace")
+    dbg("debug", "on replace")
     local item = self.repair_list:GetSelectedItem()
     if not item then return end
-    local replacements = {}
     local part_info = item["part_info"]
-    local part_sect = part_info["part_name"]
-    local part_name = gts(ini_sys:r_string_ex(part_sect, "inv_name"))
+    local part_name = part_info["name"]
+    local part_cond = part_info["condition"]
+    local item_name = gts(ini_sys:r_string_ex(part_name, "inv_name"))
 
-    local data = hf_obj_manager.get_data(self.gen_id)
-    local bone_name
-    local part_damaged = false
-    if is_not_empty(data["damaged_parts"]) then
-        for b_name, _ in pairs(data["damaged_parts"]) do
-            local damaged_part_name = bone_to_part_name(b_name)
-            if damaged_part_name == part_sect then
-                part_damaged = true
-                bone_name = b_name
-            end
-        end
-    end
-
-    if not part_damaged then
-        actor_menu.set_msg(1, gts("st_part_perfect", part_name), 3)
+    if part_cond >= 0.95  then
+        actor_menu.set_msg(1, gts("st_part_perfect", item_name), 3)
         return
     end
 
+    local replacements = {}
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
-        if sect == part_sect then
+        if sect == item_name then
             replacements[obj:id()] = obj:condition() or 1
         end
     end)
     
-
     if is_empty(replacements) then
-        actor_menu.set_msg(1, gts("st_replacement_missing", part_name), 3)
+        actor_menu.set_msg(1, gts("st_replacement_missing", item_name), 3)
         return 
     end
 
@@ -573,21 +562,15 @@ function UIDieselGenerator:ReplaceBtn()
         end
     end
 
-    local part_cond = 1 - data["damaged_parts"][bone_name]
     if highest_cond <= part_cond then
-        actor_menu.set_msg(1, gts("st_highest_part", part_name), 3)
+        actor_menu.set_msg(1, gts("st_highest_part", item_name), 3)
         return
     end
 
     alife_release(alife_object(replace_id))
-
-    local item_cond = 1 - highest_cond
-    if item_cond == 0 then
-        data["damaged_parts"][bone_name] = nil
-    else
-        data["damaged_parts"][bone_name] = item_cond
-    end
-    pr("replacing %s condition: %s to be %s", part_name, part_cond, item_cond)
+    local data = hf_obj_manager.get_data(self.gen_id)
+    data["parts"][part_name].condition = highest_cond
+    dbg("info", "replacing %s condition: %s to be %s", part_name, part_cond, highest_cond)
 
     hf_obj_manager.update_data(self.gen_id, data)
     utils_obj.play_sound("interface\\inv_disassemble_metal_fast_1")
@@ -598,7 +581,7 @@ end
 
 class "repair_item" (CUIListBoxItem)
 function repair_item:__init(idx, part_info) super(idx, part_info)
-    pr("init repair item")
+    dbg("debug", "init repair item")
     self.idx = idx
     self.part_info = part_info
 
@@ -611,16 +594,16 @@ function repair_item:__init(idx, part_info) super(idx, part_info)
     local icon_h = icon_w
     self.icon = self:AddIconField(1)
     --pr("ui_" .. part_info["part_name"])
-    self.icon:InitTexture("ui_" .. part_info["part_name"])
+    self.icon:InitTexture("ui_" .. part_info["name"])
     self.icon:SetStretchTexture(true)
     self.icon:SetWndPos(vector2():set(width / 2 - icon_w / 2, (height / 2 - icon_h / 2) + 10))
     self.icon:SetWndSize(vector2():set(icon_w, icon_h))
     local icon_clr = self.icon:GetTextureColor()
     self.icon:SetTextureColor(change_alpha(icon_clr, 200))
 
-    self.part_name = self:AddTextField(gts(ini_sys:r_string_ex(part_info["part_name"], "inv_name")), 1)
+    self.part_name = self:AddTextField(gts(ini_sys:r_string_ex(part_info["name"], "inv_name")), 1)
     self.part_name:SetTextAlignment(CGameFont.alCenter)
-    local part_name_len = #part_info["part_name"]
+    local part_name_len = #part_info["name"]
     local part_w = part_name_len % 2 == 0 and part_name_len or part_name_len - 1
     local part_h = 10
     self.part_name:SetWndPos(vector2():set(0, 10))
@@ -802,7 +785,7 @@ function UIPowerableDevices:UpdateMarkers()
 end
 
 function UIPowerableDevices:ValidateDevice(obj)
-    set_debug_level("all")
+    
     if not obj then
         return false
     end
@@ -839,7 +822,7 @@ function UIPowerableDevices:ValidateDevice(obj)
     local dist_to_gen = distance_between(db.actor, found_gen)
     local gen_radius = (SEARCH_RADIUS / math.pi * 2)
     if dist_to_gen >= gen_radius then
-        pr("dist to gen: %s, gen radius: %s", dist_to_gen, gen_radius)
+        dbg("error", "dist to gen: %s, gen radius: %s", dist_to_gen, gen_radius)
         return false
     end
 
@@ -859,7 +842,7 @@ function UIPowerableDevices:ValidateDevice(obj)
     local dir = get_direction(actor_pos, obj_pos)
     local result = ray:get(raised_actor_pos, dir)
     if result.result.material_name then
-        pr("%s obstructing view", result.result.material_name)
+        dbg("error", "%s obstructing view", result.result.material_name)
         return false
     end
    
@@ -904,7 +887,8 @@ function UIPowerableDevices:ApplyScreenRatio(ele)
 end
 
 function on_option_change(options)
-    --pr("Received options: %s", print_table(options))
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
     SEARCH_RADIUS = options["search_radius"]
     MAX_FUEL = options["max_fuel"]
     MAX_POWER_OUTPUT = options["max_power_output"]
