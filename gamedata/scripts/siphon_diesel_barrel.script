@@ -4,31 +4,34 @@
     Purpose: Manage Siphoning Diesel from explosive barrel
 --]]
 
--- Imports
-contains = hfg_utils.contains
-gts = hfg_utils.get_translation
-print_table = hfg_utils.print_table
-find_obj = hfg_utils.find_obj
-get_nearest = hfg_utils.get_nearest
-find_inv_item = hfg_utils.find_inv_item
-nearest_val = hfg_utils.nearest_val
-get_keytable = hfg_utils.get_keytable
+-- Lib Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+
+gts = get_translation
+
+-- Script Imports
 replace_generator_item = bind_generator_item.replace_generator_item
 add_functor = custom_functor_autoinject.add_functor
-itr_inv = hfg_utils.itr_inv
-throttle = hfg_utils.throttle
-set_debug_level = hfg_utils.set_debug_level
-filter_debug_msg = hfg_utils.filter_debug_msg
+throttle = ag_utils.throttle
+
+-- Utils
+get_config = hfg_utils.get_config
 
 -- Constants
 MAX_FUEL = 60
 SIPHON_RANGE = 3
 OP_TXT = "Siphon %s from barrel"
+LOG_HEADER = "[HFG|Siphon Barrel]"
 
 -- Variables
 GUI = nil
 fuel_barrels = {}
-local dbg_lvl = "dev"
+local dbg_pr = nil
 
 -- Tables
 FUEL_TO_CLR = {
@@ -79,9 +82,25 @@ FUEL_TO_POS = {
 }
 
 -- DEBUGGING
-function pr(str, ...)
-    if not filter_debug_msg(dbg_lvl) then return end
-    hfg_utils.dbg_pr("[HFG|Siphon Diesel Barrel]: %s", str, ...)
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
 end
 
 function calc_stored_fuel()
@@ -103,10 +122,9 @@ function calc_stored_fuel()
 end
 
 function init_fuel_barrel(obj)
-    set_debug_level("all")
     local id = obj:id()
     if not contains(fuel_barrels, id, true) then
-        pr("init fuel barrel: %s", id)
+        dbg("info", "init fuel barrel: %s", id)
         fuel_barrels[id] = {
             stored_fuel = calc_stored_fuel(),
             searched = false, -- Reset barrel after x amount of time past
@@ -116,22 +134,20 @@ function init_fuel_barrel(obj)
             fuel_barrels[id]["reinit_time"] = time_global() + (math.random(24, 24*7) * 3600) * 1000
         end
         obj:set_tip_text(gts("st_siphon_fuel"))
-        pr("Fuel barrel data: %s", print_table(fuel_barrels[id]))
+        dbg("dev", "Fuel barrel data: %s", fuel_barrels[id])
     end
     return id
 end
 
 function reinit_fuel_barrel(obj)
-    set_debug_level("all")
-    pr("reinit fuel barrel: %s", obj:id())
+    dbg("info", "reinit fuel barrel: %s", obj:id())
     remove_fuel_barrel(obj)
     return init_fuel_barrel(obj)
 end
 
 function remove_fuel_barrel(obj)
-    set_debug_level("all")
     if contains(fuel_barrels, obj:id(), true) then
-        pr("removing %s from fuel barrels", obj:id())
+        dbg("info", "removing %s from fuel barrels", obj:id())
         if not fuel_barrels[obj:id()]["has_exploded"] then
             fuel_barrels[obj:id()]["has_exploded"] = false
         end
@@ -156,21 +172,20 @@ function siphon_fuel_menu(obj)
 end
 
 function siphon_fuel_func(obj)
-    set_debug_level("dev")
     -- Barrel
     local found_barrels = find_obj("explosive_barrel", db.actor:position(), SIPHON_RANGE)
     local found_barrel = get_nearest(found_barrels)
     local id = found_barrel:id()
     local info = fuel_barrels[id]
     local tg = time_global()
-    pr("Fuel barrel data: %s", print_table(info))
+    dbg("dev", "Fuel barrel data: %s", info)
     if info["stored_fuel"] == 0  then
         fuel_barrels[id]["searched"] = true
         hide_hud_inventory()
         actor_menu.set_msg(1, gts("st_barrel_empty"), 3)
         return
     elseif info["searched"] and info["stored_fuel"] == 0 and tg >= info["reinit_time"] then
-        pr("reinit time: %s, tg: %s", info["reinit_time"], tg)
+        dbg("dev", "reinit time: %s, tg: %s", info["reinit_time"], tg)
         id = reinit_fuel_barrel(found_barrel)
     end
 
@@ -191,7 +206,7 @@ function siphon_fuel_func(obj)
             total_empty_volume = total_empty_volume + (10 - obj:get_remaining_uses())
         end
     end
-    pr("total empty volume: %s", total_empty_volume)
+    dbg("dev", "total empty volume: %s", total_empty_volume)
     if total_empty_volume == 0 then 
         hide_hud_inventory()
         actor_menu.set_msg(1, gts("st_no_empty_jerrycan"), 3)
@@ -204,8 +219,7 @@ end
 add_functor("siphon_fuel", siphon_fuel_cond, siphon_fuel_menu, nil, siphon_fuel_func)
 
 function start_siphon_ui(id)
-    set_debug_level("all")
-    pr("starting siphon ui")
+    dbg("debug", "starting siphon ui")
     
     if not GUI then
         GUI = UISiphon()
@@ -221,19 +235,17 @@ end
 
 class "UISiphon" (CUIScriptWnd)
 function UISiphon:__init() super()
-    set_debug_level("all")
-    pr("init siphon ui")
+    dbg("debug", "init siphon ui")
     if not self.init then
         self:InitControls()
         self:InitCallbacks()
         self.init = true
     end
-    pr("finished init")
+    dbg("dev", "finished init")
 end
 
 function UISiphon:Reset(id)
-    set_debug_level("all")
-    pr("reinit siphon ui")
+    dbg("info", "reinit siphon ui")
 	self.barrel_id = id
     self.stored_fuel = fuel_barrels[id]["stored_fuel"] or 0
     self.found_jerrycans = find_inv_item("jerrycan") or {}
@@ -242,14 +254,13 @@ function UISiphon:Reset(id)
 end
 
 function UISiphon:__finalize()
-    pr("finalise siphon ui")
+    dbg("info", "finalise siphon ui")
 	GUI = nil
 end
 
 
 function UISiphon:InitControls()
-    set_debug_level("all")
-    pr("init siphon controls")
+    dbg("info", "init siphon controls")
 	self:SetWndRect(Frect():set(0,0,1024,768))
     self:SetAutoDelete(true)
 
@@ -269,33 +280,31 @@ function UISiphon:InitControls()
 
     self:Register(self.fuel_trackbar, "fuel_trackbar")
     self:Register(self.start_btn, "start_btn")
-    pr("fininshed controls")
+    dbg("dev", "fininshed controls")
 end
 
 function UISiphon:InitCallbacks()
-    set_debug_level("all")
-    pr("init siphon callbacks")
+    dbg("info", "init siphon callbacks")
     self:AddCallback("fuel_trackbar", ui_events.BUTTON_CLICKED, self.OnTrackBarMove, self)
     self:AddCallback("switch_btn", ui_events.BUTTON_CLICKED, self.OnClickSwitch, self)
     self:AddCallback("start_btn", ui_events.BUTTON_CLICKED, self.OnClickStart, self)
-    pr("finished callbacks")
+    dbg("dev", "finished callbacks")
 end
 
 function UISiphon:Setup()
-    set_debug_level("all")
-    pr("setup ui elements")
-    pr("setting barrel counter color")
+    dbg("info", "setup ui elements")
+    dbg("dev", "setting barrel counter color")
     self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
     local barrel_clrs = FUEL_TO_CLR["barrel"]
     local fuel_percent = nearest_val(get_keytable(barrel_clrs), (self.stored_fuel / MAX_FUEL) * 100)
     self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[fuel_percent])))
     
-    pr("set barrel counter pos")
+    dbg("dev", "set barrel counter pos")
     local barrel_cnt_pos = self.fuel_counter_barrel:GetWndPos()
     local fuel_to_pos = FUEL_TO_POS["barrel"]
     local barrel_fuel_percent = nearest_val(get_keytable(fuel_to_pos), fuel_percent)
     local barrel_cnt_pos_y = fuel_to_pos[barrel_fuel_percent]
-    pr(barrel_fuel_percent)
+    dbg("dev", barrel_fuel_percent)
     self.fuel_counter_barrel:SetWndPos(vector2():set(barrel_cnt_pos.x, barrel_cnt_pos_y))
 
     local fuel_to_pos = FUEL_TO_POS["barrel_contents"]
@@ -307,7 +316,7 @@ function UISiphon:Setup()
     self.fuel_contents_barrel:SetWndPos(vector2():set(b_fuel_contents_pos.x, b_fuel_contents_y))
     self.fuel_contents_barrel:SetWndSize(vector2():set(b_fuel_contents_size.w, b_fuel_contents_h))
 
-    pr("setting default ui ele values")
+    dbg("dev", "setting default ui ele values")
     self.operation_text:SetText(strformat(OP_TXT, self.fuel_counter_barrel:GetText()))
 
     self.fuel_trackbar:SetStep(1)
@@ -316,7 +325,7 @@ function UISiphon:Setup()
 
     self.fuel_to_move = self.stored_fuel
 
-    pr("Setup jerrycans")
+    dbg("dev", "Setup jerrycans")
     -- Sorting found jerrycans
     local t = {}
     self.total_volume = 0
@@ -329,7 +338,7 @@ function UISiphon:Setup()
     end
 
     -- Sort jerrycans from emptiest to fullest
-    pr("sorting by fuel amount low - high")
+    dbg("dev", "sorting by fuel amount low - high")
     for idx, obj in pairs(self.found_jerrycans, function(t, a, b) return t[a]:get_remaining_uses() < t[b]:get_remaining_uses() end) do
         if not contains(t, obj:id()) then
             local uses = obj:get_remaining_uses()
@@ -342,7 +351,7 @@ function UISiphon:Setup()
         end
     end
     
-    pr("found jerrycans: %s", #self.found_jerrycans)
+    dbg("dev", "found jerrycans: %s", #self.found_jerrycans)
     local jerrycan = self.found_jerrycans[1]
     local is_jerrycan_empty = jerrycan:section() == "hfg_jerrycan_diesel_empty" and true or false
     self.fuel_counter_jerrycan:SetText(strformat("%sL", is_jerrycan_empty and 0 or jerrycan:get_remaining_uses()))
@@ -373,43 +382,41 @@ function UISiphon:Setup()
     self.total_empty_volume = (10 * #self.found_jerrycans) - self.total_volume
     self.init = true
 
-    pr("total fuel stored in jerry cans: %s", self.total_volume)
-    pr("total space available: %s", self.total_empty_volume)
-    pr("found jerrycans: %s", #self.found_jerrycans)
-    pr("stored barrel fuel: %s", self.stored_fuel)
-    pr("finished setup")
+    dbg("dev", "total fuel stored in jerry cans: %s", self.total_volume)
+    dbg("dev", "total space available: %s", self.total_empty_volume)
+    dbg("dev", "found jerrycans: %s", #self.found_jerrycans)
+    dbg("dev", "stored barrel fuel: %s", self.stored_fuel)
+    dbg("dev", "finished setup")
 end
 
 function UISiphon:OnTrackBarMove()
-    set_debug_level("all")
-    pr("on trackbar move")
+    dbg("info", "on trackbar move")
     self.fuel_to_move = self.fuel_trackbar:GetFValue()
     local operation_txt = strformat(OP_TXT, strformat("%sL", self.fuel_to_move))
     self.operation_text:SetText(operation_txt)
 end
 
 function UISiphon:OnClickStart()
-    set_debug_level("all")
-    pr("on click start")
-    if self.fuel_to_move == 0 then pr("no fuel to move") return end
+    dbg("info", "on click start")
+    if self.fuel_to_move == 0 then dbg("dev", "no fuel to move") return end
     local fuel_to_move = self.fuel_to_move
     local add_new = {}
     local remove_full = {}
     for i=1, #self.found_jerrycans do
         -- take from barrel, put in jerrycan
-        pr("stored fuel %s, empty vol: %s", self.stored_fuel, self.total_empty_volume)
+        dbg("dev", "stored fuel %s, empty vol: %s", self.stored_fuel, self.total_empty_volume)
         if self.stored_fuel == 0 or self.total_empty_volume == 0 then -- if no jerrycan can be filled or there is no fuel in the barrel
-            pr("if all jerrycans are full or there is no fuel in the barrel")
+            dbg("dev", "if all jerrycans are full or there is no fuel in the barrel")
             return 
         end
 
         local jc = self.found_jerrycans[i]
         
         local is_jerrycan_empty = string.find(jc:section(), "empty") and true or false
-        pr("empty jerrycan: %s", is_jerrycan_empty)
+        dbg("dev", "empty jerrycan: %s", is_jerrycan_empty)
 
         local space_left = 0
-        pr("expected fuel to move: %s", self.fuel_to_move)
+        dbg("info", "expected fuel to move: %s", self.fuel_to_move)
         -- Make sure theres room in the jerrycan for fuel, move to next if not
         space_left = is_jerrycan_empty and 10 or 10 - jc:get_remaining_uses()
         if space_left - self.fuel_to_move < 0 then
@@ -421,8 +428,8 @@ function UISiphon:OnClickStart()
             end
         end
         
-        pr("space left: %s", space_left)
-        pr("actual fuel to move: %s", self.fuel_to_move)
+        dbg("info", "space left: %s", space_left)
+        dbg("dev", "actual fuel to move: %s", self.fuel_to_move)
         if self.fuel_to_move <= 10 and self.fuel_to_move > 0 then
             local jerrycan_uses = is_jerrycan_empty and self.fuel_to_move or jc:get_remaining_uses() + self.fuel_to_move
             -- Update UI Elements with change fuel vars
@@ -436,29 +443,29 @@ function UISiphon:OnClickStart()
 
             local operation_txt = strformat(OP_TXT, strformat("%sL", self.stored_fuel))    
             self.operation_text:SetText(operation_txt)
-            pr("setting op txt to: %s", operation_txt)
+            dbg("dev", "setting op txt to: %s", operation_txt)
 
             if jerrycan_uses == 10 then
-                pr("assign to be removed")
+                dbg("dev", "assign to be removed")
                remove_full[#remove_full + 1] = i
             end
 
             -- Jerrycan Text
-            pr("updating counter text: jerrycan")
+            dbg("info", "updating counter text: jerrycan")
             self.fuel_counter_jerrycan:SetText(strformat("%sL", jerrycan_uses))
             local jerrycan_clrs = FUEL_TO_CLR["jerrycan"]
             local fuel_percent = nearest_val(get_keytable(jerrycan_clrs), (jerrycan_uses / 10) * 100)
             self.fuel_counter_jerrycan:SetTextColor(GetARGB(unpack(jerrycan_clrs[fuel_percent])))
             
             -- Jerrycan Pos
-            pr("updating counter pos: jerrycan")
+            dbg("info", "updating counter pos: jerrycan")
             local jc_cnt_pos = self.fuel_counter_jerrycan:GetWndPos()
             local fuel_to_pos = FUEL_TO_POS["jerrycan"]
             local jc_cnt_pos_y = fuel_to_pos[fuel_percent]
             self.fuel_counter_jerrycan:SetWndPos(vector2():set(jc_cnt_pos.x, jc_cnt_pos_y))
 
             -- Set Jerrycan Contents y and h
-            pr("updating fuel contents jerrycan")
+            dbg("info", "updating fuel contents jerrycan")
             local fuel_to_pos = FUEL_TO_POS["jerrycan_contents"]
             local jc_fuel_contents_pos = self.fuel_contents_jerrycan:GetWndPos()
             local jc_fuel_contents_size = {w=self.fuel_contents_jerrycan:GetWidth(), h=self.fuel_contents_jerrycan:GetHeight()}
@@ -470,26 +477,26 @@ function UISiphon:OnClickStart()
         
 
             -- Barrel Text
-            pr("updating counter text: barrel")
+            dbg("info", "updating counter text: barrel")
             self.fuel_counter_barrel:SetText(strformat("%sL", self.stored_fuel))
             local barrel_clrs = FUEL_TO_CLR["barrel"]
             local barrel_fuel_percent = nearest_val(get_keytable(barrel_clrs), (self.stored_fuel / MAX_FUEL) * 100)
-            pr(self.stored_fuel, barrel_fuel_percent)
+            dbg("info", self.stored_fuel, barrel_fuel_percent)
             self.fuel_counter_barrel:SetTextColor(GetARGB(unpack(barrel_clrs[barrel_fuel_percent])))
 
             -- Barrel Pos
-            pr("updating counter pos: barrel")
+            dbg("info", "updating counter pos: barrel")
             local barrel_cnt_pos = self.fuel_counter_barrel:GetWndPos()
             local fuel_to_pos = FUEL_TO_POS["barrel"]
             local barrel_cnt_pos_y = fuel_to_pos[barrel_fuel_percent]
             self.fuel_counter_barrel:SetWndPos(vector2():set(barrel_cnt_pos.x, barrel_cnt_pos_y))
             
-            pr("Stored Fuel: %s", self.stored_fuel)
-            pr("Total Jerrycan Space Available: %s", self.total_empty_volume)
-            pr("updating ui elements")
+            dbg("info", "Stored Fuel: %s", self.stored_fuel)
+            dbg("info", "Total Jerrycan Space Available: %s", self.total_empty_volume)
+            dbg("info", "updating ui elements")
 
             -- Set Barrel Contents y and h
-            pr("updating fuel contents barrel")
+            dbg("info", "updating fuel contents barrel")
             local fuel_to_pos = FUEL_TO_POS["barrel_contents"]
             local b_fuel_contents_pos = self.fuel_contents_barrel:GetWndPos()
             local b_fuel_contents_size = {w=self.fuel_contents_barrel:GetWidth(), h=self.fuel_contents_barrel:GetHeight()}
@@ -500,26 +507,26 @@ function UISiphon:OnClickStart()
             self.fuel_contents_barrel:SetWndSize(vector2():set(b_fuel_contents_size.w, b_fuel_contents_h))
             
             -- Update Barrel Table
-            pr("updating barrel table")
+            dbg("info", "updating barrel table")
             fuel_barrels[self.barrel_id]["stored_fuel"] = self.stored_fuel
             fuel_barrels[self.barrel_id]["searched"] = true
             
             -- Update HF Data (uses) for jerrycans
-            pr("updating hf data")
+            dbg("info", "updating hf data")
             local data = hf_obj_manager.get_data(jc:id())
             local update_id = jc:id()
             
             data["uses"] = jerrycan_uses
-            pr("jerrycan_uses: %s", data["uses"])
+            dbg("dev", "jerrycan_uses: %s", data["uses"])
             if is_jerrycan_empty then
             
                 local new_sect = "hfg_jerrycan_diesel"
                 local se_obj = alife_create_item(new_sect, db.actor, {uses=data["uses"]})               
 
-                pr("releasing %s", jc:id())
+                dbg("dev", "releasing %s", jc:id())
                 alife_release(alife_object(jc:id()))
 
-                pr("Creating %s with id %s", new_sect, se_obj.id)
+                dbg("dev", "Creating %s with id %s", new_sect, se_obj.id)
                 replace_generator_item(data["tbl_id"], se_obj.id)
                 data["tbl_id"] = se_obj.id
                 data["item_section"] = new_sect
@@ -531,7 +538,7 @@ function UISiphon:OnClickStart()
             else
                 jc:set_remaining_uses(data["uses"])
             end
-            pr("update id: %s", update_id)
+            dbg("dev", "update id: %s", update_id)
             hf_obj_manager.update_data(update_id, data)
         else
             self.fuel_to_move = fuel_to_move
@@ -558,8 +565,7 @@ function UISiphon:OnClickStart()
 end
 
 function UISiphon:Close()
-    set_debug_level("all")
-    pr("on close")
+    dbg("debug", "on close")
     if (self:IsShown()) then
 		self:HideDialog()
 	end
@@ -574,7 +580,7 @@ function UISiphon:OnKeyboard(dik, keyboard_action)
 		if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
 		
 			if dik == DIK_keys.DIK_ESCAPE then
-                pr("esc key pressed")
+                dbg("info", "esc key pressed")
 				self:Close()
 			end
 
@@ -610,13 +616,15 @@ function on_load(m_data)
 end
 
 function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
     SIPHON_RANGE = options["siphon_range"]
     MAX_FUEL = options["max_fuel"]
+    dbg("debug", "Received options")
 end
 
 function on_game_start()
     --RegisterScriptCallback("physic_object_on_hit_callback", physic_object_on_hit)
-    RegisterScriptCallback("explosive_item_on_explode", remove_fuel_barrel)
+    --RegisterScriptCallback("explosive_item_on_explode", remove_fuel_barrel)
     RegisterScriptCallback("actor_on_update", actor_on_update)
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
