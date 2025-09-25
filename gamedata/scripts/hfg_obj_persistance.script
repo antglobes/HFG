@@ -1,0 +1,77 @@
+
+-- Library Imports
+ag_utils.import_metatable(this, ag_tables)
+
+-- Variables
+local cache = {}
+
+
+function in_cache(id, sect)
+    return contains(cache, sect, true) and contains(cache[sect], id, true)
+end
+
+function init(id, sect, data)
+    if not in_cache(id, sect) then
+        local data = data or {tbl_id=id}
+        printf("init %s for %s with %s", id, sect, print_table(data))
+        cache[sect] = cache[sect] or {}
+        cache[sect][id] = data
+        hf_obj_manager.update_data(id, data)
+        -- dbg("dev", "Init obj. %s %s in cache", #cache[sect], sect)
+    end
+end
+
+function get(id, sect)
+    --printf("getting %s from %s using %s", print_table(cache[sect][id]), sect, id)
+    return cache[sect][id]
+end
+
+function set(id, sect, data)
+    --printf("changing %s for %s to %s", id, sect, data and print_table(data) or nil)
+    cache[sect] = cache[sect] or {}
+    cache[sect][id] = data
+end
+
+function update(id, sect, data)
+    if not in_cache(id, sect) then return end
+    ----printf("updating %s for %s with %s", id, sect , print_table(data))
+    local tbl_data = get(id, sect)
+    for k, v in pairs(data) do
+        tbl_data[k] = v
+    end
+    set(id, sect, data)
+end
+
+function replace(old, new)
+    if in_cache(old.id, old.sect) then
+        local tbl_data = get(old.id, old.sect)
+        printf("Replacing old data with new data")
+        printf("old: id:%s, sect:%s", old.id, old.sect)
+        printf("new: id:%s, sect:%s", new.id, new.sect)
+        
+        set(old.id, old.sect, nil)
+        set(new.id, new.sect, tbl_data)
+        hf_obj_manager.delete_data(old.id)
+        printf("old data exists: %s", in_cache(old.id, old.sect))
+        -- printf("new data table: %s", print_table(cache[new.sect][new.id]))
+    end
+end
+
+function remove(id, sect)
+    if not in_cache(id, sect) then return end
+    --printf("removing id %s for %s")
+    cache[sect][id] = nil
+end
+
+function on_save(mdata)
+    mdata.cache = cache
+end
+
+function on_load(mdata)
+    cache = mdata.cache or {}
+end
+
+function on_game_start()
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
+end
