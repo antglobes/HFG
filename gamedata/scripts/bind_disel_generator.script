@@ -1,163 +1,146 @@
 --[[
-    Last Edited: 08/04/25
+    Last Edited: 03/08/25
     Author: antglobes
     Purpose: Binding and Managing Diesel Generator Object
 --]]
 
--- Imports
-get_unknown_object = hfg_utils.get_unknown_object
-contains = hfg_utils.contains
-gts = hfg_utils.get_translation
-set_debug_level = hfg_utils.set_debug_level
-get_sect_tbl = hfg_utils.get_sect_tbl
-find_obj = hfg_utils.find_obj
-get_nearest = hfg_utils.get_nearest
-nearest_val = hfg_utils.nearest_val
-print_table = hfg_utils.print_table
-get_keytable = hfg_utils.get_keytable
-get_hf_item_name = hfg_utils.get_hf_item_name
-get_direction = hfg_utils.get_direction
+-- Library Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+
+gts = get_translation
+
+-- External Imports
 AOE = demonized_aoe.AOE
-clamp_rand = hfg_utils.clamp_rand
-get_config = hfg_utils.get_config
-set_debug_level = hfg_utils.set_debug_level
-filter_debug_msg = hfg_utils.filter_debug_msg
+geo_ray = demonized_geometry_ray.geometry_ray
+
+-- Utils
+get_hf_item_name = hfg_utils.get_hf_item_name
 bone_to_part_name = hfg_utils.bone_to_part_name
 get_bone_pos = hfg_utils.get_bone_pos
+get_config = hfg_utils.get_config
+get_parts_tbl = hfg_utils.get_parts_tbl
+get_powerable_devices = hfg_utils.get_powerable_devices
+cond_to_state = hfg_utils.cond_to_state
+bones_by_distance = hfg_utils.bones_by_distance
+disassemble_power_source = hfg_utils.disassemble_power_source
+update_power_source_cond = hfg_utils.update_power_source_cond
+SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
 
 -- Constants
 MIN_COND = 0.01
+LOG_HEADER = "[HFG|Bind Disel Gen]"
+MS_HOUR = 3.6 * math.pow(10, 6) -- Hours to Millisecond
+HOUR_SEC = 3.6 * math.pow(10, 3)
+GEN_ITEM = "disel_generator_item"
+PART_REPAIR_COND = 0.25
 
 -- MCM Variables
 SEARCH_RADIUS = 50
-
 BROKEN_COND = 0.1
 MAX_FUEL = 60
 MAX_POWER_OUTPUT = 5000
 
--- Tables
-FUEL_SECTIONS = {"batteries_dead"}
-SWAP_POWER_STATE = {
-    on = "off",
-    off = "on",
-    broken = "broken"
-}
-GENERATOR_BONE_NAMES = {
-    "link", "body", "but_belt", "l_rotor",
-    "r_rotor", "tank", "top_belt", "exhaust",
-    "battery", "wires", "turbine", "engine",
-    "pipes", "fan", "frame-a", "frame-b"
-}
-
 -- Variables
 GUI = nil
 placed_generators = {}
-local dbg_lvl = "dev"
+local dbg_pr = nil
 
 -- DEBUGGING
-function pr(str, ...)
-    if not filter_debug_msg(dbg_lvl) then return end
-    hfg_utils.dbg_pr("[HFG|Bind Disel Gen]: %s", str, ...)
-end
-
-function in_generator_tbl(id)
-    return contains(placed_generators, id, true)
-end
-
-function init_generator(id)
-    if not in_generator_tbl(id) then
-        local data = {tbl_id=id}
-        placed_generators[id] = data
-        hf_obj_manager.set_data(id, data)
-        set_debug_level("dev")
-        pr("init generator tbl: %s", id)
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
     end
 end
 
-function update_generator(id, data)
-    if not in_generator_tbl(id) then return end
-    local tbl_data = placed_generators[id]
-    for k, v in pairs(data) do
-        tbl_data[k] = v
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
     end
-    placed_generators[id] = tbl_data
-    set_debug_level("all")
+    dbg_pr:Log(level, fmt, ...)
 end
 
-function replace_generator(old_id, new_id)
-    if in_generator_tbl(old_id) then
-        local info = placed_generators[old_id]
-        placed_generators[new_id] = info
-        placed_generators[old_id] = nil
-        hf_obj_manager.delete_data(old_id)
-        set_debug_level("dev")
-        pr("replacing %s with %s", old_id, new_id)
-    end
-end
-
-function remove_generator(id)
-    if not in_generator_tbl(id) then return end
-    placed_generators[id] = nil
-    set_debug_level("all")
-    pr("removing %s", id)
-end
 
 function toggle_power(obj_id)
-    set_debug_level("dev")
-    pr("Toggle Genny Power")
+    dbg("debug", "Toggle Power")
     local data = hf_obj_manager.get_data(obj_id)
-    --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
+    --dbg("dev", "Genny data: %s\n", data)
+    local se_obj = alife_object(obj_id)
     local in_progress = data["anim_in_progress"]
-    if in_progress then pr("anim in progress, cant switch power state") return end
+    if in_progress then dbg("info", "anim in progress, cant switch power state") return end
 
+    local ps_sect = se_obj:section_name()
     local power_state = data["power_state"]
     if power_state then
+        local gen_name = get_hf_item_name(ps_sect)
         if power_state == "broken" then 
-            actor_menu.set_msg(1, gts("st_generator_broken"), 3)
+            actor_menu.set_msg(1, gts("st_generator_broken", gen_name), 3)
             return 
         end
 
-        local no_fuel = data["stored_fuel"] == 0
-        if no_fuel then
-            pr("no fuel")
+        local has_fuel = contains(data, "stored_fuel", true) and data["stored_fuel"] > 0 or false
+        if not has_fuel then
+            dbg("info", "no fuel")
             actor_menu.set_msg(1, gts("st_no_fuel"), 3)
             return
         end
 
         local obj = get_unknown_object({id=obj_id}, "game")
         if obj then
-            pr("Switching interact tip to %s", power_state)
-            obj:set_tip_text(gts("st_power_state_" .. power_state))
+            dbg("info", "Switching interact tip to %s", power_state)
+            obj:set_tip_text(gts("st_power_state_" .. power_state, gen_name))
         end
 
-        pr("Attempting to switch power from %s to %s", power_state, SWAP_POWER_STATE[power_state])
+        dbg("debug", "Attempting to switch power from %s to %s", power_state, SWAP_POWER_STATE[power_state])
         hf_obj_manager.update_data(obj_id, {power_state=SWAP_POWER_STATE[power_state], last_power_state=power_state, anim_due=true})
         return true
     end
-    pr("genny left in current state")
+    dbg("info", "genny left in current state")
 end
 
 -- Diesel Generator Binder
 
-function init(obj)
-    set_debug_level("all")
-    pr("Initalising genny")
+function init(obj, was_blueprint)
+    local id = obj:id()
+    local sect = obj:section()
+    dbg("dev", "attempt binding %s", sect)
+    if contains(hfg_blueprint.placed_blueprints, id, true) then
+        dbg("dev", "cannot bind %s, as is a blueprint ", sect)
+        return
+    end
+    
+    hfg_obj_persistance.init(id, sect, {tbl_id=id})
+    dbg("dev", "binding %s", sect)
     obj:bind_object(placeable_disel_generator_wrapper(obj).binder)
 end
 
 class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_disel_generator_wrapper:__init(obj) super(obj)
-    
+    dbg("dev", "Initalising genny")
+
     local data = hf_obj_manager.get_data(self.object:id())
    
     -- Object Fields
     self.section = self.object:section()
+    self.item_section = ini_sys:r_string_ex(self.section, "item_section")
     self.condition = (contains(data, "condition", true) and data["condition"]) or 1
-    self.damaged_parts = data["damaged_parts"] or {}
+    self.placeable_type = ini_sys:r_string_ex(self.item_section, "placeable_type")
+    self.parts = contains(data, "parts", true) and data["parts"] or self:InitParts()
     
     -- Object State
     self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
-    self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state]))
+    self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
     self.current_motion = "idle"
     self.powerable_device_tmr = 0
 
@@ -170,7 +153,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
 
     -- Animation snd
     self.snd = data["snd"] or {}
-    self.snd["last_played"] = contains(data["snd"], "last_played", true) and data["snd"]["last_played"] or nil
+    --self.snd["last_played"] = contains(data["snd"], "last_played", true) and data["snd"]["last_played"] or nil
 
     -- Animation Time
     self.anim_tmr = data["anim_tmr"] or 0
@@ -200,7 +183,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.curr_fx = data["curr_fx"] or {}
     self.fx_tbl = { -- rpt = repeat, slp = sleep
         broken = {
-            [1] = {part="explosions\\expl_car_smoke_big",                duration={active=13,  pause=2, rpt=1},                  bone_name="exhaust", count=0, loop=false, active=false, tmr=0},
+            [1] = {part="explosions\\expl_car_smoke_big",                duration={active=13,  pause=2, rpt=1},          bone_name="exhaust", count=0, loop=false, active=false, tmr=0},
             [2] = {part="explosions\\explosion_dynamite",                duration={active=1.2, pause=3.8, rpt=1},        bone_name="body",    count=0, loop=false, active=false, tmr=0},
         },
         low = {
@@ -220,24 +203,29 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     }
 
     -- Powerable Devices
-    self.power_off_devices = true
+    self.power_off_devices = data["power_off_devices"] or true
     self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
-    self.power_output = data["power_output"] or MAX_POWER_OUTPUT
+    self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
+    self.power_output = data["power_output"] or self.max_power_output
     self.update_pd_tmr = data["update_pd_tmr"] or 0
+    self.last_power_output = data["last_power_output"] or self.power_output
+    self.last_power_state = data["last_power_state"] or "off"
 
     -- Fuel
     self.stored_fuel = data["stored_fuel"] or 0
     self.max_fuel = data["max_fuel"] or MAX_FUEL
     self.fuel_transfer = data["fuel_transfer"] or false
     self.time_til_empty = data["time_til_empty"] or 0
+    self.fuel_tmr = data["fuel_tmr"] or 0
     self.drain_rate = {
         [0.5]  = 1.2,
         [0.75] = 1.48,
         [1]    = 2
     }
-    pr("saving data")
+    self.time_last = get_time_elapsed()
+    dbg("dev", "saving data")
     self:save_data()
-    pr("finished init")
+    dbg("all", "finished init")
 end
 
 function placeable_disel_generator_wrapper:update(delta)
@@ -246,15 +234,13 @@ function placeable_disel_generator_wrapper:update(delta)
     self.tg = time_global()
     self:load_data()
 
+    -- dbg("dev", "getting cond state")
     local condition = self.condition
     local cond_state = cond_to_state(round_idp(condition * 100, 2))
     
+    -- dbg("dev", "processing power output")
     -- Process Power Output
-    if self.power_state == "on" then
-        self.power_output = MAX_POWER_OUTPUT * condition
-    elseif contains({"off", "broken", self.power_state}) then
-        self.power_output = 0
-    end
+    
     
     self.ProcessPowerState(cond_state)
     self:ProcessParticles(cond_state)
@@ -265,222 +251,266 @@ end
 
 function placeable_disel_generator_wrapper:ProcessPowerState(cond_state)
     -- On Power State Switch
-    set_debug_level("all")
     if self.last_power_state ~= self.power_state then
-        pr("processing power state")
-        self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state]))
+        dbg("info", "processing power state")
+        dbg("info", "Changing from %s to %s", self.last_power_state, self.power_state)
+        self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
         if self.power_state == "broken" and cond_state == "broken" then
             if not self.anim_in_progress and self.current_motion ~= "idle" then
                 self.anim_due = true
             end
         end
+
+        if self.power_state == "on" then
+            self.power_output = self.last_power_output
+        elseif contains({"off", "broken", self.power_state}) then
+            self.last_power_output = self.power_output
+            self.power_output = 0
+        end
+        self.last_power_state = self.power_state
         self:save_data()
     end
 end
 
 function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
-    set_debug_level("all")
-    if self.power_state == "on" or (self.power_state == "broken" and self.current_motion ~= "idle") then
-        -- If Condition Has Changed enough for a particle update
-        if cond_state ~= self.last_cond_state then
-            pr("cond state: %s", cond_state)
-            -- If there are particles currently playing, stop them, update curr fx
-            if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
-                local fx = self.curr_fx[self.last_cond_state]
-                for idx, details in pairs(fx) do
-                    if details["active"] and contains(details, "id", true) then
-                        thial_particles.remove(details["id"])
+    if self.item_section == GEN_ITEM then
+        if self.power_state == "on" or (self.power_state == "broken" and self.current_motion ~= "idle") then
+            -- If Condition Has Changed enough for a particle update
+            if cond_state ~= self.last_cond_state then
+                dbg("dev", "cond state: %s", cond_state)
+                -- If there are particles currently playing, stop them, update curr fx
+                if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
+                    local fx = self.curr_fx[self.last_cond_state]
+                    for idx, details in pairs(fx) do
+                        if details["active"] and contains(details, "id", true) then
+                            thial_particles.remove(details["id"])
+                        end
                     end
                 end
-            end
-            
-            self.curr_fx[cond_state] = self.fx_tbl[cond_state]
-            self.last_cond_state = cond_state
-        end
-
-        for idx, details in pairs(self.curr_fx[self.last_cond_state]) do
-            if self.tg > details["tmr"] then
-                if not details["active"] then                    
-                    self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["active"] * 1000)
-                    self.curr_fx[self.last_cond_state][idx].active = true
-                    --pr("exhaust pos: %s", vec_to_str(self.exhaust_pos))
-                    self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], get_bone_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
-                    if details["bone_name"] == "exhaust" then
-                        pr("setiting part dir to be exhaust dir")
-                        local part_obj = thial_particles.get(self.curr_fx[self.last_cond_state][idx].id)
-                        local exhaust_pos = get_bone_pos(self.object, "exhaust")
-                        local link_pos =  get_bone_pos(self.object, "body")
-                        --pr("dir: %s", vec_to_str(norm_dir))
-                        local norm_dir = get_direction(link_pos, exhaust_pos)
-                        part_obj:set_direction(norm_dir)
-                    end
-                    pr("Playing particle: %s for %s", details["part"], details["duration"]["active"])
-                elseif details["active"] then
-                    local remove_particle = false
-
-                    if details["duration"]["pause"] then
-                        self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["pause"] * 1000)
-                        self.curr_fx[self.last_cond_state][idx].active = false
-                        pr("pausing %s for %s", details["part"], details["duration"]["pause"])
-                        if details["duration"]["rpt"] then
-                            self.curr_fx[self.last_cond_state][idx].count = self.curr_fx[self.last_cond_state][idx]["count"] + 1
-                            pr("advancing repeat: %s", self.curr_fx[self.last_cond_state][idx].count)
-                            if self.curr_fx[self.last_cond_state][idx]["count"] >= details["duration"]["rpt"] then
-                                if not details["loop"] then
-                                    pr("particle finished cycle")
-                                    self.curr_fx[self.last_cond_state][idx].tmr = 0
-                                    self.curr_fx[self.last_cond_state][idx].count = 0
-                                    --self.curr_fx[self.last_cond_state][idx].active = false
-                                    id = self.curr_fx[self.last_cond_state][idx]["id"]
-                                    self.curr_fx[self.last_cond_state][idx] = nil
-                                    remove_particle = true
-                                    if self.last_cond_state == "broken" and self.current_motion ~= "idle" then
-                                        self:Explode()
-                                        self.anim_due = true
-                                        self.power_state = self.last_cond_state
-                                    end
-                                elseif details["loop"] and details["duration"]["slp"] then
-                                    pr("particle %s reached end of loop putting to sleep for %s", details["part"], details["duration"]["slp"])
-                                    self.curr_fx[self.last_cond_state][idx].tmr = self.tg + details["duration"]["slp"]
-                                end
-                            end
-                        end                    
-                    else
-                        pr("reseting particle")
-                        self.curr_fx[self.last_cond_state][idx].tmr = 0
-                        self.curr_fx[self.last_cond_state][idx].active = false
-                    end
-
-                    if remove_particle then
-                        pr("removing particle")
-                        thial_particles.remove(id)
-                    end
                 
-                end
+                self.curr_fx[cond_state] = self.fx_tbl[cond_state]
+                self.last_cond_state = cond_state
             end
-            self:save_data()
-        end
 
-    elseif self.power_state == "off" then        
-        self:CleanupParticles()
+            for idx, details in pairs(self.curr_fx[self.last_cond_state]) do
+                if self.tg > details["tmr"] then
+                    if not details["active"] then                    
+                        self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["active"] * 1000)
+                        self.curr_fx[self.last_cond_state][idx].active = true
+                        --pr("exhaust pos: %s", vec_to_str(self.exhaust_pos))
+                        self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], get_bone_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
+                        if details["bone_name"] == "exhaust" then
+                            dbg("dev", "setiting part dir to be exhaust dir")
+                            local part_obj = thial_particles.get(self.curr_fx[self.last_cond_state][idx].id)
+                            local exhaust_pos = get_bone_pos(self.object, "exhaust")
+                            local link_pos =  get_bone_pos(self.object, "body")
+                            --pr("dir: %s", vec_to_str(norm_dir))
+                            local norm_dir = get_direction(link_pos, exhaust_pos)
+                            part_obj:set_direction(norm_dir)
+                        end
+                        dbg("info", "Playing particle: %s for %s", details["part"], details["duration"]["active"])
+                    elseif details["active"] then
+                        local remove_particle = false
+
+                        if details["duration"]["pause"] then
+                            self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["pause"] * 1000)
+                            self.curr_fx[self.last_cond_state][idx].active = false
+                            dbg("dev", "pausing %s for %s", details["part"], details["duration"]["pause"])
+                            if details["duration"]["rpt"] then
+                                self.curr_fx[self.last_cond_state][idx].count = self.curr_fx[self.last_cond_state][idx]["count"] + 1
+                                dbg("dev", "advancing repeat: %s", self.curr_fx[self.last_cond_state][idx].count)
+                                if self.curr_fx[self.last_cond_state][idx]["count"] >= details["duration"]["rpt"] then
+                                    if not details["loop"] then
+                                        dbg("dev", "particle finished cycle")
+                                        self.curr_fx[self.last_cond_state][idx].tmr = 0
+                                        self.curr_fx[self.last_cond_state][idx].count = 0
+                                        --self.curr_fx[self.last_cond_state][idx].active = false
+                                        self.particle_id = self.curr_fx[self.last_cond_state][idx]["id"]
+                                        self.curr_fx[self.last_cond_state][idx] = nil
+                                        remove_particle = true
+                                        if self.last_cond_state == "broken" and self.current_motion ~= "idle" then
+                                            self:Explode()
+                                            self.anim_due = true
+                                            self.power_state = self.last_cond_state
+                                        end
+                                    elseif details["loop"] and details["duration"]["slp"] then
+                                        dbg("dev", "particle %s reached end of loop putting to sleep for %s", details["part"], details["duration"]["slp"])
+                                        self.curr_fx[self.last_cond_state][idx].tmr = self.tg + details["duration"]["slp"]
+                                    end
+                                end
+                            end                    
+                        else
+                            dbg("info", "reseting particle")
+                            self.curr_fx[self.last_cond_state][idx].tmr = 0
+                            self.curr_fx[self.last_cond_state][idx].active = false
+                        end
+
+                        if remove_particle then
+                            dbg("info", "removing particle")
+                            thial_particles.remove(self.particle_id)
+                        end
+                    
+                    end
+                end
+                self:save_data()
+            end
+
+        elseif self.power_state == "off" then        
+            self:CleanupParticles()
+        end
     end
 end
 
 function placeable_disel_generator_wrapper:ProcessAnims()
-    set_debug_level("all")
-    if self.anim_due then
-        if not self.anim_in_progress then
-            pr("Setting Anim Control Vars")
-            self.anim_in_progress = true
-            self.anim_power_state = self.power_state
-            self.anim_start_time = self.tg
-            self:CleanupParticles()
-            pr("anim power state: %s", self.anim_power_state)
-        end
+    if self.item_section == GEN_ITEM then
+        if self.anim_due then
+            if not self.anim_in_progress then
+                dbg("dev", "Setting Anim Control Vars")
+                self.anim_in_progress = true
+                self.anim_power_state = self.power_state
+                self.anim_start_time = self.tg
+                self:CleanupParticles()
+                dbg("dev", "anim power state: %s", self.anim_power_state)
+            end
 
-        -- Prevent Toggle Power being constantly pressed from interrupting an animation
-        if self.anim_in_progress and self.anim_power_state ~= self.power_state then
-            pr("Attempted to change power state during anim, using anim set power state")
-            self.power_state = self.anim_power_state
-            --pr("power state: %s", self.power_state)
-        end
+            -- Prevent Toggle Power being constantly pressed from interrupting an animation
+            if self.anim_in_progress and self.anim_power_state ~= self.power_state then
+                dbg("info", "Attempted to change power state during anim, using anim set power state")
+                self.power_state = self.anim_power_state
+                --pr("power state: %s", self.power_state)
+            end
 
-        -- End Process if Animation Time not reached
-        if self.tg < self.anim_tmr then
-            return
-        end
-        pr("Anim Time Reached")
-        -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
-        if self.tg > self.anim_tmr and self.tg - self.anim_start_time > self.anim_tmr then
-            pr("Anim Runtime Exceed, Advancing Stage")
-            self.anim_tmr = 0
+            -- End Process if Animation Time not reached
+            if self.tg < self.anim_tmr then
+                return
+            end
+            dbg("dev", "Anim Time Reached")
+            -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
+            if self.tg > self.anim_tmr and self.tg - self.anim_start_time > self.anim_tmr then
+                dbg("info", "Anim Runtime Exceed, Advancing Stage")
+                self.anim_tmr = 0
+                self.anim_stage = self.anim_stage + 1
+            end
+
+            -- Stop Animation and Reset Controllers
+            dbg("all", "Anim stage %s, total stages %s", self.anim_stage, #self.anim_tbl[self.power_state])
+            if self.anim_stage > #self.anim_tbl[self.power_state] then
+                dbg("dev", "stopping anim")
+                self.anim_due = false
+                self.anim_in_progress = false
+                self.anim_tmr = 0
+                self.anim_stage = 1
+                self.power_off_devices = contains({"off", "broken"}, self.power_state)
+                self:save_data()
+                return
+            end
+
+            dbg("dev", "Starting Anim Stage %s at %s", self.anim_stage, self.tg)
+            -- Play Animation for given duration and advance/save animation
+            local details = self.anim_tbl[self.power_state][self.anim_stage]        
+            local snd_props = sound_object.s3d + sound_object.looped
+            local last_stage = #self.anim_tbl[self.power_state]
+            if self.anim_stage < last_stage or self.anim_stage == last_stage and contains({"off", "broken"}, self.power_state) then
+                --pr("Not looping snd")
+                snd_props = sound_object.s3d
+            end
+
+            if self.snd["last_played"] ~= nil  then
+                ag_sounds.remove(self.snd["last_played"])
+                dbg("info", "Stopping last played snd. Played for %s", self.tg - self.anim_tmr)
+            end
+            if details["snd"] then
+                self.snd["last_played"] = ag_sounds.add(self.object, details["snd"], self.object:position(),  0.7, snd_props)
+                dbg("info", "playing sound %s", details["snd"])
+            end
+            dbg("dev", "Starting to play %s at %s", details["anim"], self.tg)
+
+            self.object:play_cycle(details["anim"])
+            --self:UpdateAnimData(details["anim"])
+            self.current_motion = details["anim"]
+            dbg("dev", "setting current motion to %s", details["anim"])
+            self.anim_tmr = self.tg + (details["duration"] * 1000)
+            dbg("dev", "setting next anim time to %s", self.anim_tmr)
             self.anim_stage = self.anim_stage + 1
-        end
-
-        -- Stop Animation and Reset Controllers
-        pr("Anim stage %s, total stages %s", self.anim_stage, #self.anim_tbl[self.power_state])
-        if self.anim_stage > #self.anim_tbl[self.power_state] then
-            pr("stopping anim")
-            self.anim_due = false
-            self.anim_in_progress = false
-            self.anim_tmr = 0
-            self.anim_stage = 1
-            self.power_off_devices = contains({"off", "broken"}, self.power_state)
+            dbg("dev", "advancing anim stage to: %s", self.anim_stage)
             self:save_data()
-            return
+            dbg("all", "saved data")
         end
-
-        pr("Starting Anim Stage %s at %s", self.anim_stage, self.tg)
-        -- Play Animation for given duration and advance/save animation
-        local details = self.anim_tbl[self.power_state][self.anim_stage]        
-        local snd_props = sound_object.s3d + sound_object.looped
-        local last_stage = #self.anim_tbl[self.power_state]
-        if self.anim_stage < last_stage or self.anim_stage == last_stage and contains({"off", "broken"}, self.power_state) then
-            --pr("Not looping snd")
-            snd_props = sound_object.s3d
-        end
-
-        if self.snd["last_played"] ~= nil  then
-            ag_sounds.remove(self.snd["last_played"])
-            pr("Stopping last played snd. Played for %s", self.tg - self.anim_tmr)
-        end
-        if details["snd"] then
-            self.snd["last_played"] = ag_sounds.add(self.object, details["snd"], self.object:position(),  0.7, snd_props)
-            pr("playing sound %s", details["snd"])
-        end
-        pr("Starting to play %s at %s", details["anim"], self.tg)
-
-        self.object:play_cycle(details["anim"])
-        --self:UpdateAnimData(details["anim"])
-        self.current_motion = details["anim"]
-        pr("setting current motion to %s", details["anim"])
-        self.anim_tmr = self.tg + (details["duration"] * 1000)
-        pr("setting next anim time to %s", self.anim_tmr)
-        self.anim_stage = self.anim_stage + 1
-        pr("advancing anim stage to: %s", self.anim_stage)
-        self:save_data()
-        pr("saved data")
     end
 end
 
 function placeable_disel_generator_wrapper:ProcessPowerableDevices()
-    set_debug_level("dev")
     if not contains({"broken", "off"}, self.power_state) then
         if self.tg > self.update_pd_tmr then
-            empty_table(self.powerable_devices)
-            local powerable_devices = get_powerable_devices(self.object:position())
-            if is_not_empty(powerable_devices) then
-                for id, sect in pairs(powerable_devices) do
+            local found_powerable_devices = get_powerable_devices(self.object:position())
+            if is_not_empty(found_powerable_devices) then
+                for id, obj in pairs(found_powerable_devices) do                    
                     if not contains(self.powerable_devices, id, true) then
-                        self.powerable_devices[id] = sect
+                        dbg("dev", "adding new powerable devices")
+                        dbg("dev", "current power output: %s", self.power_output)
+                        local info = self:InitPDInfo(obj)
+                        self.powerable_devices[id] = info
+                        local wrapper = bind_hf_base.get_wrapper(id)
+                        if wrapper then
+                            dbg("dev", "init %s powered status", id)
+                            wrapper.power_source_id=self.object:id()
+                        end
+                        dbg("dev", "id: %s, watts needed %s, new power output: %s", id, info.watts_needed, power_output)
                     end
                 end
+                self:save_data()          
             end
             self.update_pd_tmr = self.tg + 1000
-            self:save_data()
         end
 
         if self.tg > self.powerable_device_tmr then
-            pr("updating fuel")
-            for id, sect in pairs(self.powerable_devices) do
+            -- Check from smallest to biggest consumer if it can be powered with current power output
+            local next_update = 300
+            dbg("dev", "current power output: %s", self.power_output)
+            local power_remaining = self.power_output
+            for id, info in pairs(self.powerable_devices) do
+                power_remaining = power_remaining - info.watts_needed
+                if power_remaining >= 0 and not info.watts_satisfied then 
+                    dbg("dev", "watts satisifed for %s", info.name)
+                    info.watts_satisfied = true
+                end
+                --self:save_data()
+            end
+
+            -- Update fuel if powered otherwise switch off
+            for id, info in pairs(self.powerable_devices) do
                 local data = hf_obj_manager.get_data(id)
-                if data then 
-                    if data["is_on"] then
-                        if contains(data, "fuel", true) and not contains(data, "infinite_fuel", true) and data["fuel"] < 0.95 then
-                            hf_obj_manager.update_data(id, {fuel=1})
-                        end
+                if data and info.watts_satisfied then
+                    if 
+                        contains(data, "fuel", true) 
+                        and not contains(data, "infinite_fuel", true)
+                        and data["fuel"] <= 0.1 
+                    then
+                        dbg("info", "updating fuel")
+                        hf_obj_manager.update_data(id, {fuel=1})
+                    end
+                elseif data and not info.watts_satisfied then
+                   if data["is_on"] then
+                        dbg("dev", "Watts not satisfied for %s", info.name)
+                        hf_obj_manager.update_data(id, {is_on=false})
+                        self.power_output = self.power_output + info.watts_needed
+                        local msg = gts("st_watts_unsatisfied", get_hf_item_name(self.section), info.name)
+                        actor_menu.set_msg(1, msg, 3)
                     end
                 end
-            end
-            self.powerable_device_tmr = self.tg + (3600 * 1000)
+            end                
+            
+            self.powerable_device_tmr = self.tg + next_update
+            self:save_data()
         end
         self:save_data()
     end    
 
     if self.power_off_devices then
-        pr("turning off devices")
-        for id, sect in pairs(self.powerable_devices) do
+        dbg("debug", "turning off devices")
+        for id, info in pairs(self.powerable_devices) do
             hf_obj_manager.update_data(id, {is_on=false})
+            info.watts_satisfied = false
         end
         self.power_off_devices = false
         self:save_data()
@@ -488,12 +518,12 @@ function placeable_disel_generator_wrapper:ProcessPowerableDevices()
 end
 
 function placeable_disel_generator_wrapper:ProcessFuel()
-    set_debug_level("dev")
-    if self.stored_fuel == 0 then
-        if self.power_state == "on" and not self.anim_in_progress then
-            pr("no fuel switching off")
+    if self.stored_fuel <= 0 or self.time_til_empty <= 0 then
+        if self.item_section == GEN_ITEM and self.power_state == "on" and not self.anim_in_progress then
+            dbg("debug", "no fuel switching off")
             self.power_state = "off"
             self.anim_due = true
+            self.stored_fuel = 0
         end
     end
 
@@ -502,10 +532,12 @@ function placeable_disel_generator_wrapper:ProcessFuel()
     local fuel_load = nearest_val(drain_rate, percent_full)
 
     if self.fuel_transfer then
-        pr("resesting time til empty")
-        self.time_til_empty = (self.stored_fuel / self.drain_rate[fuel_load]) * 3600
-        pr("time til empty: %s", self.time_til_empty)
-        pr("stored fuel: %s", self.stored_fuel)
+        dbg("info", "resesting time til empty")
+        self.time_til_empty = (self.stored_fuel / self.drain_rate[fuel_load]) * HOUR_SEC
+        dbg("all", "percent full: %s, drain_rate: %s, fuel_load: %s", percent_full, drain_rate, fuel_load)
+        dbg("dev", "time til empty: %s", self.time_til_empty)
+        dbg("dev", "stored fuel: %s", self.stored_fuel)
+        self.fuel_tmr = self.tg
         self.fuel_transfer = false
     end
 
@@ -513,38 +545,82 @@ function placeable_disel_generator_wrapper:ProcessFuel()
         self.time_til_empty = 0
     end
 
-    if self.power_state == "on" and self.time_til_empty > 0 then
-        local drain_rate_second = self.drain_rate[fuel_load] / 3600
-        self.stored_fuel = self.stored_fuel - drain_rate_second
-        local tte = self.time_til_empty - 0.1
+    if self.tg > self.fuel_tmr and self.power_state == "on" and self.time_til_empty > 0 then
+        local drain_rate_sec = (self.drain_rate[fuel_load] / HOUR_SEC)
+        self.stored_fuel = self.stored_fuel - drain_rate_sec 
+
+        local time_curr = get_time_elapsed()
+        local time_diff = time_curr - self.time_last
+        local time_frac = (time_diff/1)
+        local tte = self.time_til_empty - time_frac
         self.time_til_empty = tte >= 0 and tte or 0
+        dbg("all", "stored fuel: %s", self.stored_fuel)
+        dbg("all", "using %s fuel per ms", drain_rate_sec)
+        dbg("all", "current time:%s, time diff:%s, time frac:%s", time_curr, time_diff, time_frac)
+        self.fuel_tmr = time_global() + 1000
+        self.time_last = time_curr
     end
     self:save_data()
 end
 
-function placeable_disel_generator_wrapper:Explode()
-    local found_generators = find_obj(self.object:section(), self.object:position(), 10)
-    for _, obj in pairs(found_generators) do
-        local data = hf_obj_manager.get_data(obj:id())
-        update_gen_cond(obj, data.condition, data.power_state, 1)
+function placeable_disel_generator_wrapper:InitParts()
+    local parts = {}
+    for bone_id, bone_name in pairs(self.object:list_bones()) do
+        local part_name = bone_to_part_name(bone_name, self.placeable_type)
+        if not contains(parts, part_name, true) then
+            parts[part_name] = {}
+            parts[part_name].name = part_name
+            parts[part_name].condition = 1
+            parts[part_name].bone_name = bone_name
+            parts[part_name].bone_id = bone_id
+            parts[part_name].components = get_parts_tbl(part_name)
+            -- dbg("dev", "adding %s to parts", part_name)
+        end
     end
-    AOE({
+    -- dbg("dev", "parts table: %s", parts)
+    self.parts = parts
+    self:save_data()
+end
+
+function placeable_disel_generator_wrapper:InitPDInfo(device)
+    local info = {}
+    local typ = get_obj_type(device)
+    local id = get_unknown_id(device, typ)
+    local sect = get_unknown_sect(device, typ)
+    info.name = sect
+    info.watts_needed = ini_sys:r_string_ex(sect, "fuel_duration") or 300
+    info.watts_satisfied = false
+    return info
+end
+
+function placeable_disel_generator_wrapper:Explode()
+    local aoe_args = {
         position = self.object:position(),
         aoe_sound = "anomaly\\fireball_idle",
         aoe_hit_sound = "anomaly\\fire2",
-        explosion_damage = 2,    
-        damage = 0.75,
         lifetime = 3,
-        damage_period = 1.5 * 1000,
         can_panic_npc = true,
-        -- draftsman_id = AC_ID
-    })
+        draftsman_id = self.object:id()
+    }
+    aoe_args.damage = aoe_args.lifetime * 2
+    aoe_args.explosion_damage = aoe_args.damage + (aoe_args.damage / 4)
+    aoe_args.damage_period = (aoe_args.lifetime / 2) * 1000
+
+    local found_generators = find_obj(self.object:section(), self.object:position(), 10)
+    for _, obj in pairs(found_generators) do
+        local data = hf_obj_manager.get_data(obj:id())
+        if data.condition > BROKEN_COND then
+            update_power_source_cond(obj, data.condition, data.power_state, aoe_args.damage)
+        end
+    end
+
+    AOE(aoe_args)
+    dbg("dev", "aoe_args: %s", aoe_args)
 end
 
 function placeable_disel_generator_wrapper:CleanupParticles()
-    set_debug_level("dev")
     if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
-        pr("power off removing particles")
+        dbg("dev", "power off removing particles")
         local fx = self.curr_fx[self.last_cond_state]
         for idx, details in pairs(fx) do
             if details["active"] and contains(details, "id", true) then
@@ -555,7 +631,7 @@ function placeable_disel_generator_wrapper:CleanupParticles()
     end
 end
 
-function placeable_disel_generator_wrapper:GetGenInfo()
+function placeable_disel_generator_wrapper:GetInfo()
     return {
         condition         = self.condition,
         stored_fuel       = self.stored_fuel,
@@ -565,44 +641,62 @@ function placeable_disel_generator_wrapper:GetGenInfo()
 end
 
 function placeable_disel_generator_wrapper:pickup()
-    set_debug_level("dev")
-    pr("on pickup")
+    dbg("info", "on pickup")
     self:load_data()
-    local item_section = ini_sys:r_string_ex(self.object:section(), "item_section")
-    pr("binder cond: %s", self.condition)
-    local se_obj = alife_create(item_section, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), AC_ID, false)
-    local item_data = utils_stpk.get_item_data(se_obj)
-    item_data.condition = self.condition
-    utils_stpk.set_item_data(item_data, se_obj)
-    alife():register(se_obj)
+    local gen_id = self.object:id()
+    local data = hf_obj_manager.get_data(gen_id)
+    -- Create Item with condition
+    if self.condition > BROKEN_COND then
+        dbg("all", "binder cond: %s", self.condition)
+        local se_obj = alife_create(self.item_section, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), AC_ID, false)
+        local item_data = utils_stpk.get_item_data(se_obj)
+        item_data.condition = self.condition
+        utils_stpk.set_item_data(item_data, se_obj)
+        alife():register(se_obj)
 
-    -- Replace gen id
-    local data = hf_obj_manager.get_data(self.object:id())
-    replace_generator(data["tbl_id"], se_obj.id)
-    data["tbl_id"] = se_obj.id
-    hf_obj_manager.update_data(se_obj.id, data)
+        -- Replace gen id
+        -- replace_generator(data["tbl_id"], se_obj.id)
+        local old = {id=data["tbl_id"], sect=self.section}
+        local new = {id=se_obj.id, sect=self.item_section}
+        hfg_obj_persistance.replace(old, new)
+
+        data["tbl_id"] = se_obj.id
+        hf_obj_manager.update_data(se_obj.id, data)
+        hf_obj_manager.cleanup_data(gen_id)
+        alife_release(self.object)
+    else
+        hfg_obj_persistance.remove(gen_id, self.item_section)
+        hf_obj_manager.cleanup_data(gen_id)
+        disassemble_power_source(self.item_section, data["parts"], self.object)
+    end
 
     -- Clean up HF-related data
-    hf_obj_manager.cleanup_data(self.object:id())
-	alife_release(self.object)
     return true
 end
 
+function placeable_disel_generator_wrapper:net_spawn()
+    dbg("dev", "on net spawn")
+    self:load_data()
+    if self.snd and contains(self.snd, "last_played", true) then
+        dbg("dev", "reseting sound")
+        ag_sounds.reinit(self.snd["last_played"], self.object)
+    end
+end
+
 function placeable_disel_generator_wrapper:net_destroy()
-    set_debug_level("dev")
-    pr("on net destory")
+    dbg("dev", "on net destroy")
     self:save_data()
     if self.snd and contains(self.snd, "last_played", true) then
+        dbg("dev", "removing sound")
         local id = self.snd["last_played"]
-        ag_sounds.remove(id)
-        self.snd["last_played"] = nil
+        ag_sounds.stop(id)
     end
-
+    empty_table(self.powerable_devices)
     self:CleanupParticles()
 end
 
 function placeable_disel_generator_wrapper:save_data()
-    --pr("save data")
+    dbg("all", "save data")
     local data = {
         power_state          = self.power_state,
         anim_due             = self.anim_due,
@@ -630,17 +724,28 @@ function placeable_disel_generator_wrapper:save_data()
         time_til_empty       = self.time_til_empty,
         drain_rate           = self.drain_rate,
         update_pd_tmr        = self.update_pd_tmr,
-        damaged_parts        = self.damaged_parts,
+        parts                = self.parts,
+        fuel_tmr             = self.fuel_tmr,
+        item_section         = self.item_section,
+        max_power_output     = self.max_power_output,
+        placeable_type       = self.placeable_type,
+        time_last            = self.time_last,
+        last_power_output    = self.last_power_output,
     }
+    -- dbg("dev", "saving hf data with: %s", data)
     local curr_data = hf_obj_manager.get_data(self.object:id())
     if curr_data and contains(curr_data, "tbl_id", true) then
-        update_generator(curr_data["tbl_id"], data)
+        -- update_generator(curr_data["tbl_id"], data)
+        -- dbg("dev", "updating persistance data")
+        hfg_obj_persistance.update(curr_data["tbl_id"], self.section, data)
     end
+    -- dbg("dev", "updating hf data")
     hf_obj_manager.update_data(self.object:id(), data)
+    -- dbg("dev", "completed save")
 end
 
 function placeable_disel_generator_wrapper:load_data()
-    --pr("on load")
+    dbg("all", "on load")
     local data = hf_obj_manager.get_data(self.object:id())
     self.power_state          = data["power_state"]
     self.anim_due             = data["anim_due"]
@@ -668,61 +773,30 @@ function placeable_disel_generator_wrapper:load_data()
     self.time_til_empty       = data["time_til_empty"]
     self.drain_rate           = data["drain_rate"]
     self.update_pd_tmr        = data["update_pd_tmr"]
-    self.damaged_parts        = data["damaged_parts"]
-    --pr("Genny data: %s\n", utils_data.print_table(data, nil, true))
+    self.parts                = data["parts"]
+    self.fuel_tmr             = data["fuel_tmr"]
+    self.item_section         = data["item_section"]
+    self.max_power_output     = data["max_power_output"]
+    self.placeable_type       = data["placeable_type"]
+    self.time_last            = data["time_last"]
+    self.last_power_output    = data["last_power_output"]
+
+    -- dbg("dev", "Genny data: %s\n", data)
 end
 
--- Binder Helpers
-
-function cond_to_state(cond)
-    local state = "high"
-    if cond <= 10 then
-        state = "broken"
-    elseif cond <= 35 then
-        state = "low"
-    elseif cond <= 80 then
-        state = "med"
-    elseif cond <= 100 then
-        state = "high"
-    end
-    return state
+function get_time_elapsed()
+   return game.get_game_time():diffSec(level.get_start_time()) 
 end
 
--- Generator Condition 
-
-function update_gen_cond(gen, cond, power_state, hit_damage)
-    set_debug_level("dev")
-    if power_state ~= "broken" then
-        local anim_due = false
-        local loss_cond = cond - hit_damage
-        cond = loss_cond > 0 and loss_cond or MIN_COND
-
-        pr("updating cond: %s", cond)
-        if cond > BROKEN_COND then
-            hf_obj_manager.update_data(gen:id(), {condition=cond}) 
-        else
-            if power_state == "on" then
-                anim_due = true
-            end
-            hf_obj_manager.update_data(gen:id(), {
-                condition=cond,
-                last_power_state=power_state,
-                power_state="broken",
-                anim_due=anim_due
-            }) 
-        end
-    end
-end
 
 function set_cond_on_explode(obj)
-    set_debug_level("dev")
     local explo_sect = obj:section()
-    pr("explosive_item_on_explode: %s", explo_sect)
+    dbg("info", "set_cond_on_explode: %s", explo_sect)
     local found_objs = {}
     local function search(obj)
         local sect = obj:section()
         if is_not_empty({string.find(sect, "disel_generator")}) then
-            pr("found genny: %s", sect)
+            dbg("dev", "found genny: %s", sect)
             found_objs[#found_objs + 1] = obj
         end
     end
@@ -743,379 +817,17 @@ function set_cond_on_explode(obj)
             -- if hit any material get material
             -- check to see how much the material would absorb the damage
             -- apply to cond
-            update_gen_cond(gen, cond, power_state, hit_damage)
+            update_power_source_cond(gen, cond, power_state, hit_damage)
         end
     end   
 end
 
-function set_cond_on_impact(obj, wpn, ammo_count, grenade_count, ammo_type, grenade_type)
-    set_debug_level("dev")
-    if obj:id() ~= AC_ID then return end
-    local target = level.get_target_obj()
-    if not target then return end
-    local target_sect = target:section()
-    if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
-    local wpn_sect = wpn:section()
-    local data = hf_obj_manager.get_data(target:id())
-    if data["anim_in_progress"] then return end
-    local power_state = data["power_state"]
-    local cond = data["condition"] or 1
-    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
-    pr("on impact: %s", wpn_sect)
-    update_gen_cond(target, cond, power_state, hit_damage)
-end
-
-function set_cond_on_impact_npc(npc, wpn, target)
-    set_debug_level("all")
-    if npc:id() == AC_ID then return end
-    local target_sect = target:section()
-    if is_empty({string.find(target_sect, "placeable_disel_generator")}) then return end
-    local wpn_sect = wpn:section()
-    local data = hf_obj_manager.get_data(target:id())
-    if data["anim_in_progress"] then return end
-    local power_state = data["power_state"]
-    local cond = data["condition"] or 1
-    local hit_damage = parse_list(ini_sys, wpn_sect, "hit_power")[1]
-    pr("on impact npc: %s", wpn_sect)
-    update_gen_cond(target, cond, power_state, hit_damage)
-end
-
-function on_npc_fired(bullet)
-    local sect = bullet.section
-    local wpn_id = bullet.weapon_id
-    local p_id = bullet.parent_id
-    local t_id = bullet.target_id
-    if p_id == AC_ID then return end
-
-    local npc = get_unknown_object({id=p_id}, "game")
-    local wpn = get_unknown_object({id=wpn_id}, "game")
-    local target = get_unknown_object({id=t_id}, "game")
-
-    if not (npc and wpn and target) then return end
-    set_cond_on_impact_npc(npc, wpn, target)
-end
-
-
-
-function on_gen_impact(bullet)
-    set_debug_level("dev")
-    local bullet_pos = bullet.position
-    local sect = bullet.section
-    local wpn_id = bullet.weapon_id
-    local p_id = bullet.parent_id
-    local t_id = bullet.target_id
-
-    local npc = get_unknown_object({id=p_id}, "game")
-    local wpn = get_unknown_object({id=wpn_id}, "game")
-    local target = get_unknown_object({id=t_id}, "game")
-
-    if not (npc and wpn and target) then return end
-    if target:section() ~= "placeable_disel_generator" then return end
-    local data = hf_obj_manager.get_data(target:id())
-    if data["anim_in_progress"] then return end
-
-    -- Get Closest Bone to Bullet Impact Pos
-    local closest_bone
-    local closest_dist
-    for _, bone_name in pairs(GENERATOR_BONE_NAMES) do
-        local bone_pos = get_bone_pos(target, bone_name)
-        local dist = bone_pos:distance_to(bullet_pos)
-        if not closest_bone or dist < closest_dist then
-            closest_bone = bone_name
-            closest_dist = dist
-        end
-    end
-
-    pr("%s hit gen at %s and %s is the closest bone", sect, vec_to_str(bullet_pos), closest_bone)
-
-    -- Calculate hit damage and apply it to bone
-   
-    local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1] / math.random(1, 10)
-    local damaged_parts = data["damaged_parts"]
-
-    if contains(damaged_parts, closest_bone, true) then
-        pr("updating damaged parts")
-        pr("%s", print_table(damaged_parts))
-        for bone_name, damage in pairs(damaged_parts) do
-            pr("part name: %s, dmage: %s", bone_name, damage)
-            if bone_name == closest_bone then
-                pr("part found")
-                local new_damaged = damage + hit_damage
-                pr("new damage: %s", new_damaged)
-                data["damaged_parts"][bone_name] = new_damaged
-            end
-        end
-    else
-        pr("new damaged part")
-        data["damaged_parts"][closest_bone] = hit_damage
-    end
-
-    hf_obj_manager.update_data(target:id(), data)
-
-    pr("Calculating Total/Avergae Part Damage")
-    local part_damage = {}
-    for id, name in pairs(target:list_bones()) do
-        local part_name = bone_to_part_name(name)
-        if not contains(part_damage, part_name) then
-            if contains(damaged_parts, name, true) then
-                part_damage[part_name] = damaged_parts[name]
-            else
-                part_damage[part_name] = 0
-            end
-        end
-    end
-
-    local total_damage = 0
-    for part_name, damage in pairs(part_damage) do
-        total_damage = total_damage + damage
-    end
-    local avg_damage = total_damage / size_table(part_damage)
-    pr("avg dmg: %s, total dmg: %s", avg_damage, total_damage)
-    update_gen_cond(target, data["condition"], data["power_state"], avg_damage)
-end
-
--- HFG Light furniture
-
-function is_powerable_device(sect)
-    local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
-    return contains(FUEL_SECTIONS, fuel_sect)
-end
-
-function get_powerable_devices(pos)
-    local powerable_devices = {}
-    local function search(obj)
-        local sect = obj:section()
-        if is_powerable_device(sect) then
-            powerable_devices[obj:id()] = sect
-        end
-    end
-    level.iterate_nearest(pos, SEARCH_RADIUS, search)
-    --pr("Found powerable devices: %s", print_table(powerable_devices))
-    return powerable_devices
-end
-
--- Monkey Patches
-base_toggle_light = ui_furniture_light.toggle_light
-function ui_furniture_light.toggle_light(obj_id)
-    set_debug_level("dev")
-    pr("on toggle light")
-    local se_obj = alife_object(obj_id)
-    local found_gens = find_obj("placeable_disel_generator", se_obj.position, SEARCH_RADIUS)
-    if is_not_empty(found_gens) then
-        --pr("found genny: %s", print_table(found_gens))
-
-        local found_gen = get_nearest(found_gens)
-        local data = hf_obj_manager.get_data(found_gen:id())
-        local powerable_devices = data["powerable_devices"]
-        
-        if is_not_empty(powerable_devices) then
-            local power_state = data["power_state"]
-            pr("power state: %s", power_state)
-            if contains({"broken", "off"}, power_state) then
-                local is_on = hf_obj_manager.get_data(obj_id)["is_on"]
-                if is_on then
-                    base_toggle_light(obj_id)
-                    return
-                end
-                local light_name = get_hf_item_name(se_obj:section_name())
-                actor_menu.set_msg(1, gts("st_requires_power", power_state, light_name), 3)
-                return
-            end
-        end
-    end
-    pr("base toggle light")
-    base_toggle_light(obj_id)
-end
-
-base_disassembly_item = item_parts.disassembly_item
-function item_parts.disassembly_item(obj, obj_d)
-    set_debug_level("dev")
-    local sect = obj:section()
-    if sect ~= "disel_generator_item" then
-        pr("not diassembleing gen")
-        base_disassembly_item(obj, obj_d)
-        return
-    end
-
-    local data = hf_obj_manager.get_data(obj:id())
-    local damaged_parts = data["damaged_parts"]
-    if is_empty(damaged_parts) then
-        pr("damaged parts is empty")
-        base_disassembly_item(obj, obj_d)
-        return
-    end
-
-    local function disassemble_gen()
-        pr("diassembling: %s", sect)
-        pr("assigning bone damage to part")
-        local parts = itms_manager.ini_parts:r_string_ex("nor_parts_list", sect)
-        if (not parts) then return true end
-        local parts_tbl = str_explode(parts,",")
-        if (game_achievements.has_achievement("recycler")) and (math.random(1,100) <= 33) then
-            table.insert(parts_tbl, parts_tbl[math.random(#parts_tbl)])
-        end
     
-        local degr_val = GetItemList("disassemble")[obj_d:section()]
-        utils_item.degrade( obj_d , degr_val )
-        utils_item.discharge( obj )
-        game_statistics.increment_statistic("items_disassembled")
-        actor_effects.play_item_fx("disassemble_metal_fast")
-
-        local cond = obj:condition()
-        local broken_parts = {}
-        local created_parts = {}
-        for i=1,#parts_tbl do
-            if ini_sys:section_exist(parts_tbl[i]) then
-                if IsItem("part" ,parts_tbl[i]) and utils_item.is_degradable(nil, parts_tbl[i]) then
-
-                    for bone_name, damage in pairs(damaged_parts) do
-                        local part_name = bone_to_part_name(bone_name)
-                        --pr("part name: %s damage: %s, part: %s", part_name, damage, parts_tbl[i])
-                        if part_name and part_name == parts_tbl[i] then
-
-                            local reduced_con = clamp_rand(round(1 - damage) * 100, 0, round(cond * 100)) / 100
-                            if reduced_con > 0 then
-                                pr("creating damaged part %s with %s cond", parts_tbl[i], reduced_con)
-                                local se_obj = alife_create(parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
-                                local item_data = utils_stpk.get_item_data(se_obj)
-                                item_data.condition = item_parts.get_suitable_part_con(sect, reduced_con)
-                                utils_stpk.set_item_data(item_data,se_obj)
-                                alife():register(se_obj)
-
-                                created_parts[#created_parts + 1] = part_name
-                            else
-                                pr("%s is broken and will be scrapped", parts_tbl[i])
-                                broken_parts[#broken_parts + 1] = part_name
-                            end
-                        end
-                    end
-
-                    if not contains(created_parts, parts_tbl[i]) and not contains(broken_parts, parts_tbl[i]) then
-                        pr("creating regular part %s with %s cond", parts_tbl[i], cond)
-                        local se_obj = alife_create(parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
-                        local item_data = utils_stpk.get_item_data(se_obj)
-                        item_data.condition = item_parts.get_suitable_part_con(sect, cond)
-                        utils_stpk.set_item_data(item_data,se_obj)
-                        alife():register(se_obj)
-                        created_parts[#created_parts + 1] = parts_tbl[i]
-                    end
-                end
-            end
-        end
-
-        local name = ui_item.get_sec_name(sect)      
-        local parts_text = "\\n"
-        local given_parts = "fail"
-        if is_empty(created_parts) and is_empty(broken_parts) then
-            parts_text = gts("st_hfg_no_gen_parts")
-
-        else
-            given_parts = "success"
-
-            if is_not_empty(broken_parts) then
-                pr("Scraaping broken parts")
-                local child_broken_parts = {}
-                -- Turn broken parts into their sub parts e.g. tank into rubber and plastic
-                for _, b_prt in pairs(broken_parts) do
-                    local b_parts = itms_manager.ini_parts:r_string_ex("nor_parts_list", b_prt)
-                    if b_parts then
-                        local b_parts_tbl = str_explode(b_parts,",")
-
-                        if (game_achievements.has_achievement("recycler")) and (math.random(1,100) <= 33) then
-                            table.insert(b_parts_tbl, b_parts_tbl[math.random(#b_parts_tbl)])
-                        end
-                        local degr_val = GetItemList("disassemble")[obj_d:section()]
-                        utils_item.degrade( obj_d , degr_val )
-                        game_statistics.increment_statistic("items_disassembled")
-                        actor_effects.play_item_fx("disassemble_metal_fast")
-                
-                        for i=1,#b_parts_tbl do
-                            if ini_sys:section_exist(b_parts_tbl[i]) then
-                                if IsItem("part", b_parts_tbl[i]) then
-                                    pr("broken part: %s", b_parts_tbl[i])
-                                    local bp_se_obj = alife_create(b_parts_tbl[i], db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
-                                    local bp_item_data = utils_stpk.get_item_data(bp_se_obj)
-                                    bp_item_data.condition = item_parts.get_suitable_part_con(b_parts_tbl[i], cond)
-                                    utils_stpk.set_item_data(bp_item_data, bp_se_obj)
-                                    alife():register(bp_se_obj)
-                                    created_parts[#created_parts + 1] = parts_tbl[i]
-                                else
-                                    alife_create_item(b_parts_tbl[i], db.actor)
-                                end
-                                child_broken_parts[#child_broken_parts + 1] = b_parts_tbl[i]
-                            end
-                        end
-                    end
-
-                    parts_text = parts_text .. item_parts.create_disassemble_list(child_broken_parts) .. "\\n"
-                end
-            
-            if is_not_empty(created_parts) then
-                parts_text = parts_text .. item_parts.create_disassemble_list(created_parts) .. "\\n"
-            end
-
-            end
-        end
-
-        actor_menu.set_item_news(given_parts, "weapon_ammo", "st_dis_text_11", name, gts("st_dis_text_9"), parts_text)
-        pr("parts created")
-        return true
-    end
-    
-    local delay = actor_effects.is_animations_on() and 3 or 0
-    CreateTimeEvent("hfg_time_event","delay_disassembly", delay, disassemble_gen)
-
-end
 
 -- Callbacks
-
-function on_save(mdata)
-    set_debug_level("all")
-    pr("on save")
-    for id, datum in pairs(mdata["se_object"]) do
-        if contains(datum, "hf_data", true) then
-            pr("hf data: %s, %s", id, print_table(datum))
-        end
-    end
-end
-
-function on_place_powerable_device(obj_id)
-    set_debug_level("all")
-    local pos = db.actor:position()
-    local se_obj = alife_object(obj_id)
-    local sect = se_obj:section_name()
-    pr("on place: %s", sect)
-    
-    if is_powerable_device(sect) then
-        local found_gens = find_obj("placeable_disel_generator", pos, SEARCH_RADIUS)
-        if is_not_empty(found_gens) then
-            pr("found gens")
-            for idx, found_gen in pairs(found_gens) do
-                local data = hf_obj_manager.get_data(found_gen:id())
-                if not contains(data["powerable_devices"], obj_id, true) then
-                    data["powerable_devices"][obj_id] = sect
-                    hf_obj_manager.update_data(found_gen:id(), data)
-                    pr("adding %s to powerable devices", get_hf_item_name(sect))
-                end
-            end
-        end
-    end
-end
-
-
-
-function on_item_take(obj)
-    set_debug_level("all")
-    local id = obj:id()
-    local sect = obj:section()
-    if sect ~= "disel_generator_item" then return end
-    if in_generator_tbl(id) then return end
-    pr("on item take: %s", sect)
-    init_generator(id)
-end
-
 function on_option_change(options)
-    --pr("Received options: %s", print_table(options))
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
     SEARCH_RADIUS = options["search_radius"]
     BROKEN_COND = options["broken_cond"]
     MAX_FUEL = options["max_fuel"]
@@ -1123,11 +835,114 @@ function on_option_change(options)
 end
 
 function on_game_start()
-    RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
-    RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
-    --RegisterScriptCallback("actor_on_weapon_fired", set_cond_on_impact)
-    --RegisterScriptCallback("bullet_on_impact", on_npc_fired)
-    RegisterScriptCallback("bullet_on_impact", on_gen_impact)
-    RegisterScriptCallback("actor_on_item_take", on_item_take)
+    -- RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    -- RegisterScriptCallback("actor_on_update", actor_on_update)
 end
+
+--[[
+local consumers = {
+    {name="industrial_light_a", watts_needed=400},
+    {name="industrial_light_b", watts_needed=500},
+    {name="industrial_light_c", watts_needed=750},
+    {name="tv"                , watts_needed=1200},
+    {name="domestic_light"    , watts_needed=450},
+}
+local power_produced = 500
+local total_power_consumed = 0
+-- Imagine consumers, have been registered
+for _, info in pairs(consumers) do
+    total_power_consumed = total_power_consumed + info.watts_needed
+end
+
+math.randomseed(tonumber(os.time()))
+local battery = {stored=800, max=1000}
+local amount_to_drain = 0
+local power_deficit = 0
+if total_power_consumed > power_produced then
+    table.sort(consumers, function(a, b) return a.watts_needed < b.watts_needed end)
+    print("power produced", power_produced)
+    print("total power needed", total_power_consumed, "\n")
+    print("stored power in battery", battery.stored)
+    local power_consumed = power_produced
+    for idx, info in pairs(consumers) do
+        power_consumed = power_consumed - info.watts_needed
+        local power_met = power_consumed >= 0
+        print("watts_needed", info.watts_needed)
+        print("power remaining", power_consumed)
+        print("power met for?:", info.name, power_met)
+        print("current power stored in battery", battery.stored)
+        if not power_met and battery.stored > 0 then
+            local remaining_power = battery.stored - info.watts_needed
+            local power_left = remaining_power > 0 and remaining_power or 0
+            print("remaining battery power", remaining_power)
+            print("power_left", power_left)
+            if power_left > 0 then
+               print("reclacing battery power")
+               local watts_needed = info.watts_needed
+               for i=1, watts_needed do
+                    watts_needed = watts_needed - 1
+                    if battery.stored - watts_needed == 0 then                       
+                       power_left = (info.watts_needed - watts_needed)
+                       remaining_power = battery.stored - power_left
+                        print("power_left", power_left)
+                        print("re calc remaining battery power", remaining_power)
+                        print("\n")
+                        break
+                    end
+               end 
+            else
+                print("\n")
+            end
+           
+            amount_to_drain = amount_to_drain + power_left
+            battery.stored = remaining_power
+            power_consumed = power_consumed + info.watts_needed
+        else
+            print("\n")
+        end
+    end
+    power_deficit = total_power_consumed - amount_to_drain
+    print("\n")
+    print("total amount to drain from battery:", amount_to_drain)
+    print("total power deficit", power_deficit)
+end
+=======================================
+if total_watts_consumed > self.max_power_output then
+-- Check for nearby batteries
+                -- Get available stored power
+                -- Calculate amount to drain
+                local batteries_nearby = false
+                if batteries_nearby then
+                    local battery = {power_stored=0, max_power=0}
+                    local amount_to_drain = 0
+
+                    local power_remaining = self.max_power_output
+                    for id, info in spairs(self.powerable_devices, function(t, a, b) return t[a].watts_needed < t[b].watts_needed end) do
+                        if battery.power_stored == 0 and is_not_empty(batteries_nearby) then
+                            local obj = table.remove(batteries_nearby, 1)
+                            local id = obj:id()
+                            local battery_data = hf_obj_manager.get_data(id)
+                            battery.power_stored = battery_data["power_stored"]
+                            battery.max_power = battery_data["max_power_stored"]
+                        end
+                       
+                        power_remaining = power_remaining - info.watts_needed
+                        if power_remaining >= 0 and battery.power_stored > 0 then
+                            local remaining_stored_power = battery.power_stored - info.watts_needed
+                            if remaining_stored_power > 0 then
+                                local watts_needed = info.watts_needed
+                                for i=1, watts_needed do
+                                    power_remaining = battery.stored - (info.watts_needed - watts_needed)
+                                    break
+
+                                end
+                            end
+                            amount_to_drain = amount_to_drain + power_left
+                            battery.stored = remaining_power
+                            power_consumed = power_consumed + info.watts_needed
+                        end
+                    end
+
+                end
+]]
