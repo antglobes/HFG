@@ -1,17 +1,59 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <string_table>
+	<!-- MCM -->
+	<string id="ui_mcm_hfg_title">
+		<text>Hideout Furniture Generator</text>
+	</string>
+	<string id="ui_mcm_hfg_max_fuel">
+		<text>Max Fuel per Barrel</text>
+	</string>
+	<string id="ui_mcm_hfg_max_power_output">
+		<text>Max Power Output</text>
+	</string>
+	<string id="ui_mcm_hfg_generator_search_radius">
+		<text>Generator Search Radius</text>
+	</string>
+	<string id="ui_mcm_hfg_generator_broken_cond">
+		<text>Generator Broken Condition</text>
+	</string>
+	<string id="ui_mcm_hfg_siphon_activation_range">
+		<text>Siphon Activation Range</text>
+	</string>
+	<string id="ui_mcm_hfg_enable_debug">
+		<text>Enable Debugging</text>
+	</string>
+	<string id="ui_mcm_lst_player">
+		<text>PLAYER</text>
+	</string>
+	<string id="ui_mcm_lst_debug">
+		<text>DEBUG</text>
+	</string>
+	<string id="ui_mcm_lst_info">
+		<text>INFO</text>
+	</string>
+	<string id="ui_mcm_lst_dev">
+		<text>DEV</text>
+	</string>
+	<string id="ui_mcm_lst_error">
+		<text>ERROR</text>
+	</string>
+	<string id="ui_mcm_lst_all">
+		<text>ALL</text>
+	</string>
+
+
     <string id="st_disel_generator_descr">
         <text>
 		A non-standard diesel generator, with parts sourced from the wreck of a small fishing vessel in the
 		murky swamp beds of the zaton valley, old warehouses surrounding the jupiter factory and truck cemetary.
 		This generator has been touched with some stalker magic and has been retrofitted for 'household use'.\n
 		%c[ui_gray_1]PROPERTIES:\n
-		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
-		%c[d_purple] • %c[ui_gray_1] Capable of outputting up to 5KW \n
-		%c[d_purple] • %c[ui_gray_1] Requires Diesel, Kerosene or Biodiesel to operate\n
-		%c[d_purple] • %c[ui_gray_1] Full Tank Lasts 9 hours\n
-		%c[d_purple] • %c[ui_gray_1] Turbine Power Unit\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Mechanical Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
+		%c[d_purple] пїЅ %c[ui_gray_1] Capable of outputting up to 5KW \n
+		%c[d_purple] пїЅ %c[ui_gray_1] Requires Diesel, Kerosene or Biodiesel to operate\n
+		%c[d_purple] пїЅ %c[ui_gray_1] Full Tank Lasts 9 hours\n
+		%c[d_purple] пїЅ %c[ui_gray_1] Turbine Power Unit\n
 		</text>
     </string>
 
@@ -20,27 +62,39 @@
     </string>
 
     <string id="st_power_state_on">
-        <text>Turn Generator On</text>
+        <text>Turn %s On</text>
     </string>
 
     <string id="st_power_state_off">
-        <text>Turn Generator Off</text>
+        <text>Turn %s Off</text>
     </string>
 
     <string id="st_power_state_broken">
-        <text>Try to Start Generator</text>
+        <text>Try to Start %s</text>
     </string>
 
     <string id="st_generator_broken">
-        <text>Generator Broken and requires maintenance</text>
+        <text>%s Broken and requires maintenance</text>
     </string>
 
     <string id="st_requires_power">
-        <text>Generator is currently %s. %s requires power</text>
+        <text>%s is currently %s. %s requires power</text>
     </string>
+	
+	<string id="st_connect_device">
+		<text>Connecting %s to %s</text>
+	</string>
+
+	<string id="st_needs_connecting">
+		<text>%s needs connecting to a power source</text>
+	</string>
+
+	<string id="st_watts_unsatisfied">
+		<text>%s doesn't have enough watts to power %s</text>
+	</string>
 
     <string id="st_bullet_point">
-		<text>•</text>
+		<text>пїЅ</text>
     </string>
 
     <string id="st_unpack_fuse_pack">
@@ -154,84 +208,84 @@
     <string id="st_hfg_part_tank_descr">
         <text>
 		%c[white] Steel plated tank with plastic cover and rubber seal and cap. \n
-		%c[d_orange] •  %c[ui_gray_1] Mechanical Item\n
-		%c[d_purple] • %c[ui_gray_1] Capcity of 25L\n
-		%c[d_green] • %c[ui_gray_1] Fuel System \n
+		%c[d_orange] пїЅ  %c[ui_gray_1] Mechanical Item\n
+		%c[d_purple] пїЅ %c[ui_gray_1] Capcity of 25L\n
+		%c[d_green] пїЅ %c[ui_gray_1] Fuel System \n
 		</text>
     </string>
     <string id="st_hfg_part_turbine_descr">
         <text>
 		%c[white] Electrical Turbine works in synchronous action with the engine. \n
-		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
-		%c[d_purple] • %c[ui_gray_1] 110 / 230V\n
-		%c[d_purple] • %c[ui_gray_1] 16A\n
-		%c[yellow] • %c[ui_gray_1] Power System \n
+		%c[d_orange] пїЅ %c[ui_gray_1] Mechanical Item\n
+		%c[d_purple] пїЅ %c[ui_gray_1] 110 / 230V\n
+		%c[d_purple] пїЅ %c[ui_gray_1] 16A\n
+		%c[yellow] пїЅ %c[ui_gray_1] Power System \n
 		</text>
     </string>
 	<string id="st_hfg_part_engine_descr">
         <text>
 		%c[white] Requires fuel, Runs fast. \n
-		%c[d_orange] • %c[ui_gray_1] Mechanical Item\n
-		%c[d_orange] • %c[ui_gray_1] V6 Engine\n
-		%c[d_orange] • %c[ui_gray_1] ~7hp\n
-		%c[d_orange] • %c[ui_gray_1] Single Phase\n
-		%c[yellow] • %c[ui_gray_1] Power System \n
+		%c[d_orange] пїЅ %c[ui_gray_1] Mechanical Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] V6 Engine\n
+		%c[d_orange] пїЅ %c[ui_gray_1] ~7hp\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Single Phase\n
+		%c[yellow] пїЅ %c[ui_gray_1] Power System \n
 		</text>
     </string>
     <string id="st_hfg_part_wires_descr">
         <text>
 		%c[white] Copper Wires in Black Plastic.\n
-		%c[pda_yellow] • %c[ui_gray_1] Electrical System \n
+		%c[pda_yellow] пїЅ %c[ui_gray_1] Electrical System \n
 		</text>
     </string>
     <string id="st_hfg_part_frame_descr">
         <text>
 		%c[white] Rebar Frame made of Steel. \n
-		%c[d_blue] • %c[ui_gray_1] Final Part of Generator\n
+		%c[d_blue] пїЅ %c[ui_gray_1] Final Part of Generator\n
 		</text>
     </string>
     <string id="st_hfg_part_battery_descr">
         <text>
 		%c[white] Battery sourced from an old truck \n
-		%c[pda_yellow] • %c[ui_gray_1] Electrical System \n
+		%c[pda_yellow] пїЅ %c[ui_gray_1] Electrical System \n
 		</text>
     </string>
     <string id="st_hfg_part_fan_descr">
         <text>
 		%c[white] Engine Fan used to keep the generator cool.\n
-		%c[d_cyan] • %c[ui_gray_1] Ventillation System \n
+		%c[d_cyan] пїЅ %c[ui_gray_1] Ventillation System \n
 		</text>
     </string>
     <string id="st_hfg_part_exhaust_descr">
         <text>
 		%c[white] Used to filter the byproducts from the engine. \n
-		%c[d_cyan] • %c[ui_gray_1] Ventillation System \n
+		%c[d_cyan] пїЅ %c[ui_gray_1] Ventillation System \n
 		</text>
     </string>
     <string id="st_hfg_part_band_descr">
         <text>
 		%c[white] Rubber Chain used to help move the rotor. \n
-		%c[d_red] • %c[ui_gray_1] Motor System \n
+		%c[d_red] пїЅ %c[ui_gray_1] Motor System \n
 		</text>
     </string>
     <string id="st_hfg_part_pipes_descr">
         <text>
 		%c[white] Used to pipe fuel inbetween the tank and the engine. \n
-		%c[d_green] • %c[ui_gray_1] Fuel System \n
+		%c[d_green] пїЅ %c[ui_gray_1] Fuel System \n
 		</text>
     </string>
     <string id="st_hfg_part_l_rotor_descr">
         <text>
 		%c[white] Turbine Rotor. \n
-		%c[d_orange] • %c[ui_gray_1] 1200 rpm\n
-		%c[d_red] • %c[ui_gray_1] Motor System \n
+		%c[d_orange] пїЅ %c[ui_gray_1] 1200 rpm\n
+		%c[d_red] пїЅ %c[ui_gray_1] Motor System \n
 		</text>
     </string>
     <string id="st_hfg_part_r_rotor_descr">
         <text>
 		%c[white] Engine Rotor. \n
-		%c[d_orange] • %c[ui_gray_1] 1200 rpm\n
-		%c[d_red] • %c[ui_gray_1] Motor System \n
+		%c[d_orange] пїЅ %c[ui_gray_1] 1200 rpm\n
+		%c[d_red] пїЅ %c[ui_gray_1] Motor System \n
 		</text>
     </string>
 	
@@ -262,55 +316,55 @@
 	<string id="st_hfg_comp_power_descr">
         <text>
 		%c[white] Contains:\n
-		%c[yellow] • %c[ui_gray_1] Engine\n
-		%c[yellow] • %c[ui_gray_1] Turbine\n
+		%c[yellow] пїЅ %c[ui_gray_1] Engine\n
+		%c[yellow] пїЅ %c[ui_gray_1] Turbine\n
 		</text>
     </string>
 	<string id="st_hfg_comp_electrical_descr">
         <text>
 		%c[white] Contains:\n
-		%c[pda_yellow] • %c[ui_gray_1] Battery\n
-		%c[pda_yellow] • %c[ui_gray_1] Wires \n
+		%c[pda_yellow] пїЅ %c[ui_gray_1] Battery\n
+		%c[pda_yellow] пїЅ %c[ui_gray_1] Wires \n
 		</text>
     </string>
 	<string id="st_hfg_comp_vent_descr">
         <text>
 		%c[white] Contains:\n
-		%c[d_cyan] • %c[ui_gray_1] Fan\n
-		%c[d_cyan] • %c[ui_gray_1] Exhaust\n
+		%c[d_cyan] пїЅ %c[ui_gray_1] Fan\n
+		%c[d_cyan] пїЅ %c[ui_gray_1] Exhaust\n
 		</text>
     </string>
 	<string id="st_hfg_comp_motor_descr">
         <text>
 		%c[white] Contains:\n
-		%c[d_red] • %c[ui_gray_1] Turbine Rotor\n
-		%c[d_red] • %c[ui_gray_1] Engine Rotor\n
-		%c[d_red] • %c[ui_gray_1] Rotor Band\n
+		%c[d_red] пїЅ %c[ui_gray_1] Turbine Rotor\n
+		%c[d_red] пїЅ %c[ui_gray_1] Engine Rotor\n
+		%c[d_red] пїЅ %c[ui_gray_1] Rotor Band\n
 		</text>
     </string>
 	<string id="st_hfg_comp_fuel_descr">
         <text>
 		%c[white] Contains:\n
-		%c[d_green] • %c[ui_gray_1] Pipes\n
-		%c[d_green] • %c[ui_gray_1] Tank \n
+		%c[d_green] пїЅ %c[ui_gray_1] Pipes\n
+		%c[d_green] пїЅ %c[ui_gray_1] Tank \n
 		</text>
     </string>
 	<string id="st_hfg_comp_gen_main_descr">
         <text>
 		%c[white] Contains:\n
-		%c[yellow] • %c[ui_gray_1] Power System\n
-		%c[pda_yellow] • %c[ui_gray_1] Electrical System\n
-		%c[d_green] • %c[ui_gray_1] Fuel System\n
-		%c[pda_blue] • %c[ui_gray_1] Penultimate Part of Generator\n
+		%c[yellow] пїЅ %c[ui_gray_1] Power System\n
+		%c[pda_yellow] пїЅ %c[ui_gray_1] Electrical System\n
+		%c[d_green] пїЅ %c[ui_gray_1] Fuel System\n
+		%c[pda_blue] пїЅ %c[ui_gray_1] Penultimate Part of Generator\n
 		</text>
     </string>
 	<string id="st_hfg_comp_gen_sec_descr">
         <text>
 		%c[white] Contains:\n
-		%c[pda_blue] • %c[ui_gray_1] Main Part\n
-		%c[d_red] • %c[ui_gray_1] Motor System\n
-		%c[d_cyan] • %c[ui_gray_1] Ventillation System\n
-		%c[d_blue] • %c[ui_gray_1] Final Part of Generator\n
+		%c[pda_blue] пїЅ %c[ui_gray_1] Main Part\n
+		%c[d_red] пїЅ %c[ui_gray_1] Motor System\n
+		%c[d_cyan] пїЅ %c[ui_gray_1] Ventillation System\n
+		%c[d_blue] пїЅ %c[ui_gray_1] Final Part of Generator\n
 		</text>
     </string>
 	
@@ -328,94 +382,94 @@
         <text>%c[white] All Items Require "Advanced Toolkit" for crafting\n\n
 		%c[white] Generator Parts\n\n
 		 %c[white] 1x Fuel Tank\n
-		 %c[d_green] • %c[pda_white] 2x Metal Scrap\n
-		 %c[d_green] • %c[pda_white] 4x Rubber\n
-		 %c[d_green] • %c[pda_white] 2x Textotile\n
+		 %c[d_green] пїЅ %c[pda_white] 2x Metal Scrap\n
+		 %c[d_green] пїЅ %c[pda_white] 4x Rubber\n
+		 %c[d_green] пїЅ %c[pda_white] 2x Textotile\n
 		\n
 		 %c[white] 1x Turbine Motor\n
-		 %c[yellow] • %c[pda_white] 4x Metal Scrap\n
-		 %c[yellow] • %c[pda_white] 2x Copper Wire\n
-		 %c[yellow] • %c[pda_white] 2x Textotile\n
+		 %c[yellow] пїЅ %c[pda_white] 4x Metal Scrap\n
+		 %c[yellow] пїЅ %c[pda_white] 2x Copper Wire\n
+		 %c[yellow] пїЅ %c[pda_white] 2x Textotile\n
 		\n
 		 %c[white] 1x Engine\n
-		 %c[yellow] • %c[pda_white] 8x Metal Scrap\n
-		 %c[yellow] • %c[pda_white] 4x Copper Wire\n
-		 %c[yellow] • %c[pda_white] 2x Rubber\n
-		 %c[yellow] • %c[pda_white] 2x Textotile\n
+		 %c[yellow] пїЅ %c[pda_white] 8x Metal Scrap\n
+		 %c[yellow] пїЅ %c[pda_white] 4x Copper Wire\n
+		 %c[yellow] пїЅ %c[pda_white] 2x Rubber\n
+		 %c[yellow] пїЅ %c[pda_white] 2x Textotile\n
 		\n
 		 %c[white] 1x Electric Wires\n
-		 %c[pda_yellow] • %c[pda_white] 2x Textotile\n
-		 %c[pda_yellow] • %c[pda_white] 2x Copper Wire\n
+		 %c[pda_yellow] пїЅ %c[pda_white] 2x Textotile\n
+		 %c[pda_yellow] пїЅ %c[pda_white] 2x Copper Wire\n
 		\n
 		 %c[white] 1x Rebar Frame\n
-		 %c[d_blue] • %c[pda_white] 6x Metal Scrap\n
-		 %c[d_blue] • %c[pda_white] 6x Fasteners\n
+		 %c[d_blue] пїЅ %c[pda_white] 6x Metal Scrap\n
+		 %c[d_blue] пїЅ %c[pda_white] 6x Fasteners\n
 		\n
 		 %c[white] 1x Diesel Generator Battery\n
-		 %c[pda_yellow] • %c[pda_white] 4x Ammo Parts\n
-		 %c[pda_yellow] • %c[pda_white] 2x Copper Wire\n
-		 %c[pda_yellow] • %c[pda_white] 1x Textotile\n
+		 %c[pda_yellow] пїЅ %c[pda_white] 4x Ammo Parts\n
+		 %c[pda_yellow] пїЅ %c[pda_white] 2x Copper Wire\n
+		 %c[pda_yellow] пїЅ %c[pda_white] 1x Textotile\n
 		\n
 		 %c[white] 1x Engine Fan\n
-		 %c[d_cyan] • %c[pda_white] 2x Metal Scrap\n
-		 %c[d_cyan] • %c[pda_white] 1x Copper Wire\n
+		 %c[d_cyan] пїЅ %c[pda_white] 2x Metal Scrap\n
+		 %c[d_cyan] пїЅ %c[pda_white] 1x Copper Wire\n
 		\n
 		 %c[white] 1x Exhaust\n
-		 %c[d_cyan] • %c[pda_white] 6x Metal Scrap\n
-		 %c[d_cyan] • %c[pda_white] 1x Carbon Fibre Fabrics\n
+		 %c[d_cyan] пїЅ %c[pda_white] 6x Metal Scrap\n
+		 %c[d_cyan] пїЅ %c[pda_white] 1x Carbon Fibre Fabrics\n
 		\n
 		 %c[white] 1x Rotor Band\n
-		 %c[d_red] • %c[pda_white] 4x Rubber\n
-		 %c[d_red] • %c[pda_white] 2x Fasteners\n
+		 %c[d_red] пїЅ %c[pda_white] 4x Rubber\n
+		 %c[d_red] пїЅ %c[pda_white] 2x Fasteners\n
 		\n
 		 %c[white] 1x Fuel Pipes\n
-		 %c[d_green] • %c[pda_white] 4x Metal Scrap\n
-		 %c[d_green] • %c[pda_white] 4x Rubber\n
+		 %c[d_green] пїЅ %c[pda_white] 4x Metal Scrap\n
+		 %c[d_green] пїЅ %c[pda_white] 4x Rubber\n
 		\n
 		 %c[white] 1x Turbine Rotor\n
-		 %c[d_red] • %c[pda_white] 4x Metal Scrap\n
-		 %c[d_red] • %c[pda_white] 4x Fasteners\n
+		 %c[d_red] пїЅ %c[pda_white] 4x Metal Scrap\n
+		 %c[d_red] пїЅ %c[pda_white] 4x Fasteners\n
 		\n
 		 %c[white] 1x Engine Rotor\n
-		 %c[d_red] • %c[pda_white] 4x Metal Scrap\n
-		 %c[d_red] • %c[pda_white] 4x Fasteners\n
+		 %c[d_red] пїЅ %c[pda_white] 4x Metal Scrap\n
+		 %c[d_red] пїЅ %c[pda_white] 4x Fasteners\n
 		\n
 		%c[white] Generator Components\n\n
 		 %c[white] 1x Generator Power System\n
-		 %c[yellow] • %c[ui_gray_1] Engine\n
-		 %c[yellow] • %c[ui_gray_1] Turbine\n`
+		 %c[yellow] пїЅ %c[ui_gray_1] Engine\n
+		 %c[yellow] пїЅ %c[ui_gray_1] Turbine\n`
 		\n
 		 %c[white] 1x Generator Electrical System\n
-		 %c[pda_yellow] • %c[ui_gray_1] Battery\n
-		 %c[pda_yellow] • %c[ui_gray_1] Wires \n
+		 %c[pda_yellow] пїЅ %c[ui_gray_1] Battery\n
+		 %c[pda_yellow] пїЅ %c[ui_gray_1] Wires \n
 		\n
 		 %c[white] 1x Generator Ventillation System\n
-		 %c[d_cyan] • %c[ui_gray_1] Fan\n
-		 %c[d_cyan] • %c[ui_gray_1] Exhaust\n
+		 %c[d_cyan] пїЅ %c[ui_gray_1] Fan\n
+		 %c[d_cyan] пїЅ %c[ui_gray_1] Exhaust\n
 		\n
 		 %c[white] 1x Generator Motor System\n
-		 %c[d_red] • %c[ui_gray_1] Turbine Rotor\n
-		 %c[d_red] • %c[ui_gray_1] Engine Rotor\n
-		 %c[d_red] • %c[ui_gray_1] Rotor Band\n
+		 %c[d_red] пїЅ %c[ui_gray_1] Turbine Rotor\n
+		 %c[d_red] пїЅ %c[ui_gray_1] Engine Rotor\n
+		 %c[d_red] пїЅ %c[ui_gray_1] Rotor Band\n
 		\n
 		 %c[white] 1x Generator Fuel System\n
-		 %c[d_green] • %c[ui_gray_1] Pipes\n
-		 %c[d_green] • %c[ui_gray_1] Tank \n
+		 %c[d_green] пїЅ %c[ui_gray_1] Pipes\n
+		 %c[d_green] пїЅ %c[ui_gray_1] Tank \n
 		\n
 		 %c[white] 1x Generator Main Part\n
-		 %c[yellow] • %c[ui_gray_1] Power System\n
-		 %c[pda_yellow] • %c[ui_gray_1] Electrical System\n
-		 %c[d_green] • %c[ui_gray_1] Fuel System\n
+		 %c[yellow] пїЅ %c[ui_gray_1] Power System\n
+		 %c[pda_yellow] пїЅ %c[ui_gray_1] Electrical System\n
+		 %c[d_green] пїЅ %c[ui_gray_1] Fuel System\n
 		\n
 		 %c[white] 1x Generator Secondary Part\n
-		 %c[pda_blue] • %c[ui_gray_1] Main Part\n
-		 %c[d_red] • %c[ui_gray_1] Motor System\n
-		 %c[d_cyan] • %c[ui_gray_1] Motor System\n
+		 %c[pda_blue] пїЅ %c[ui_gray_1] Main Part\n
+		 %c[d_red] пїЅ %c[ui_gray_1] Motor System\n
+		 %c[d_cyan] пїЅ %c[ui_gray_1] Motor System\n
 		 \n
 		 %c[white] Final Product\n\n
 		 %c[white] 1x Diesel Generator\n
-		 %c[pda_blue] • %c[ui_gray_1] 1x Secondary Part\n
-		 %c[d_pda_blue] • %c[ui_gray_1] 1x Rebar Frame\n
+		 %c[pda_blue] пїЅ %c[ui_gray_1] 1x Secondary Part\n
+		 %c[d_pda_blue] пїЅ %c[ui_gray_1] 1x Rebar Frame\n
 		</text>
     </string>
 	
@@ -505,7 +559,7 @@
 	
 	<string id="st_jerrycan_diesel_descr">
 		<text>Holds up to 10L of Diesel\n\
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
 		</text>
 	</string>
 	<string id="st_jerrycan_biodiesel_descr">
@@ -527,7 +581,7 @@
 	
 	<string id="st_jerrycan_diesel_empty_descr">
 		<text>Empty Jerrycan used for diesel but can be used for other fluids, now it's empty
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
 		</text>
 	</string>
 	<string id="st_jerrycan_biodiesel_empty_descr">
@@ -582,7 +636,7 @@
 	</string>
 	<string id="st_hfg_poster_1_descr">
 		<text>
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
 		Title: DO NOT LEAVE A FUEL CONTAINER OPEN\n
 		Author: S. S. Gadzhiev\n
 		Artist: V.L. Kondrat'ev\n
@@ -597,7 +651,7 @@
 	</string>
 	<string id="st_hfg_poster_2_descr">
 		<text>
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
 		Title: Katapult Petrol\n
 		Artist: F. Freiwillig\n
 		Year: 1955\n
@@ -610,7 +664,7 @@
 	</string>
 	<string id="st_hfg_poster_3_descr">
 		<text>
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
 		Title: Alcohol is the Cause of Injuries at Work\n
 		Artist: A. V. Terman\n
 		Year: 1987\n
@@ -623,7 +677,7 @@
 	</string>
 	<string id="st_hfg_poster_4_descr">
 		<text>
-		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
 		Title: Don't Test Voltage With Your Finger\n
 		Artist: Unknown\n
 		Year: Unknown\n
@@ -633,5 +687,108 @@
 	<string id="st_hfg_no_gen_parts">
 		<text>Generator too broken to scrap for parts</text>
 	</string>
+
+	<string id="st_hfg_car_battery">
+		<text>Car Battery</text>
+	</string>
+	<string id="st_hfg_car_battery_descr">
+		<text>
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
+		</text>
+	</string>
+
+	<string id="st_hfg_metal_fence">
+		<text>Metal Fence</text>
+	</string>
+	<string id="st_hfg_metal_fence_descr">
+		<text>
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
+		</text>
+	</string>
+
+	<string id="st_hfg_barbed_fence">
+		<text>Barbed-Wire Fence</text>
+	</string>
+	<string id="st_hfg_barbed_fence_descr">
+		<text>
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
+		</text>
+	</string>
 	
+	<string id="st_hfg_solar_panel">
+		<text>Solar Panels</text>
+	</string>
+	<string id="st_hfg_solar_panel_descr">
+		<text>
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
+		</text>
+	</string>
+	<string id="st_hfg_place_part">
+		<text>Place Part</text>
+	</string>
+	<string id="st_hfg_place_blueprint">
+		<text>Place Blueprint</text>
+	</string>
+	<string id="st_hfg_pickup_blueprint">
+		<text>Pickup Blueprint</text>
+	</string>
+
+	<string id="st_hfg_empty_blueprint">
+		<text>Empty Blueprint</text>
+	</string>
+	<string id="st_hfg_empty_blueprint_descr">
+		<text>
+		%c[d_orange] пїЅ %c[ui_gray_1] Placeable Item\n
+		</text>
+	</string>
+
+	<string id="st_hfg_prt_sp_frame">
+		<text>Solar Panel Frame</text>
+	</string>
+	<string id="st_hfg_prt_sp_frame_descr">
+		<text>A rusted iron wrought frame</text>
+	</string>
+	<string id="st_hfg_inverter_pole">
+		<text>Metal Pole</text>
+	</string>
+	<string id="st_hfg_inverter_pole_descr">
+		<text>A metal pole used for attaching electronics off of.</text>
+	</string>
+	<string id="st_hfg_prt_sp_leg">
+		<text>Solar Panel Metal Leg</text>
+	</string>
+	<string id="st_hfg_prt_sp_leg_descr">
+		<text>A Rusted Steel leg, repurposed and forged from a pole fence</text>
+	</string>
+	<string id="st_hfg_prt_sp_panel">
+		<text>Solar Panel Cells</text>
+	</string>
+	<string id="st_hfg_prt_sp_panel_descr">
+		<text>Photovoltic Cells cased in a silcate and steel frame, likely scavanged from a larger panel</text>
+	</string>
+	<string id="st_hfg_inverter">
+		<text>Solar Panel Inverter</text>
+	</string>
+	<string id="st_hfg_inverter_descr">
+		<text>A electronical panel that converts the dc into ac as well as the control operations for attached power sources</text>
+	</string>
+	<string id="st_hfg_comp_sp_power">
+		<text>Solar Panel Power System</text>
+	</string>
+	<string id="st_hfg_comp_sp_power_descr">
+		<text>Contains: Photovoltic Cells, Inverter</text>
+	</string>
+	<string id="st_hfg_comp_sp_structural_poster">
+		<text>Solar Panel Structural System</text>
+	</string>
+	<string id="st_hfg_comp_sp_structural_descr">
+		<text>Contains: Frame, Metal Leg, Metal Pole</text>
+	</string>
+		<string id="st_hfg_sp_manual">
+		<text>A Technical Guide On: Solar Panel Systems</text>
+	</string>
+	<string id="st_hfg_sp_manual_descr">
+		<text>Technical document that details how to build a solar panel system</text>
+	</string>
+
 </string_table>
