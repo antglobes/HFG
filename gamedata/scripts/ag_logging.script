@@ -1,0 +1,301 @@
+
+---Utility Functions that focus on log messages
+---Apart of `ag_utils` library
+---@author antglobes
+
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_configs)
+gts = get_translation
+
+---Create a new Logging class
+---@author antglobes
+---@param caller_info table
+---@return AG_Log
+function new(caller_info)
+	return AG_Log(caller_info)
+end
+
+class "AG_Log"
+function AG_Log:__init(info)
+	self.log_levels = {PLAYER=1, DEBUG=2, INFO=3, DEV=4, ERROR=5, ALL=6}
+	self.header = info.header and info.header or "[AG Log]"
+	self:SetLevel(info.level)
+	self.enabled = info.enabled and info.enabled or false
+	self.flush_tmr = 0
+
+	self.obj_info_actions = {
+		id = function(obj, typ, lvl)
+			return typ == "game" and obj:id() or obj.id
+		end,
+		sect = function(obj, typ)
+			return get_unknown_sect(obj, typ)
+		end,
+		clsid = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEBUG then return end
+			return obj:clsid()
+		end,
+		condition = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEBUG then return end
+			local sect = get_unknown_sect(obj, typ)
+			return IsInvItem(nil, sect) and obj.condition and obj:condition()
+		end,
+		name = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			local is_stalker = typ == "game" and IsStalker(obj) or IsStalker(nil, sect)
+			if is_stalker then
+				return obj:character_name()
+			end
+			local is_monster = typ == "game" and IsMonster(obj) or IsMonster(nil, sect)
+			if is_monster then
+				get_species(sect)
+			end
+			return hfg_utils.get_hf_item_name(sect)
+		end,
+		visual = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "visual") and get_visual(sect)
+		end,
+		weight = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "inv_weight") and get_item_weight(sect)
+		end,
+		cost = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "cost") and get_item_cost(sect, true)
+		end,
+		max_uses = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "max_uses") and get_max_uses(nil, sect)
+		end,
+		uses = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local sect = get_unknown_sect(obj, typ)
+			return typ == "game" and IsItem("multiuse", sect) and obj:get_remaining_uses()
+		end,
+		icon = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local sect = get_unknown_sect(obj, typ)
+			return IsInvItem(nil, sect) and print_table({get_obj_icon(nil, sect)}) or IsStalker(obj) and obj:character_icon()
+		end,
+		pos = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local position = typ == "game" and obj:position() or obj.position
+			return vec_to_str(position)
+		end,
+		bones = function(obj, typ, lvl)
+			if self.log_levels.ALL then return end
+			return typ == "game" and obj:get_physics_shell() and vec_to_str(obj:list_bones())
+		end,
+	}
+-- alive, faction, 
+end
+
+function AG_Log:ConvertLevel(log_level)
+	local lvl = self.level
+	
+	if 
+		is_number(log_level)
+		and contains(self.log_levels, log_level)  
+	then
+		lvl = log_level
+
+	elseif is_string(log_level) then
+		log_level = uppercase(log_level) --TODO Copy changed lib files into main
+		if contains(self.log_levels, log_level, true) then
+			lvl = self.log_levels[log_level]
+		end
+	end
+	return lvl
+end
+
+---Set the logging level
+---@author antglobes
+---@param log_level string|number
+function AG_Log:SetLevel(log_level)
+	self.level =  self:ConvertLevel(log_level)
+end
+
+---Get the logging level
+---@author antglobes
+---@param as_string boolean
+---@return number | string
+function AG_Log:GetLevel(as_string)
+	if as_string then
+		local cond, log_level = contains(self.log_levels, self.level, nil, nil, true)
+		if cond then
+			return log_level
+		end
+	end
+	return self.level
+end
+
+---Allow/Disable logs to be printed to the console
+---@author antglobes
+---@param state boolean
+function AG_Log:Enable(state)
+	state = state and state or not self.enabled
+	self.enabled = state 
+end
+
+---Print logs to console
+---@author antglobes
+---@param log_level string|number
+---@param str string
+---@param ...? any
+function AG_Log:Log(log_level, fmt, ...)
+	--printf("log enabled?: %s", self.enabled)
+	if not self.enabled then return end
+	log_level = self:ConvertLevel(log_level)
+	--printf("msg log level: %s, logger log level", log_level, self.log_level)
+	if log_level > self.level then return end
+	local info = debug.getinfo(3,"Sl")
+	local src = tostring(info.short_src)
+	local line = tostring(info.currentline)
+	src = string.sub(src, #src - string.find(string.reverse(src),"\\") + 2, #src)
+	local caller = strformat("[%s L#%s]", src, line)
+	local header = strformat("%s | %s", self.header, caller)
+	self:printf(header, fmt, ...)
+end
+
+function AG_Log:printf(header, fmt, ...)
+	if not (fmt) then return end
+	local fmt_type = type(fmt)
+	if contains({"string", "number", "boolean"}, fmt_type) then
+		fmt = tostring(fmt)
+	elseif fmt_type == "table" or fmt_type == 'userdata' then
+		if fmt.x or fmt.y or fmt.z then
+			fmt = vec_to_str(fmt)
+		elseif fmt.id then
+			fmt = self:ObjectToTable(fmt)
+		else
+			fmt = print_table(fmt)
+		end
+	end
+
+	if (select('#',...) >= 1) then
+		local i = 0
+		local p = {...}
+		local function sr(a)
+			i = i + 1
+			if (type(p[i]) == 'userdata') then
+				if (p[i].x or p[i].y or p[i].z) then
+					return vec_to_str(p[i])
+				elseif p[i].id then
+					return self:ObjectToTable(p[i])
+				end
+				return 'userdata'
+			elseif (type(p[i]) == "table") then
+				printf("checking for userdata/object")
+				local contains_obj = false
+				local obj_tbl = {}
+				for k, v in pairs(p[i]) do
+					if type(v) == "userdata" and v.id then
+						contains_obj = true
+						local str = self:ObjectToTable(v)
+						obj_tbl[k] = str
+					end
+				end
+				if contains_obj then
+					printf("found: %s", ag_tables.print_table(obj_tbl))
+					return ag_tables.print_table(obj_tbl)
+				end
+                return ag_tables.print_table(p[i])    
+            end
+			return tostring(p[i])
+		end
+		fmt = string.gsub(fmt,"%%s",sr)
+	end
+	--printf("header: %s")
+	fmt = strformat("%s: %s", header, fmt)
+	--printf("final msg: %s", fmt)
+	if (log) then
+		--printf("standrd log")
+		log(fmt)
+		if DEV_DEBUG and time_global() >= self.flush_tmr then
+			exec_console_cmd("flush")
+			self.flush_tmr = time_global() + (60 * 1000)
+		end
+	else
+		--printf("debug log")
+		exec_console_cmd("load ~#debug msg:"..fmt)
+	end
+end
+
+---Convert Server/Game Objects to a string represented table
+---@author antglobes
+function AG_Log:ObjectToTable(obj)
+	local obj_tbl = {}
+	if obj then
+		local lvl = self:GetLevel()
+		local typ = get_obj_type(obj)
+		for action_key, action_func in pairs(self.obj_info_actions) do
+			local action_result = action_func(obj, typ, lvl)
+			if action_result then
+				-- printf("action key: %s, action result: %s", action_key, action_result)
+				obj_tbl[tostring(action_key)] = action_result
+			end
+		end
+	end
+	-- printf("1st table size: %s", size_table(obj_tbl))
+	return ag_tables.print_table(obj_tbl)
+end
+
+---Print logs to console at PLAYER log level and lower
+---@author antglobes
+---@param str string
+---@param ...? any
+function AG_Log:player(fmt, ...)
+	self:Log(self.log_levels.PLAYER, fmt, ...)
+end
+
+---Print logs to console at DEBUG log level and lower
+---@author antglobes
+---@param fmt fmting
+---@param ...? any
+function AG_Log:debug(fmt, ...)
+	self:Log(self.log_levels.DEBUG, fmt, ...)
+end
+
+---Print logs to console at INFO log level and lower
+---@author antglobes
+---@param fmt fmting
+---@param ...? any
+function AG_Log:info(fmt, ...)
+	self:Log(self.log_levels.INFO, fmt, ...)
+end
+
+---Print logs to console at DEV log level and lower
+---@author antglobes
+---@param fmt fmting
+---@param ...? any
+function AG_Log:dev(fmt, ...)
+	self:Log(self.log_levels.DEV, fmt, ...)
+end
+
+---Print logs to console at ERROR log level and lower
+---@author antglobes
+---@param fmt fmting
+---@param ...? any
+function AG_Log:error(fmt, ...)
+	self:Log(self.log_levels.ERROR, fmt, ...)
+end
+
+---Print logs to console at ALL log level and lower
+---@author antglobes
+---@param fmt fmting
+---@param ...? any
+function AG_Log:all(fmt, ...)
+	self:Log(self.log_levels.ALL, fmt, ...)
+end
+
+
+
+

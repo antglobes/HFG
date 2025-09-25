@@ -1,0 +1,295 @@
+---Utility Functions that focus on NPC game objects
+---Apart of `ag_utils` library
+---@author antglobes
+
+-- Boolean Functions
+
+---Check if a NPC in dialog
+---@author antglobes
+---@param npc game_object
+---@return boolean
+ function is_talking(npc)
+	return npc:is_talking()
+end
+
+---Check if the actor is in dialog
+---@author antglobes
+---@return boolean
+function is_actor_talking() 
+	return is_talking(db.actor)
+end
+
+---Check if a NPC's faction is enemies of the actor's faction
+---@author antglobes
+---@param npc game_object
+---@return boolean
+function is_enemy(npc)
+    return game_relations.is_factions_enemies(npc:character_community(), db.actor:character_community())
+end
+
+---Check if a NPC's faction is friends of the actor's faction
+---@author antglobes
+---@param npc game_object
+---@return boolean
+function is_friend(npc)
+    return game_relations.is_factions_friends(npc:character_community(), db.actor:character_community())
+end
+
+---Check if a NPC is a story npc
+---@author antglobes
+---@param npc game_object
+---@return boolean
+function is_story_npc(npc)
+    return get_object_story_id(npc:id()) and true or false
+end
+
+-- Getters
+
+---Gets a NPC's character name or mutant species
+---@author antglobes
+---@param npc game_object
+---@return string
+function get_name(npc)
+	return IsStalker(npc) and npc:character_name() or ini_sys:r_string_ex(npc:section(), "species")
+end
+
+---Get a NPC's squad
+---@author NLTP_ASHES
+---@param obj game_object
+---@return game_object
+function get_squad_of(obj)
+    if (obj:id() == AC_ID) then
+        return
+    end
+
+    if not (IsStalker(obj) or IsMonster(obj)) then
+        return
+    end
+
+    local squad = get_object_squad(obj)
+    if not squad then
+        return
+    end
+
+    return squad
+end
+
+---Return the rank of a NPC
+---@author antglobes
+---@param obj game_object
+---@return string
+function get_rank(obj)
+    return ranks.get_obj_rank_name(obj)
+end
+
+---Get the number representaion of a rank of a NPC
+---@author antglobes
+---@param rank_name string
+---@return number
+function get_rank_val(rank_name)
+    local ranks = {
+        ["novice"] = 1,
+        ["trainee"] = 2,
+        ["experienced"] = 3,
+        ["professional"] = 4,
+        ["veteran"] = 5,
+        ["expert"] = 6,
+        ["master"] = 7,
+        ["legend"] = 8 
+    }
+    return ranks[rank_name]
+end
+
+---Return the highest rank of a table containing npc game_objects
+---@author antglobes
+---@param npc_list table<number, game_object>
+---@return string
+function get_highest_rank(npc_list)
+    local highest_rank = ""
+    local highest_get_rank_val = 0
+    for idx, npc in pairs(npc_list) do
+        local rank = get_rank(npc)
+        local get_rank_val = get_rank_val(rank)
+        if get_rank_val > highest_get_rank_val then
+            highest_get_rank_val = get_rank_val
+            highest_rank = rank
+        end
+    end
+    return highest_rank
+end
+
+---Return the reputation of a NPC
+---@author antglobes
+---@param obj game_object
+---@return string
+function get_rep(obj)
+    return string.gsub( utils_obj.get_reputation_name(obj:character_reputation()) , "st_reputation_" , "" )
+end
+
+---Increase the faction goodwill towards the actor
+---@author antglobes
+---@param faction string
+---@param goodwill number
+function increase_faction_goodwill(faction, goodwill)
+    change_faction_goodwill(faction, goodwill)
+end
+
+---Decrease the faction goodwill towards the actor
+---@author antglobes
+---@param faction string
+---@param goodwill number
+function decrease_faction_goodwill(faction, goodwill)
+    change_faction_goodwill(faction, -goodwill)
+end
+
+---Increase/Decrease the faction goodwill towards the actor
+---@author antglobes
+---@param faction string
+---@param goodwill number
+function change_faction_goodwill(faction, goodwill)
+    game_relations.change_factions_community_num(faction, db.actor:character_community(), goodwill)
+end
+
+-- Get Faction Goodwill of obj_1 Towards obj_2
+---@author antglobes
+---@param obj_1 game_object
+---@param obj_2 game_object
+---@return number
+function get_faction_goodwill(obj_1, obj_2)
+    return relation_registry.community_goodwill(obj_1:character_community(), obj_2:id())
+end
+
+---Determine the strength of goodwill
+---@author antglobes
+---@param goodwill number
+---@return string, number
+function determine_goodwill_amount(goodwill)
+    local polarity = goodwill >= 0 and true or false
+    local amount = "neutral"
+
+    goodwill = math.abs(goodwill)
+    if goodwill >= 1500 then
+        amount = "high"
+    elseif goodwill >= 500 then
+        amount = "low"
+    end
+    return polarity, amount
+end
+
+---Change the personal goodwill between two NPCs
+---@author antglobes
+---@param rel_type string
+---@param npc_1 game_object
+---@param npc_2 game_object
+function set_personal_relation(rel_type, npc_1, npc_2)
+    if rel_type == "friend" then
+        npc_1:set_relation(game_object.friend, npc_2)
+    elseif rel_type == "neutral" then
+        npc_1:set_relation(game_object.neutral, npc_2)
+    elseif rel_type == "enemy" then
+        npc_1:set_relation(game_object.enemy, npc_2)
+    end 
+end
+
+---Get the personal goodwill between two NPCs
+---@author antglobes
+---@param obj_1 game_object
+---@param obj_2 game_object
+---@return number
+function get_personal_relation(obj_1, obj_2)
+    return obj_1:relation(obj_2)
+end
+
+---Get the personal goodwill between two NPCs
+---@author antglobes
+---@param obj_1 game_object
+---@param obj_2 game_object
+---@return number
+function get_personal_goodwill(obj_1, obj_2)
+    return obj_1:goodwill(obj_2)
+end
+
+---Decrease the personal goodwill between two NPCs
+---@author antglobes
+---@param goodwill number
+---@param npc_1 game_object
+---@param npc_2 game_object
+function decrease_personal_goodwill(goodwill, npc_1, npc_2)
+    npc_1:set_goodwill(-goodwill, npc_2)
+end
+
+-- Inventory/World Iteration
+
+--- @author NLTP_ASHES
+--- @addon Western Goods
+---Iterate through an NPC's inventory
+---@param npc game_object
+---@param func function
+---@param ... any
+function itr_inv(npc, func, ...)
+    npc = npc ~= nil and db.actor or npc
+	local args = {...}
+	npc:iterate_inventory(
+		function(owner, obj)
+			return func(owner, obj, unpack(args))
+		end, 
+	npc)
+end
+
+---Searchs for occurances of specific items within an NPCs inventory
+---@author antglobes
+---@param key string
+---@param npc game_object
+---@return table
+function find_inv_item(key, npc)
+    local t = type(key)
+    local tmp = {}
+    local function search(npc, obj)
+        local sect = obj:section()
+        --pr("%s in %s? %s", sect, key, is_not_empty({string.find(sect, key)}))
+        if is_not_empty({string.find(sect, key)}) then
+            tmp[#tmp + 1] = obj
+        end
+    end
+    itr_inv(npc or db.actor, search)
+    return tmp
+end
+
+---Searchs for occurances of specific items within any found game_object with an inventory
+---@author antglobes
+---@param sect section
+---@param pos vector
+---@param radius number
+---@param search function
+---@return table<number, game_object>
+function find_obj(sect, pos, radius, search)
+    local objs = {}
+    local function itr(obj)
+        local found_sect = obj:section()
+        if not search then
+            if is_not_empty({string.find(found_sect, sect)}) then
+                objs[#objs + 1] = obj
+            end
+        else
+            if search(obj) then
+                objs[#objs + 1] = obj
+            end
+        end       
+    end
+    level.iterate_nearest(pos, radius, itr)
+    return objs
+end
+
+---Searchs for repairable item within an NPC's inventory
+---@author antglobes
+---@param npc game_object
+---@return table<number, game_object>
+function get_repairable_item(npc)
+    local items = {}
+    itr_inv(npc, function(_, obj)
+        if inventory_upgrades.can_repair_item(obj:section()) then
+            items[#items + 1] = obj
+        end
+    end)
+    return items
+end

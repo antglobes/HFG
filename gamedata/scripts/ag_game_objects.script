@@ -1,0 +1,548 @@
+-- Libarary Imports
+
+ag_utils.import_metatable(this, ag_strings)
+gts = get_translation
+
+---Utility Functions that focus on game objects
+---Apart of `ag_utils` library
+---@author antglobes
+
+-- Tables
+
+---Table holding tracer Users and colour (in argb format)
+tracer_clr_tbl = {
+    vanilla_yellow = {user="vanilla", value={255, 130, 0, 255}},
+    green          = {user="russia", value={255, 130, 0, 255}},
+    red            = {user="nato", value={255, 130, 0, 255}},
+    yellow         = {user="helicopeters", value={255, 130, 0, 255}},
+}
+
+---Check whether a game object is an alcohol related item
+---@author antglobes
+---@param obj game_object
+---@return boolean
+function IsAlcohol(obj)
+    local alcohol = false
+    for _, pt in pairs{"vodka", "tea", "bottle_metal"} do
+        if string.find(obj:section(), "vodka") then
+            alcohol = true
+        end
+    end
+    return alcohol
+end
+
+---Check whether a game object is a medical related item
+---@author antglobes
+---@param o? game_object
+---@param c? clsid
+---@return boolean
+function IsMedicine(o, c)
+	if not c then
+		c = o and o:clsid()
+	end
+	return c and (c == clsid.obj_medkit or c == clsid.obj_bandage or c == clsid.obj_anti_rad) or false
+end
+
+---Check whether a game object is a detector
+---@author antglobes
+---@param o? game_object
+---@param c? clsid
+---@return boolean
+function IsDetector(o, c)
+    if not c then
+		c = o and o:clsid()
+	end
+	return c and 
+        (   
+            c == clsid.detector_advanced_s 
+            or c == clsid.detector_elite_s
+	        or c == clsid.detector_elite_s
+	        or c == clsid.detector_scientific_s
+	        or c == clsid.detector_simple_s
+	        or c == clsid.device_detector_advanced
+	        or c == clsid.device_custom
+	        or c == clsid.device_dosimeter
+	        or c == clsid.device_detector_elite
+            or c == clsid.device_detector_scientific
+	        or c == clsid.device_detector_simple
+            or c == clsid.device_flare
+	        or c == clsid.device_pda
+    	    or c == clsid.device_torch
+        ) or false
+end
+
+---Check whether a game object is a weapon scope
+---@author antglobes
+---@param o? game_object
+---@param c? clsid
+---@return boolean
+function IsScope(o, c)
+    if not c then
+		c = o and o:clsid()
+	end
+    local sect = o:section()
+    return c and c == clsid.wpn_scope or IsItem("scope", sect) or false
+end 
+
+---Check whether a game object is a grenade launcher
+---@author antglobes
+---@param o? game_object
+---@param c? clsid
+---@return boolean
+function IsGrenadeLauncher(o, c)
+    if not c then
+		c = o and o:clsid()
+	end
+    local sect = o:section()
+    return c and c == clsid.wpn_grenade_launcher_s or IsItem("gl", sect) or false
+end
+
+---Check whether a game object is a Silencer
+---@author antglobes
+---@param o? game_object
+---@param c? clsid
+---@return boolean
+function IsSilencer(o, c)
+    if not c then
+		c = o and o:clsid()
+	end
+    local sect = o:section()
+    return c and c == clsid.wpn_silencer or IsItem("sil", sect) or false
+end
+
+---Check whether an weapon can be upgraded
+---@author antglobes
+---@param obj game_object
+---@param sect string
+---@return boolean
+function can_upgrade(obj, sec)
+    local max_upgrades = get_max_upgrades(obj and obj:section() or sec)
+    local installed_upgrades = utils_item.get_upgrades_installed(obj)
+    return #installed_upgrades < max_upgrades
+end
+
+---Check whether an ammo type contains tracers
+---@author antglobes
+---@param obj game_object
+---@param sect string
+---@return boolean
+function has_tracers(obj, sec)
+    local sect = obj and obj:section() or sec
+    local has_tracers = ini_sys:r_string_ex(sect, "tracers", "no")
+    -- printf("has tracers: %s", has_tracers)
+    return has_tracers
+end
+
+-- Table Functions
+
+--- Checks list of game objects for a section
+---@author antglobes
+---@param tbl table
+---@param sect string
+---@return boolean
+function contains_sect(tbl, sect)
+    for idx, obj in pairs(tbl) do
+        if obj:section() == sect then
+            return true
+        end
+    end
+    return false
+end
+
+--- Checks list of game objects for an id
+---@author antglobes
+---@param tbl table
+---@param id number
+---@return boolean
+function contains_id(tbl, id)
+    for idx, obj in pairs(tbl) do
+        if obj:id() == id then
+            return true
+        end
+    end
+    return false
+end
+
+--- Get a list of sections from objects
+---@author antglobes
+---@param objs table<number, game_object>
+---@return table<number, string>
+function obj_to_sect_list(objs)
+    local sect_list = {}
+    for _, obj in ipairs(objs) do
+        sect_list[#sect_list + 1] = obj:section()
+    end
+    ---- printf("sect list %s", table.concat(sect_list, ","))
+    return sect_list
+end
+
+--- Get a list of sections from objects
+---@author antglobes
+---@param objs table<number, game_object>
+---@return table<number, string>
+function get_sect_tbl(tbl)
+    local sect_tbl = {}
+    for _, obj in ipairs(tbl) do
+        sect_tbl[#sect_tbl + 1] = obj:section()
+    end
+    ---- printf("sect list %s", table.concat(sect_list, ","))
+    return sect_tbl
+end
+
+---Collect All possible mutant sections
+---@deprecated
+---@author antglobes
+---@return table<number, string>
+function get_all_mutant_sections()
+	local mutant_sections = {}
+	ini_sys:section_for_each( function(section)
+		local visual = ini_sys:r_string_ex(section, "visual")
+		if visual and string.find(visual, "monsters\\") then
+			mutant_sections[#mutant_sections + 1] = section
+		end
+	end)
+	return mutant_sections
+end
+
+--- Get Inventory sorting tab via item kind
+---@author antglobes
+---@param typ string
+---@return table<number, string>
+function get_kinds(typ)
+    local kind_types = {
+        ["weapons_guns"] = {"w_pistol", "w_shotgun", "w_smg", "w_rifle", "w_sniper"},
+        ["weapons_melee"] = {"w_melee"},
+        ["weapons_misc"] = {"w_misc"},
+        ["outfits_body"] = {"o_light", "o_medium", "o_sci", "o_heavy"},
+        ["outfits_extra"] = {"o_helmet","i_backpack"},
+        ["artefacts"] = {"i_arty", "i_arty_junk", "i_arty_cont", "i_mutant_belt", "i_mutant_part"},
+        ["items_devices"] = {"i_device"},
+        ["items_repair"] = {"i_tool", "i_repair"},
+        ["items_upgrades"] = {"i_upgrade", "i_kit", "i_attach"},
+        ["items_consumable_mutants"] = {"i_mutant_raw", "i_mutant_cooked"},
+        ["items_consumable_edible"] = {"i_food", "i_drink"},
+        ["items_consumable_medical"] = {"i_medical"},
+        ["items_misc"] = {"i_misc", "i_letter", "i_part", "i_quest"}
+    }
+    return kind_types[typ]
+end
+
+---Get a server or game object by id
+---@param obj table|function
+---@param result_obj_type string
+---@return server_object|game_object|nil
+--- Authored by NLTP_ASHES 17/02/24 Anomaly Discord
+function get_unknown_object(obj, result_obj_type)
+    if result_obj_type == "server" then
+        if obj and type(obj.id) == "number" then
+            return obj
+        elseif obj and type(obj.id) == "function" then
+            return alife_object(obj:id())
+        end
+    elseif result_obj_type == "game" then
+        if obj and type(obj.id) == "number" then
+            return level.object_by_id(obj.id)
+        elseif obj and type(obj.id) == "function" then
+            return obj
+        end
+    end
+    return nil
+end
+
+function get_obj_type(obj)
+    local obj_type = ""
+    if not obj then return obj_type end
+    if type(obj.id) == "number" then
+        obj_type = "server"
+    elseif type(obj.id) == "function" then
+        obj_type = "game"
+    end
+    return obj_type
+end
+
+---Get the cost of an item using system ltx (config/ini) via item section
+---@author antglobes
+---@param sect string
+---@return number
+function get_item_cost(sect, as_str)
+    return as_str and ini_sys:r_string_ex(sect, "cost") or ini_sys:r_float_ex(sect,"cost")
+end
+
+---Get the cost of a table with item sections using system ltx (config/ini)
+---@author antglobes
+---@param sect_list table<number, string>
+---@return table<number, string>
+function get_item_costs(sect_list)
+    local costs = {}
+    for _, sect in pairs(sect_list) do
+        costs[#costs + 1] = get_item_cost(sect)
+    end
+    return costs
+end
+
+---Get the cost to repair an item using system ltx (config/ini)
+---@author antglobes
+---@param item_name string
+---@param item_condition number
+---@return number
+function how_much_repair( item_name, item_condition )
+    local cost = ini_sys:r_u32(item_name, "cost")
+    local class = ini_sys:r_string_ex(item_name, "class")
+    local cof = game_difficulties.get_eco_factor("repair") or 1.67
+
+    --return math.floor( cost * factor * math.pow(1 - item_condition , 1.63) )
+    return math.floor( cost * (1 - item_condition) * cof ) -- CoP formula
+end
+
+
+--- Convert section to item name
+---@author antglobes
+---@param sect string
+---@param cfg_tbl table<nil, ini_file>
+---@return string
+function sect_to_name(sect, cfg_tbl)
+    for _, config in pairs(cfg_tbl) do
+        if config:section_exist(sect) then
+            return gts(config:r_value(sect, "inv_name"))
+        end
+    end
+end
+
+--- Get weight of item by section
+---@author antglobes
+---@param item string
+---@param cfg_tbl table<nil, ini_file>
+---@return number
+function _get_item_weight(item, cfg_tbl)
+    for _, config in pairs(cfg_tbl) do
+        if config:section_exist(item) then
+            return config:r_float_ex(item, "inv_weight")
+        end
+    end
+    return 0.01
+end
+
+function get_item_weight(sect)
+    return ini_sys:r_string_ex(obj_tbl.sect, "inv_weight")
+end
+
+function get_unknown_sect(obj, typ)
+	return typ == "game" and obj:section() or obj:section_name()
+end
+
+function get_unknown_id(obj, typ)
+	return typ == "game" and obj:id() or obj.id
+end
+
+---From config, get the string rep of an item's name using section 
+---@author antglobes
+---@param sect string
+---@return string
+function get_item_name(sect, as_id)
+    local xml_id = ini_sys:r_string_ex(sect, "inv_name", sect)
+    return as_id and xml_id or gts(xml_id)
+end
+
+function get_species(sect, as_id)
+    local xml_id = ini_sys:r_string_ex(sect, "species", sect)
+    return as_id and xml_id or gts(xml_id)
+end
+
+---Get the total number of possible upgrades for a weapon
+---@author antglobes
+---@param sect string
+---@return number
+function get_max_upgrades(sect)
+    local upgrades = parse_list(ini_sys, sect, "upgrades")
+    local max_upgrades = #upgrades
+    return max_upgrades
+end
+
+---Get the total number of possible uses for a item
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return number
+function get_max_uses(obj, sec)
+    local sect = obj and obj:section() or sec
+    return ini_sys:r_float_ex(sect, "max_uses", 0)
+end
+
+---Get the power level that a device shuts of at
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return number
+function get_power_critical(obj, sec)
+    local sect = obj and obj:section() or sec
+    return item_device.get_power_critical(sect)
+end
+
+---Get the power consumed per tick
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return number
+function get_power_consumption(obj, sec)
+    local sect = obj and obj:section() or sec
+    return item_device.get_power_consumption(sect)
+end
+
+---Get the tracer colour of an ammo type
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return table<number, table>
+function get_tracer_clr(obj, sec)
+    local sect = obj and obj:section() or sec
+    local tracer_color_id = ini_sys:r_string_ex(sect, "tracer_color_ID") or ini_sys:r_string_ex(sect, "tracer_color_id")
+    local tracer_clr = parse_list(ini_sys, "tracers_color_table", strformat("color_%s", tracer_color_id))
+    
+    for i=1, #tracer_clr_tbl do
+        local match_found = true
+        local entry = tracer_clr_tbl[i]
+        for i=1, #entry.value do
+            if tracer_clr[i] ~= entry.value[i] then
+                match_found = false
+            end
+        end
+        if match_found then
+            return entry
+        end
+    end
+end
+
+---Get a string showing the tracer colour and user
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return string
+function get_tracer_str(obj, sec)
+    local tracer_clr = get_tracer_clr(obj, sec)
+    ---- printf("tracer clr: %s", tracer_clr)
+    return strformat("%c[%s %s %s %s] %s", unpack(tracer_clr.value), tracer_clr.user)
+end
+
+---Get the cost of an item using system ltx (config/ini) via item section
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return number
+function _get_item_cost(obj, sec)
+    local sect = obj and obj:section() or sec
+    if not sect then return ini_sys:r_float_ex(sect, "cost", 0) end
+    
+    local cost = obj:cost()
+	
+    local uses = IsItem("multiuse",sec)
+	if uses then
+		cost = cost  * (obj:get_remaining_uses() / uses)
+        return  cost
+    end
+
+    local ammo = IsItem("ammo",sec)
+	if ammo then
+		cost = cost  * (obj:ammo_get_count() / ammo)
+		return cost
+	end
+
+    local cond = obj:condition() or 1
+	cost = cost  * math.pow((cond * 0.9 + 0.1), 0.75)
+	return cost
+
+end
+
+--- Get the condition of an item
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return number
+function prop_condition(obj, sec)
+    return obj and obj:condition() or 1
+end
+
+---Get the bone name from a weapon addon
+---@author antglobes
+---@param addon game_object
+---@return string
+function get_addon_bone_name(addon)
+    if IsScope(addon) then
+        return "wpn_scope"
+    elseif IsGrenadeLauncher(addon) then
+        return "wpn_launcher"
+    elseif IsSilencer(addon) then
+        return "wpn_silencer"
+    end
+end
+
+---Get an game objects icon fields
+---@author antglobes
+---@param obj game_object
+---@param sec string
+---@return string, table<string, number>, table<string, number>
+function get_obj_icon(obj, sec)
+    local sect = obj and obj:section() or sec
+    local path = utils_xml.get_icons_texture(sect)
+    
+    local x = ini_sys:r_string_ex(sect, "inv_grid_x")
+    local y = ini_sys:r_string_ex(sect, "inv_grid_y")
+    local w = ini_sys:r_string_ex(sect, "inv_grid_width") or 50
+    local h = ini_sys:r_string_ex(sect, "inv_grid_height") or 50
+
+    local pos = {x=x, y=y}
+    local size = {w=w * 50, h=h * 50}
+
+    return path, pos, size
+end
+
+function IsInvItem(obj, sec)
+    local sect = obj and obj:section() or sec
+    local icon_keys = {"inv_grid_x", "inv_grid_y", "inv_grid_width", "inv_grid_height", "icons_texture", "ui_texture"}
+    local is_inv_item = false
+    for _, k in pairs(icon_keys) do
+        if ini_sys:line_exist(sect, k) then
+            is_inv_item = true
+        end
+    end
+    return is_inv_item
+end
+
+
+---Get the active weapon direction vector
+---@author antglobes
+---Credit to Prof. Lander
+---https://discord.com/channels/456765861953536020/463899353480691738/1400628110327550175
+---@param wpn game_object
+---@return vector
+function get_wpn_dir(wpn)
+    local sect = wpn:section()
+    local fire_bone = ini_sys:r_string_ex(sect, "fire_bone")
+    local fire_bone_dir = wpn:bone_direction(fire_bone, true)
+    local wpn_dir = fire_bone_dir:hud_to_world()
+    return wpn_dir
+end
+
+-- Debugging
+function print_bones()
+    local obj = level.get_target_obj()
+    if not obj then return end
+    local bones = obj:list_bones()
+    -- printf("%s: %s", obj:section(), utils_data.print_table(bones, nil, true))
+end
+
+
+function get_texture()
+    local obj = level.get_target_obj()
+    if obj then
+        local sect = obj:section()
+        local file = utils_xml.get_icons_texture(sect)
+        -- printf("%s icon file: %s", sect, file)
+    end
+end
+
+function get_visual(sect)
+    sect = not sect and (level.get_target_obj() 
+        and level.get_target_obj():section()) or sect
+    return ini_sys:r_string_ex(sect, "visual")
+end
+

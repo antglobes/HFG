@@ -1,0 +1,43 @@
+---Utility Functions that focus on config files aka ini files delimetered by `.ltx`
+---Apart of `ag_utils` library
+---@author antglobes
+
+---Config File for medical items
+ini_medical = ini_file_ex("items\\items\\items_medical.ltx")
+---Config File for drug items
+ini_drugs = ini_file_ex("items\\items\\items_drugs.ltx")
+---Config File for drink items
+ini_drink = ini_file_ex("items\\items\\items_drink.ltx")
+---Config File for items
+ini_manager = ini_file_ex("items\\settings\\itms_manager.ltx")
+---Config File for food items
+ini_food = ini_file_ex("items\\items\\items_food.ltx")
+
+---Return a lines of a section in a config files, as a table
+---@param ini ini_file
+---@param section string
+---@return table<any, any>
+function get_section_lines(ini, section)
+    local result = {}
+    local ini = ini or ini_sys
+
+    if ini:section_exist(section) == false then
+        --printf("Section "..section.." was not found")
+        return
+    end
+
+    local length = ini:line_count(section)
+    --printf("Reading section "..section.." Lines: "..length)
+    for i = 1,length do
+        local res,key,value = ini:r_line(section,i)
+        if key ~= nil and key ~= "" and value ~= nil and value ~= "" then       
+            result[key] = value
+        end        
+    end
+
+    return result
+end
+
+function has_key(sect, k)
+	return ini_sys:line_exist(sect, k)
+end

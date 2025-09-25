@@ -1,0 +1,314 @@
+---Utility Functions that focus on maths mainpulation
+---Apart of `ag_utils` library
+---@author antglobes
+
+---Vector set in positive X
+POS_X = vector():set(1,  0,  0)
+---Vector set in positive Y
+POS_Y = vector():set(0,  1,  0)
+---Vector set in positive Z
+POS_Z = vector():set(0,  0,  1)
+---Vector set in negative X
+NEG_X = vector():set(-1, 0,  0)
+---Vector set in negative Y
+NEG_Y = vector():set(0, -1,  0)
+---Vector set in negative Z
+NEG_Z = vector():set(0,  0, -1)
+
+-- Boolean Functions
+
+---Check if a variable's type is a number
+---@author antglobes
+---@param var any
+---@return boolean
+function is_number(var)
+    return tonumber(var) and type(var) == "number"
+end
+
+---Check if a number is negative
+---@author antglobes
+---@param num number
+---@return boolean
+function is_negative(num)
+    return num < 0 and type(num) == "number"
+end
+
+---Check if a number within a range
+---@author antglobes
+---@param val number
+---@param min number
+---@param max number
+---@return boolean
+function within_range(val, min, max)
+    return val >= min or val <= max
+end
+
+-- Vectors
+
+---Rotate a vector on the X axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_x(v, angle)
+	angle = angle * 0.017453292519943295769236907684886
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+	return vector():set(v.x, v.y * c - v.z * s, v.y * s + v.z * c)
+end
+
+---Rotate a vector on the Z axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_z(v, angle)
+	angle = angle * 0.017453292519943295769236907684886
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+	return vector():set(v.x * c - v.y * s, v.x * s + v.y * c, v.z)
+end
+
+---Rotate a vector on the Y axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_y(v, angle)
+	angle = angle * 0.017453292519943295769236907684886
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+	return vector():set(v.x, v.y * c - v.z * s, v.y * s + v.z * s)
+end
+
+---Rotate a vector on the XZ axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_xz(v, angle)
+	v = vector_rotate_x(v, angle)
+	v = vector_rotate_z(v, angle)
+	return v
+end
+
+---Rotate a vector on the XY axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_xy(v, angle)
+	v = vector_rotate_x(v, angle)
+	v = vector_rotate_y(v, angle)
+	return v
+end
+
+---Rotate a vector on the YZ axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_yz(v, angle)
+	v = vector_rotate_y(v, angle)
+	v = vector_rotate_z(v, angle)
+	return v
+end
+
+---Rotate a vector on the XYZ axis by an angle
+---@author antglobes
+---@param v vector
+---@param angle number
+---@return vector
+function vector_rotate_xyz(v, angle)
+	v = vector_rotate_x(v, angle)
+	v = vector_rotate_y(v, angle)
+	v = vector_rotate_z(v, angle)
+	return v
+end
+
+--@author Ghentong
+function vector_angle_diff_xz(v1,v2)
+    local k1 = math.deg(math.atan2(v1.x,v1.z))
+    local k2 = math.deg(math.atan2(v2.x,v2.z))
+    local r = k1 - k2
+    return ((r < -180) and (r + 360)) or ((r > 180) and (r - 360)) or r
+end
+
+---From a starting point create a regular cuboid
+---@author antglobes
+---@param corner_dist number
+---@param height number
+---@param pos vector
+---@return table<number, vector>
+function create_cuboid(corner_dist, height, pos)
+    pos = pos or db.actor:position()
+    
+    local points = {}
+    for i, angle in pairs({45, 135, 225, 310}) do
+        local corner_pos = vector():mad(pos, vector_rotate_y(VEC_Z, angle), corner_dist)
+        points[i] = corner_pos
+        points[i+4] = vector():mad(corner_pos, VEC_Y, height)
+    end
+
+    return points
+end
+
+---Check whether a postional vector is within a cuboid
+---@author antglobes
+---@param pos vector
+---@param points table<number, vector>
+---@return boolean
+function within_cuboid(pos, points)
+    local i = points[2]:sub(points[1])
+    local j = points[4]:sub(points[1])
+    local k = points[5]:sub(points[1])
+    local v = pos:sub(points[1])
+
+    return  (0 < v:dotproduct(i) and v:dotproduct(i) < i:dotproduct(i))
+        and (0 < v:dotproduct(j) and v:dotproduct(j) < j:dotproduct(j))
+        and (0 < v:dotproduct(k) and v:dotproduct(k) < k:dotproduct(k))
+end
+
+---Find the direction that intersect between two lines (represented as two vectors)
+---@author antglobes
+---@param vec_1_start vector
+---@param vec_1_end vector
+---@param vec_2_start vector
+---@param vec_2_end vector
+---@return vector
+function find_direction_intersection(vec_1_start, vec_1_end, vec_2_start, vec_2_end)
+	local vec_1_m = (vec_1_end.z - vec_1_start.z) / (vec_1_end.x - vec_1_start.x)
+	local vec_2_m = (vec_2_end.z - vec_2_start.z) / (vec_2_end.x - vec_2_start.x)
+	local vec_1_b = vec_1_start.z - (vec_1_m * vec_1_start.x)
+	local vec_2_b = vec_2_start.z - (vec_2_m * vec_2_start.x)
+	local intersect_x = (vec_2_b - vec_1_b) / (vec_1_m - vec_2_m)
+	local intersect_z = (vec_1_m * intersect_x) + vec_1_b
+	return vector():set(intersect_x, vec_1_start.y, intersect_z)
+end
+
+---Using two postional vectors get the direction between them
+---@author antglobes
+---@param pos_end vector
+---@param pos_start vector
+---@return vector
+function dir_from_pos(pos_end, pos_start)
+	return vector():set(pos_end:sub(pos_start):normalize())
+end
+
+---Using two postional vectors get the direction between them
+---@author antglobes
+---@param pos_1 vector
+---@param pos_2 vector
+---@return vector
+function get_direction(pos_1, pos_2)
+    local dx = pos_2.x - pos_1.x
+    local dy = pos_2.y - pos_1.y
+    local dz = pos_2.z - pos_1.z
+    local length = math.sqrt(math.pow(dx, 2)) + math.sqrt(math.pow(dy, 2)) + math.sqrt(math.pow(dz, 2))
+    local nx = dx/length
+    local ny = dy/length
+    local nz = dz/length
+    local norm_dir = vector():set(nx, ny, nz)
+    return norm_dir
+end
+
+---Linear Interpolation
+---@author antglobes
+---@param a number
+---@param b number
+---@param f number
+---@return number
+function lerp(a, b, f)
+	return (1 - f) * a + (f * b)
+end
+
+---Linear Interpolation between two vectors
+---@author antglobes
+---@param a vector
+---@param b vector
+---@param f number
+---@return vector
+function lerp_vec(a, b, f)
+    local x = lerp(a.x, b.x, f)
+    local y = lerp(a.y, b.y, f)
+    local z = lerp(a.z, b.z, f)
+    return vector():set(x, y, z)
+end
+
+---Linear Interpolation between two two dimentional vectors
+---@author antglobes
+---@param a vector
+---@param b vector
+---@param f number
+---@return vector
+function lerp_vec_2d(a, b, f)
+    local x = lerp(a.x, b.x, f)
+    local y = lerp(a.y, b.y, f)
+    return vector2():set(x, y)
+end
+
+---Check if two vectors are within a degree of each other
+---@author antglobes
+---@param a vector
+---@param b vector
+---@param eps number
+---@return boolean
+function vec2_similar(a, b, eps)
+    eps = eps or 0.01
+    return math.abs(a.x - b.x) < eps and math.abs(a.y - b.y)
+end
+
+-- Tables
+
+---Get the nearest number to a given value within a table of numbers
+---@deprecated
+---@param tbl table
+---@param val number
+---@return number, number 
+function _nearest_value(tbl, val)
+    local smallestSoFar, smallestIndex
+    for i, y in ipairs(tbl) do
+        if not smallestSoFar or (math.abs(val-y) < smallestSoFar) then
+            smallestSoFar = math.abs(val-y)
+            smallestIndex = i
+        end
+    end
+    return smallestIndex, tbl[smallestIndex]
+end
+
+---Get the nearest number to a given value within a table of numbers
+---@param tbl table
+---@param val number
+---@return number, number 
+---@sourced https://stackoverflow.com/questions/29987249/find-the-nearest-value
+function nearest_val(tbl, val, rtn_idx)
+    local smallest_val, smallest_idx
+    for i, y in ipairs(tbl) do
+        if not smallest_val or (math.abs(val-y) < smallest_val) then
+            smallest_val = math.abs(val-y)
+            smallest_idx = i
+        end
+    end
+    if not rtn_idx then
+        return tbl[smallest_idx]
+    end
+    return smallest_idx, tbl[smallest_idx]
+end
+
+-- Misc
+
+---Ensure that a value within a range and return a random number from it
+---@param val number
+---@param min number
+---@param max number
+---@return number 
+function clamp_rand(val, min, max)
+    if (val < min) or (val > max) then
+        return math.random(min, max)
+    end
+    return val
+end
+
+function round_dp(num, dp)
+    return string.format("%." .. dp .. "f", num)
+end

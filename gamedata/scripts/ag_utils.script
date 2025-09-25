@@ -1,0 +1,58 @@
+---@author: Catspaw
+---Import public globals from one script to another
+function import_metatable(dest, source, pass_func)
+	-- Black magic adapted from Prof. Lander on Anomaly Discord
+	-- If you don't know what this stuff does, don't experiment with it
+	local mt = getmetatable(dest)
+	-- Get metatable from destination 
+	local old = mt.__index
+	-- Get index from metatable
+	if (old == nil) then return end
+	-- Validate that dest has valid index
+	local new = nil
+	-- Prepare replacement index based on the type of the dest index
+	if pass_func and (type(pass_func) ~= "function") then
+		pass_func = nil
+	end
+	local pass = pass_func or (
+		function(self,key)
+			local v = source[key]
+			return (v ~= nil) and v
+		end
+	)
+	if type(old) == "function" then
+		new = function(self, key)
+			--local v = source[key]
+			return pass(self, key) or old(dest, key)
+		end
+	elseif type(old) == "table" then
+		new = function(self, key)
+			--local v = source[key]
+			return pass(self, key) or old[key]
+		end      
+	end
+	-- Override the destination index with the replacement index
+	mt.__index = new
+end
+
+
+---@author: demonized 2023-12-12 18:44
+function throttle(func, tg_throttle)
+    local tg = 0
+    if not tg_throttle or tg_throttle == 0 then
+        return function(...)
+            local t = time_global()
+            if t ~= tg then
+                tg = t
+                return func(...)
+            end
+        end
+    else
+        return function(...)
+            local t = time_global()
+            if t < tg then return end
+            tg = t + tg_throttle
+            return func(...)
+        end
+    end
+end

@@ -5,27 +5,32 @@
 ---Date 26.01.2023
 ---
 ---Credit to Igigog#6387 for the CreateTimeEvent idea
----for removing the sounds automatically by themselves
+---for removing the SOUNDS automatically by themselves
 ---========================================================
 
----The cache collection used for storing the sounds
-local cache = { }
+---Utility Functions that focus on sound mainpulation
+---Apart of `ag_utils` library
+---@author antglobes
+---Adapted from the work of Thial
 
----The emergency timeout for sounds that weren't given a timeout
+---The cache collection used for storing the SOUNDS
+cache = { }
+
+---The emergency timeout for SOUNDS that weren't given a timeout
 ---but don't have a time limit configured on them which will result
----in them playing forever with 0 sounds.
----To clean those sounds from memory a fallback timeout has to be used.
-local fallback_timeout = 60000
+---in them playing forever with 0 
+---To clean those SOUNDS from memory a fallback timeout has to be used.
+fallback_timeout = 60000
 
----Gets the sounds_object by the sound's id
+---Gets the SOUNDS_object by the sound's id
 ---@param id string The id of the sound
----@return sounds_object or nil
+---@return SOUNDS_object or nil
 function get(id)
     if id == nil or id == "" or cache[id] == nil then
         return nil
     end
 
-    return cache[id].object
+    return cache[id]
 end
 
 ---Adds a new sound to the cache
@@ -50,9 +55,13 @@ function add(game_object, path, position, vol, props)
     for i=1, 5 do
         id = id .. math.random(0,9)
     end
-
+    local snd = sound_object(path)
     cache[id] = {
-        object = sound_object(path),
+        object = snd,
+        timeout = time + snd:length(),
+        path = path,
+        pos = position,
+        props = props
     }
     --local timeout = time + cache[id].object:length() or fallback_timeout
     --cache[id].timeout = timeout 
@@ -61,6 +70,20 @@ function add(game_object, path, position, vol, props)
 
     log("[sound_cache] Added: " .. id)    
     return id
+end
+
+function reinit(id, game_object)
+    if id == nil or id == "" then
+        log("[sound_cache] Invalid Id")
+        return
+    end
+
+    if cache[id] ~= nil then
+        log("[sound_cache] Attempting to reinit: "..id)
+        cache[id].object:play_at_pos(game_object, cache[id].pos, 0, cache[id].props)
+        return
+    end    
+    log("[sound_cache] Failed to reinit: " .. id)
 end
 
 ---Removes a sound from the cache
@@ -81,6 +104,21 @@ function remove(id)
     log("[sound_cache] Failed to remove: " .. id)
 end
 
+function stop(id)
+    if id == nil or id == "" then
+        log("[sound_cache] Invalid Id")
+        return
+    end
+
+    if cache[id] ~= nil then
+        log("[sound_cache] Attempting to stop: "..id)
+        cache[id].object:stop()
+        log("[sound_cache] Stopped: "..id)
+        return
+    end    
+    log("[sound_cache] Failed to remove: " .. id)
+end
+
 ---Moves the sound to a new position
 ---@param id string - The id of the sound
 ---@param position vector - The new position to move the sound to
@@ -91,5 +129,22 @@ function move_to(id, position)
 
     if cache[id] ~= nil and cache[id].object:playing() == true then
         cache[id].object:move_to(position, vector():set(0,0,0))
+    end
+end
+
+function evaluate()
+    if is_empty(cache) then return end
+    for id, details in pairs(cache) do
+        local tg = time_global()
+        local snd = details.object
+        if 
+            not snd
+            or snd and (
+                not snd:playing()
+                or tg >= details.timeout 
+            )
+        then
+            remove(id)
+        end
     end
 end

@@ -1,0 +1,444 @@
+---Utility Functions that focus on table mainpulation
+---Apart of `ag_utils` library
+---@author antglobes
+
+-- Boolean Functions
+
+--- Check if table contains a key
+---@author antglobes
+---@type fun(tbl: table, key: string|number, by_key?: boolean, return_value?: boolean, return_idx?: boolean): boolean | boolean, any | boolean, any, any
+function contains(tbl, key, by_key, return_value, return_idx)
+	if is_empty(tbl) or key == "" then return false end
+    for k, v in pairs(tbl) do
+        if by_key and k == key then
+			if return_idx then
+				return true, k
+			elseif return_value then
+				return true, v
+			else
+				return true
+			end
+        else
+            if v == key then
+                if return_value and return_idx then
+                    return true, v, k
+				elseif return_value then
+					return true, v
+				elseif return_idx then
+					return true, k
+                else
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+--- Check if one table's keys or values are within the other
+---@author antglobes
+---@param a table
+---@param b table
+---@param by_key boolean
+---@param return_value boolean
+---@param return_idx boolean
+---@return table<boolean, table, table>
+function contains_table(a, b, by_key, return_value, return_idx)
+	local count = 0
+	local values = {}
+	local indices = {}
+	for k, v in pairs(b) do
+		if by_key and contains(a, k) then
+			if return_value then
+				values[#values + 1] = v
+			elseif return_idx then
+				indices[#indices + 1] = k
+			end
+			count = count + 1
+
+		else
+			if contains(a, v) then
+				if return_value and return_idx then
+					values[#values + 1] = v
+					indices[#indices + 1] = k
+				elseif return_value then
+						values[#values + 1] = v
+				elseif return_idx then
+					indices[#indices + 1] = k
+				end
+				count = count + 1
+			end
+		end
+	end
+	return {cond=count == #a, values=values, indices=indices}
+end
+
+--- Search a table for string
+---@author antglobes
+---@param tbl table
+---@param str string
+---@param by_key boolean
+---@return boolean
+function find_table(tbl, str, by_key)
+	for k, v in pairs(tbl) do
+		if by_key then
+			if string.find(k, str) then
+				return true
+			end
+		else
+			if string.find(v, str) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Table Functions 
+
+--- Selects and returns a section of the table
+---@author antglobes
+---@param <tbl> table
+---@param first? number
+---@param last? number
+---@param step? number
+---@return table
+function table_slice(tbl, first, last, step)
+	local sliced = {}
+  
+	for i = first or 1, last or #tbl, step or 1 do
+	  sliced[#sliced+1] = tbl[i]
+	end
+  
+	return sliced
+end
+
+--- Appends table b on to the end of table a
+---@author antglobes
+---@param <a> table
+---@param <b> table
+---@return table
+function table_extend(a, b, no_duplicates)
+    -- if is_empty(b) return a end
+     for i=1, #b do
+		if 
+			not no_duplicates 
+			or no_duplicates and not contains(a, b[i])
+		then
+         	a[#a + 1] = b[i]
+		end
+      end
+     return a
+ end
+
+ --- Gathers all the keys of a table into a numerical table
+ ---@author antglobes
+ ---@param tbl table
+ ---@param table
+function get_keytable(tbl)
+    local kt = {}
+	local idx = 0
+    for k, _ in pairs(tbl) do
+        idx=idx+1
+        kt[idx] = k
+    end
+    return kt
+end
+
+--- Inserts tbl_2 entries via existing keys in tbl_1
+---@author antglobes
+---@param tbl_1 table
+---@param tbl_2 table
+---@return table
+function merge_tbl(tbl_1, tbl_2)
+    for k, v in pairs(tbl_2) do
+        if tbl_1[k] then
+            table.insert(tbl_1, v)
+        else
+            tbl_1[k] = v
+        end
+    end
+    return tbl_1
+end
+
+--- Get if the index of a value in a table, default by value
+---@author antglobes
+---@param tbl table
+---@param value any
+---@param by_key boolean
+---@return boolean
+function index_of(tbl, value, by_key)
+    for k, v in pairs(tbl) do
+        if not by_key then 
+            if v == value then
+                return k
+            end
+        else
+            if k == value then
+                return k
+            end
+        end
+    end
+    return false
+end
+
+--- Compares the values and keys of 2 TABLES
+---@author antglobes
+---@type fun(a: table, b: table): boolean
+function compare_tables(a,b) --algorithm is O(n log n), due to table growth.
+    if #a ~= #b then return false end -- early out
+    local t1,t2 = {}, {} -- temp TABLES
+    for k,v in pairs(a) do -- copy all values into keys for constant time lookups
+        t1[k] = (t1[k] or 0) + 1 -- make sure we track how many times we see each value.
+    end
+    for k,v in pairs(b) do
+        t2[k] = (t2[k] or 0) + 1
+    end
+    for k,v in pairs(t1) do -- go over every element
+        if v ~= t2[k] then return false end -- if the number of times that element was seen don't match...
+    end
+    return true
+end
+
+--- table.concat but by key
+---@author antglobes
+ ---@param tbl table
+ ---@return string
+ function concat_pairs(tbl)
+    local result = ""
+    for key, value in pairs(tbl) do
+        result = result .. key ..  ", "
+    end
+    
+    result = result:sub(1, -3)
+    return result
+end
+
+--- Get a table with the entries in reverse
+---@author antglobes
+---@param tbl table
+---@return table
+function reverse_ipairs(tbl)
+    local tmp = {}
+    for i=#tbl, 1 , -1 do
+        tmp[#tmp + 1] = tbl[i]
+    end
+    return tmp
+end
+
+function remove_duplicate_values(tbl)
+	local pt = {}
+	for _, v in pairs(tbl) do
+	   if not contains(pt, v) then
+		   pt[#pt + 1] = v
+	   end
+	end
+	return pt
+end	 
+
+--- Put nested tables into a single table
+---@author antglobes
+---@param tbl table
+---@return table
+function flatten(tbl, temp)
+    local temp = temp or {}
+    if type(tbl) == 'table' then
+         for k, v in pairs(tbl) do
+             flatten(v, temp)
+         end
+    else
+         temp[#temp + 1] = tbl
+    end
+     return temp
+ end
+
+-- Table Math Functions
+
+
+--- Get all total of all values in a table
+---@author antglobes
+---@param tbl table
+---@return number
+function sum(tbl)
+    local sum = 0
+    for _, val in pairs(tbl) do
+        sum = sum + val
+    end
+    return sum
+ end
+
+ 
+ --- Get all total of all values in any nested TABLES
+---@author antglobes
+---@param tbl table
+---@return number
+ function sum_nested(tbl)
+    local sum = 0
+    for sect, t in pairs(tbl) do
+        for k, v in pairs(t) do
+            if type(t[k]) == "number" then
+                sum = sum + v
+            end
+        end
+    end
+    return sum
+ end
+
+
+-- Logging
+
+--- Returns printable format for table, visualised as either a string or a table
+---@deprecated
+---@param tbl table
+---@param return_string boolean
+---@param tbl_str string
+function _print_table(tbl, return_string, tbl_str)
+    if not return_string then
+		for k, v in pairs(tbl) do
+			--pr("%s=%s", k, v)
+		end
+    end
+    local tbl_str = tbl_str or ""
+    for k, v in pairs(tbl) do
+        if type(k) == "table" then
+            _print_table(k, true, tbl_str)        
+        elseif type(v) == "table" then
+            tbl_str = tbl_str .. strformat("%s", k)
+            _print_table(v, true, tbl_str)
+        else
+            tbl_str = tbl_str .. strformat("%s=%s", k, v)
+        end
+    end
+    return tbl_str
+end
+
+--- Replacement of utils_data.print_table
+--- Turns the contents of a table into a pretty-printed string
+---@author antglobes
+---@param node table
+---@return table
+function print_table(node)
+	-- to make output beautiful
+	local function tab(amt)
+		local str = ""
+		for i=1,amt do
+			str = str .. "\t"
+		end
+		return str
+	end
+	-- printf("is empty? %s", is_empty(node))
+	-- for k, v in pairs(node) do
+		-- printf("%s", k, v)
+	-- end
+
+	local cache, stack = {},{}
+	local depth = 1
+	local output_str = "{\n"
+	local output = {}
+	local size_t = 0
+	local size_stack = 0 
+	while true do
+		local size = size_table(node)
+		-- printf("table size: %s", size)
+		local cur_index = 1
+		for k,v in pairs(node) do
+			if (cache[node] == nil) or (cur_index >= cache[node]) then
+				if (string.find(output_str,"}",output_str:len())) then
+					output_str = output_str .. ",\n"
+				elseif not (string.find(output_str,"\n",output_str:len())) then
+					output_str = output_str .. "\n"
+				end
+				
+				size_t = size_t + 1
+				output[size_t] = output_str
+				output_str = ""
+
+				local key
+				if (type(k) == "number" or type(k) == "boolean") then
+					key = "["..tostring(k).."]"
+				else
+					key = "['"..tostring(k).."']"
+				end
+
+				if (type(v) == "number" or type(v) == "boolean") then
+					output_str = output_str .. tab(depth) .. key .. " = "..tostring(v)
+				elseif (type(v) == "table") then
+					output_str = output_str .. tab(depth) .. key .. " = {\n"
+					size_stack = size_stack + 1
+					stack[size_stack] = node
+					size_stack = size_stack + 1
+					stack[size_stack] = v
+					cache[node] = cur_index+1
+					break
+				elseif (type(v) == "userdata") then
+					if (v.diffSec) then
+						local Y, M, D, h, m, s, ms = 0,0,0,0,0,0,0
+						Y, M, D, h, m, s, ms = v:get(Y, M, D, h, m, s, ms)
+						output_str = strformat("%s%s%s = { Y=%s, M=%s, D=%s, h=%s, m=%s, s=%s, ms=%s } ",output_str,tab(depth),key,Y, M, D, h, m, s, ms)
+                    elseif (v.x or v.z) then
+                        output_str = strformat("%s%s%s = %s ", output_str, tab(depth), key, vec_to_str(v))
+					else
+						output_str = output_str .. tab(depth) .. key .. " = userdata"
+					end
+				else
+					output_str = output_str .. tab(depth) .. key .. " = '"..v.."'"
+				end
+
+				if (cur_index == size) then
+					output_str = output_str .. "\n" .. tab(depth-1) .. "}"
+				else
+					output_str = output_str .. ","
+				end
+			else
+				-- close the table
+				if (cur_index == size) then
+					output_str = output_str .. "\n" .. tab(depth-1) .. "}"
+				end
+			end
+
+			cur_index = cur_index + 1
+			-- printf("output str: %s\n", output_str)
+		end
+		
+		if (size == 0) then
+			output_str = output_str .. "\n" .. tab(depth-1) .. "}"
+		end
+
+		if (size_stack > 0) then
+			node = stack[size_stack]
+			stack[size_stack] = nil
+			size_stack = size_stack - 1
+			depth = cache[node] == nil and depth + 1 or depth - 1
+		else
+			break
+		end
+	end
+   
+	size_t = size_t + 1
+	output[size_t] = output_str
+
+	output_str = table.concat(output)
+	
+   	return output_str
+end
+
+--  TABLES
+---@author antglobes
+---@type tbl table<bone_group, table<number, string>>
+bone_groups = {
+    outfit_no_helmet = {
+        "bip01_pelvis",     "bip01_spine",      "bip01_spine1",     "bip01_spine2",     "bip01_l_clavicle",
+        "bip01_l_upperarm", "bip01_l_forearm",  "bip01_l_hand",     "bip01_l_finger0",
+        "bip01_l_finger01", "bip01_l_finger02", "bip01_l_finger1",  "bip01_l_finger11",
+        "bip01_l_finger12", "bip01_l_finger2",  "bip01_l_finger21", "bip01_l_finger22",
+        "bip01_r_clavicle", "bip01_r_upperarm", "bip01_r_forearm",  "bip01_r_hand",
+        "bip01_r_finger0",  "bip01_r_finger01", "bip01_r_finger02", "bip01_r_finger1",
+        "bip01_r_finger11",  "bip01_r_finger12", "bip01_r_finger2",  "bip01_r_finger21",
+        "bip01_r_finger22",  "bip01_l_thigh",    "bip01_l_calf",     "bip01_l_foot",    
+        "bip01_l_toe0",      "bip01_r_thigh",    "bip01_r_calf",     "bip01_r_foot",   "bip01_r_toe0",   
+    },
+    helmet = {
+        "bip01_neck", "bip01_head", "eyelid_1", "eye_left", "eye_right", "jaw_1"
+    }
+}
+bone_groups["outfit_attached_helmet"] = table_extend(bone_groups["outfit_no_helmet"], bone_groups["helmet"])

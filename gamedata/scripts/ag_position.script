@@ -1,0 +1,69 @@
+---Utility Functions that focus on position vectors
+---Apart of `ag_utils` library
+---@author antglobes
+
+---Get the difference in distance between two position vectors
+---@author antglobes
+---@param a vector
+---@param b vector
+---@return number
+function dist_between_pos(a, b)
+    return a:distance_to(b)
+end
+
+---Get the difference in distance between an npc's position and another position vector
+---@author antglobes
+---@param npc game_object
+---@param pos vector
+---@return number
+function dist_to_pos(npc, pos)
+	return npc:position():distance_to(pos or db.actor:position())
+end
+
+---Get the game_object, out of a table of game_objects that is the closest to a given position
+---@author antglobes
+---@param tbl table
+---@param pos vector
+---@return game_object
+function get_nearest(tbl, pos)
+    local closest_idx
+    local closest_dist
+    pos = pos or db.actor:position()
+    for idx, obj in pairs(tbl) do
+        local dist = pos:distance_to(obj:position())
+        if not closest_dist or dist < closest_dist then
+            closest_dist = dist
+            closest_idx = idx
+        end
+    end
+    return tbl[closest_idx]
+end
+
+---Get the intersectional direction between two position vectors
+---@author antglobes
+---@param pos_1 vector
+---@param pos_2 vector
+---@return vector
+function get_direction(pos_1, pos_2)
+    local dx = pos_2.x - pos_1.x
+    local dy = pos_2.y - pos_1.y
+    local dz = pos_2.z - pos_1.z
+    local length = math.sqrt(math.pow(dx, 2)) + math.sqrt(math.pow(dy, 2)) + math.sqrt(math.pow(dz, 2))
+    local nx = dx/length
+    local ny = dy/length
+    local nz = dz/length
+    local norm_dir = vector():set(nx, ny, nz)
+    return norm_dir
+end
+
+---Get world space position of an game_object's bone
+---@author antglobes
+---@param obj game_object
+---@param bone_name string
+---@return vector
+function get_bone_pos(obj, bone_name)    
+    --  local bid = obj:get_bone_id(bone_name)
+    --  local bpos = obj:bone_position(bid)
+    --  return bpos
+    return utils_obj.safe_bone_pos(obj, bone_name)
+end
