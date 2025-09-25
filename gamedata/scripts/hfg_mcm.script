@@ -1,6 +1,5 @@
 AddScriptCallback("hfg_on_option_change")
 
-print_table = hfg_utils.print_table
 
 defaults = {
     max_fuel = 60,
@@ -8,10 +7,36 @@ defaults = {
     generator_search_radius = 50,
     generator_broken_cond = 0.1,
     siphon_activation_range = 3,
+    enable_debug = false,
+    debug_level = 1,
 }
+LOG_HEADER = "[HFG|MCM]"
 
-function pr(str, ...)
-    hfg_utils.dbg_pr("[HFG|MCM: %s", str, ...)
+hfg_version = "0.4.7"
+hfg_authors = "antglobes"
+hfg_last_update = "05-08-25"
+setup_init = false
+
+local dbg_pr = nil
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
 end
 
 function get_config(key)
@@ -31,22 +56,23 @@ function on_mcm_load()
         {id="generator_broken_cond", type="track", val=2, min=0, max=1, step=0.1, def=0.1},
         {id="siphon_activation_range", type="track", val=2, min=0.5, max=5, step=0.1, def=3},
         {id="enable_debug", type="check", val=1, def=false},
-        {id="debug_level", type="list", val=0, def="player", precondition={debugging_enabled},
+        {id="debug_level", type="list", val=2, def=1, precondition={debugging_enabled},
 				content={
-					{"player", "player"},
-					{"dev", "dev"},
-					{"all", "all"}
+					{1, "player"},
+					{2, "debug"},
+					{3, "info"},
+					{4, "dev"},
+					{5, "error"},
+					{6, "all"},
 				}
 			}
+        }
     }
-}
 end
 
 
 
 function on_option_change()
-    printf("On option Change")
-    pr("Loading Options:")
     local options = {
         search_radius = get_config("generator_search_radius"),
         broken_cond = get_config("generator_broken_cond"),
@@ -56,11 +82,27 @@ function on_option_change()
         debug_level = get_config("debug_level"),
         siphon_range = get_config("siphon_activation_range")
     }
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Loading Options: \n%s", options)
     SendScriptCallback("hfg_on_option_change", options)
-    pr("%s", print_table(options))
+end
+
+function addon_info()
+    printf("----Hideout Furniture Generator----")
+	printf("Version: %s", hfg_version)
+	printf("Author(s): %s", hfg_authors)
+	printf("Last Updated: %s", hfg_last_update)
+    printf("-----------------------------------")
+end
+
+function hfg_setup()
+    if setup_init then return end
+    addon_info()
+    on_option_change()
+    setup_init = true
 end
 
 function on_game_start()
     RegisterScriptCallback("on_option_change", on_option_change)
-    on_option_change()
+    RegisterScriptCallback("actor_on_first_update", hfg_setup)
 end
