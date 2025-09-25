@@ -1,366 +1,60 @@
 --[[
-    Last Edited: 08/04/25
+    Last Edited: 03/08/25
     Author: antglobes
     Purpose: Utiliy Functions (Commonly used functions in codebase)
 --]]
 
+-- Lib Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
 
-dbg_lvl = "dev"
+gts = get_translation
 
-function split(str, sep)
-    local tbl = {}
-    if not sep then
-        sep = "%s"
-    end
-    for ele in string.gmatch(str, "([^" .. sep .. "]+)") do
-        tbl[#tbl + 1] = ele
-    end
-    return tbl
-end
+-- Script Imports
+throttle = ag_utils.throttle
 
-function capitalise(str)
-    return (str:gsub("^%l", string.upper))
-end
-
-function reverse_ipairs(tbl)
-    local tmp = {}
-    for i=#tbl, 1 , -1 do
-        tmp[#tmp + 1] = tbl[i]
-    end
-    return tmp
-end
-
-function get_keytable(t)
-    local a = {}
-	for k,v in pairs(t) do
-		a[#a+1] = k
-	end
-    return a
-end
-
---- Authored by NLTP_ASHES 17/02/24 Anomaly Discord
-function get_unknown_object(obj, result_obj_type)
-    if result_obj_type == "server" then
-        if obj and type(obj.id) == "number" then
-            return obj
-        elseif obj and type(obj.id) == "function" then
-            return alife_object(obj:id())
-        end
-    elseif result_obj_type == "game" then
-        if obj and type(obj.id) == "number" then
-            return level.object_by_id(obj.id)
-        elseif obj and type(obj.id) == "function" then
-            return obj
-        end
-    end
-    return nil
-end
-
-function get_hf_item_name(obj_sect, as_str_id)
-    local item_sect = ini_sys:r_string_ex(obj_sect, "item_section")
-    local name = ini_sys:r_string_ex(item_sect, "inv_name")
-    return as_str_id and name or get_translation(name)
-end
+-- Constants
+LOG_HEADER = "[HFG|Utils]"
+PART_FUNC_COND = 0.4
+PLACEABLE_DISEL_GEN = "placeable_disel_generator"
+PLACEABLE_SOLAR_PANELS = "placeable_solar_panel"
+PLACEABLE_INVERTER = "placable_inverter"
+DISEL_GEN_ITEM = "disel_generator_item"
+SOLAR_PANEL_ITEM = "hfg_solar_panel"
 
 
----@Author NLTP ASHES
-function get_translation(str, ...)
-    if not has_translation(str) then return end
+-- MCM Variables
+SEARCH_RADIUS = 50
+BROKEN_COND = 0.1
 
-    local string = game.translate_string(str)
+-- Locals
+local dbg_pr = nil
 
-    if (select('#',...) >= 1) then
-        local i = 0
-        local p = {...}
-        local function sr()
-            i = i + 1
-            if (type(p[i]) == "userdata") then
-                return "userdata"
-            end
-            return tostring(p[i])
-        end
-        string = string.gsub(string,"%%s",sr)
-    end
-
-    return string
-end
-
-function has_translation(str)
-    return game.translate_string(str) ~= str
-end
-
---- Check if table contains a key
----@param tbl table
----@param key any
----@param by_key boolean
----@param return_value boolean
-function contains(tbl, key, by_key, return_value, return_idx)
-	if is_empty(tbl) or key == "" then return false end
-    for k, v in pairs(tbl) do
-        if by_key and k == key then
-			if return_idx then
-				return true, k
-			elseif return_value then
-				return true, v
-			else
-				return true
-			end
-        else
-            if v == key then
-                if return_value and return_idx then
-                    return true, v, k
-				elseif return_value then
-					return true, v
-				elseif return_idx then
-					return true, k
-                else
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
---- Get a list of sections from objects
----@param objs table{game_objects}
-function get_sect_tbl(tbl)
-    local sect_tbl = {}
-    for _, obj in ipairs(tbl) do
-        sect_tbl[#sect_tbl + 1] = obj:section()
-    end
-    --printf("sect list %s", table.concat(sect_list, ","))
-    return sect_tbl
-end
-
---- @author NLTP_ASHES
---- @addon Western Goods
-function itr_inv(npc, func, ...)
-	local args = {...}
-	npc:iterate_inventory(
-		function(owner, obj)
-			return func(owner, obj, unpack(args))
-		end, 
-	npc)
-end
-
-function find_obj(sect, pos, radius, search)
-    local objs = {}
-    local function itr(obj)
-        local found_sect = obj:section()
-        if not search then
-            if is_not_empty({string.find(found_sect, sect)}) then
-                objs[#objs + 1] = obj
-            end
-        else
-            if search(obj) then
-                objs[#objs + 1] = obj
-            end
-        end       
-    end
-    level.iterate_nearest(pos, radius, itr)
-    return objs
-end
-
-function find_inv_item(key)
-    local t = type(key)
-    local tmp = {}
-    local function search(npc, obj)
-        local sect = obj:section()
-        --pr("%s in %s? %s", sect, key, is_not_empty({string.find(sect, key)}))
-        if is_not_empty({string.find(sect, key)}) then
-            tmp[#tmp + 1] = obj
-        end
-    end
-    itr_inv(db.actor, search)
-    return tmp
-end
-
-function bone_to_part_name(bone_name)
-    local part_name = "hfg_prt_"
-    if contains({"link", "body", "frame-a", "frame-b"}, bone_name) then
-        part_name = part_name .. "frame"
-
-    elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
-        part_name = part_name .. bone_name
-
-    elseif contains({"but_belt", "top_belt"}, bone_name) then
-        part_name = part_name .. "band"
-    end
-    return part_name
-end
-
-function get_nearest(tbl, pos)
-    local closest_idx
-    local closest_dist
-    pos = pos or db.actor:position()
-    for idx, obj in pairs(tbl) do
-        local dist = pos:distance_to(obj:position())
-        if not closest_dist or dist < closest_dist then
-            closest_dist = dist
-            closest_idx = idx
-        end
-    end
-    return tbl[closest_idx]
-end
-
--- https://stackoverflow.com/questions/29987249/find-the-nearest-value
-function nearest_val(tbl, val, rtn_idx)
-    local smallest_val, smallest_idx
-    for i, y in ipairs(tbl) do
-        if not smallest_val or (math.abs(val-y) < smallest_val) then
-            smallest_val = math.abs(val-y)
-            smallest_idx = i
-        end
-    end
-    if not rtn_idx then
-        return tbl[smallest_idx]
-    end
-    return smallest_idx, tbl[smallest_idx]
-end
-
----@author: demonized 2023-12-12 18:44
-function throttle(func, tg_throttle)
-    local tg = 0
-    if not tg_throttle or tg_throttle == 0 then
-        return function(...)
-            local t = time_global()
-            if t ~= tg then
-                tg = t
-                return func(...)
-            end
-        end
-    else
-        return function(...)
-            local t = time_global()
-            if t < tg then return end
-            tg = t + tg_throttle
-            return func(...)
-        end
-    end
-end
-
-function get_direction(pos_1, pos_2)
-    local dx = pos_2.x - pos_1.x
-    local dy = pos_2.y - pos_1.y
-    local dz = pos_2.z - pos_1.z
-    local length = math.sqrt(math.pow(dx, 2)) + math.sqrt(math.pow(dy, 2)) + math.sqrt(math.pow(dz, 2))
-    local nx = dx/length
-    local ny = dy/length
-    local nz = dz/length
-    local norm_dir = vector():set(nx, ny, nz)
-    return norm_dir
-end
-
-function lerp(a, b, f)
-	return (1 - f) * a + (f * b)
-end
-
-function lerp_vec(a, b, f)
-    local x = lerp(a.x, b.x, f)
-    local y = lerp(a.y, b.y, f)
-    local z = lerp(a.z, b.z, f)
-    return vector():set(x, y, z)
-end
-
-function lerp_vec_2d(a, b, f)
-    local x = lerp(a.x, b.x, f)
-    local y = lerp(a.y, b.y, f)
-    return vector2():set(x, y)
-end
-
-function vec2_similar(a, b, eps)
-    eps = eps or 0.01
-    return math.abs(a.x - b.x) < eps and math.abs(a.y - b.y)
-end
-
-
-function clamp_rand(val, min, max)
-    if (val < min) or (val > max) then
-        return math.random(min, max)
-    end
-    return val
-end
-
-
-function valid_screen_pos(pos)
-	return (pos.x ~= -9999) and (pos.y ~= 0) and (pos.x <= 1024) and (pos.y <= 768)
-end
-
--- demonized aoe
-function volumetric_check(obj, dist_sqrt)
-    local ray_pos = vector():set(obj:position()):add(vector():set(0, 0.4, 0))
-    local ray_dir = IsStalker(obj) and vector():set(utils_obj.safe_bone_pos(obj, "bip01_spine") or obj:position():add(vector():set(0, 0.4, 0))):sub(ray_pos):normalize()
-    local ray = demonized_geometry_ray.geometry_ray({
-        ray_range = dist_sqrt,
-    })
-    local res = ray:get(ray_pos, ray_dir)
-    if not demonized_geometry_ray.similar(res.distance, dist_sqrt, 0.01) then
-        return false
-    end
-    return true
-end
--- test_funcs.is_object_visible()
-function is_object_visible(id)
-    local visible = false
-    local obj = get_unknown_object({id=id}, "game")
-    if obj then
-        printf("object found")
-        local max_dist = ui_options.get("video/advanced/optimize_dynamic_geom") * 100
-        local dist_to_actor = distance_between(db.actor, obj)
-
-        if dist_to_actor < max_dist then
-            printf("object within distance")
-            local pos = vector():set(obj:position()):add(vector():set(0, 0, 0))
-            local vec = game.world2ui(pos, false, false)
-
-            if valid_screen_pos(vec) then
-                printf("valid screen pos")
-                visible = volumetric_check(obj, math.sqrt(dist_to_actor))
-                printf("checked if behind wall")
-            else
-                printf("invalid screen pos")
-            end
-        else
-            printf("out of distance")
-        end
-    else
-        printf("obj not found")
-    end
-    printf("Is %s visible: %s?", id, visible)
-    return visible
-end
-
-
-function get_bone_pos(obj, bone_name)    
-    --  local bid = obj:get_bone_id(bone_name)
-    --  local bpos = obj:bone_position(bid)
-    --  return bpos
-    return utils_obj.safe_bone_pos(obj, bone_name)
-end
-
-function table_extend(a, b)
-    -- if is_empty(b) return a end
-     for i=1, #b do
-         a[#a + 1] = b[i]
-      end
-     return a
- end
-
---[[
-bullet_info = {
-    wpn_id    = bullet.weapon_id,
-    p_id      = bullet.parent_id,
-    t_id      = bullet.target_id,
-    pos       = bullet.position,
-    ammo_sect = bullet.section,
-    speed     = bullet.speed,
-
+-- Tables
+PLACEABLE_POWER_SOURCES = {PLACEABLE_DISEL_GEN, PLACEABLE_SOLAR_PANELS}
+PLACEABLE_POWER_TRANSMITERS = {PLACEABLE_DISEL_GEN, PLACEABLE_INVERTER}
+PLACEABLE_POWER = table_extend(PLACEABLE_POWER_SOURCES, PLACEABLE_POWER_TRANSMITERS, true)
+ITEM_POWER_SOURCES = {DISEL_GEN_ITEM, SOLAR_PANEL_ITEM}
+FUEL_SECTIONS = {"batteries_dead"}
+FUELED_POWER_SOURCES = {PLACEABLE_DISEL_GEN}
+SWAP_POWER_STATE = {
+    on = "off",
+    off = "on",
+    broken = "broken"
 }
-]]
+GENERATOR_BONE_NAMES = {
+    "link", "body", "but_belt", "l_rotor",
+    "r_rotor", "tank", "top_belt", "exhaust",
+    "battery", "wires", "turbine", "engine",
+    "pipes", "fan", "frame-a", "frame-b"
+}
+
 
 -- Group Bones for actor/npc
-
 bone_groups = {
     outfit_no_helmet = {
         "bip01_pelvis",     "bip01_spine",      "bip01_spine1",     "bip01_spine2",     "bip01_l_clavicle",
@@ -379,194 +73,639 @@ bone_groups = {
 }
 bone_groups["outfit_attached_helmet"] = table_extend(bone_groups["outfit_no_helmet"], bone_groups["helmet"])
 
----Author: Antglobes
----Orginal Formula: Balathruin
----Sourced: https://pastebin.com/raw/spv4YzaZ 
-function calc_hit_damage(bullet_info)
-    pr("Calculating hit damage")
-    local npc = get_unknown_object({id=bullet_info.p_id}, "game")
-    local wpn = get_unknown_object({id=bullet_info.wpn_id}, "game")
-    local target = get_unknown_object({id=bullet_info.t_id}, "game")
-    if not (npc and wpn and target) then return end
-    pr("bullet info: %s", print_table(bullet_info))
-    local ini_damages = ini_file_ex("creatures\\damages.ltx")
-    local ammo_sect = bullet_info.ammo_sect
-    local wpn_sect = wpn:section()
-    pr("Getting ap values: using %s %s", ammo_sect, wpn_sect)
-    local k_ap = ini_sys:r_float_ex(ammo_sect, "k_ap")
-
-    local ap_modifier = ini_sys:r_float_ex(wpn_sect, "ap_modifier") or 0
-    local AP = k_ap * ap_modifier
-    pr("getting closest bone to impact pos")
-    local bullet_pos = bullet_info.pos
-    local closest_bone
-    local closest_dist
-    for bone_id, bone_name in pairs(target:list_bones()) do
-        local bone_pos = get_bone_pos(target, bone_name)
-        local dist = bone_pos:distance_to(bullet_pos)
-        if not closest_bone or dist < closest_dist then
-            closest_bone = {id=bone_id, name=bone_name}
-            closest_dist = dist
-        end
-    end
-
-    local BoneArmor = 0 -- 1
-    local ap_scale = 0  -- 2
-    local hit_fraction = 0  -- 3
-    local hit_scale = 0  -- 4
-    pr("Getting weapon values")
-    local hit_power = parse_list(ini_sys, wpn_sect, "hit_power")[1]
-    local k_hit = ini_sys:r_float_ex(ammo_sect, "k_hit")
-    local bullet_hit_power_k = 0
-
-    if utils_item.has_attached_silencer(wpn) then
-        local silencer_sect = utils_item.get_param(wpn_sect, wpn:id(), "silencer_name", "string")
-        bullet_hit_power_k = ini_sys:r_float_ex(silencer_sect, "bullet_hit_power_k")
-    end
-
-    local HitPower = hit_power * k_hit * bullet_hit_power_k
-    local muzzle_velocity = ini_sys:r_float_ex(wpn_sect, "bullet_speed")
-    local impact_velocity = bullet_info["speed"]
-    local scale_factor = impact_velocity / muzzle_velocity
-
-    local visual = npc:get_visual_name()
-    pr("gettng target values")
-    if target:id() == AC_ID then
-        pr("for actor")
-        -- Check if armour is covering the hit bone
-        local outfit = db.actor:get_current_outfit()
-        local helmet = db.actor:item_in_slot(12)
-
-        hit_scale = parse_list(ini_sys, "actor_damage", closest_bone.name)[1]
-
-        if not outfit or not helmet then -- Assume actor is not wearing armor
-            BoneArmor = parse_list(ini_sys, "actor_damage", closest_bone.name)[2]
-            ap_scale = ini_sys:r_float_ex("actor_armor_novice", "ap_scale")
-            hit_fraction = ini_damages:r_float_ex("stalker_hero_1", "hit_fraction_npc")
-        else
-            local outfit_type = ini_sys:r_bool_ex(outfit:section(), "helmet_available", false) and  "outfit_no_helmet" or "outfit_attached_helmet"
-            if outfit_type == "outfit_no_helmet" then -- 
-        
-                if contains(bone_groups[outfit_type], closest_bone.name) then -- If actor was hit somewhere the outfit covers
-                    BoneArmor = outfit:GetBoneArmor(closest_bone.id)
-                    local aps_sect_outfit = ini_sys:r_float_ex(outfit:section(), "bones_koeff_protection")
-                    ap_scale = ini_damages:r_float_ex(aps_sect_outfit, "ap_scale")
-                    hit_fraction = ini_sys:r_float_ex(outfit:section(), "hit_fraction_actor")
-
-                elseif contains(bone_groups["helmet"], closest_bone.name) then 
-                    BoneArmor = helmet:GetBoneArmor(closest_bone.id)
-                    local aps_sect_helmet = ini_sys:r_float_ex(helmet:section(), "bones_koeff_protection")
-                    ap_scale = ini_damages:r_float_ex(aps_sect_helmet, "ap_scale")
-                    hit_fraction = ni_sys:r_float_ex(helmet:section(), "hit_fraction_actor")
-                end
-
-            elseif outfit_type == "outfit_attached_helmet" then
-                if contains(bone_groups[outfit_type], closest_bone.name) then -- If actor was hit somewhere the outfit covers
-                    BoneArmor = outfit:GetBoneArmor(closest_bone.id)
-                    local aps_sect_outfit = ini_sys:r_float_ex(outfit:section(), "bones_koeff_protection")
-                    ap_scale = ini_damages:r_float_ex(aps_sect_outfit, "ap_scale")
-                    hit_fraction = ini_sys:r_float_ex(outfit:section(), "hit_fraction_actor")
-                end
-            end
-        end
-
-    elseif IsMonster(target) then
-        pr("for mutant")
-        local name = ini_sys:r_string_ex(npc:section(), "species")
-        local dmg_sects = {strformat("m_%s_damage", name), strformat("m_%s_damage", capitalise(name))}
-        for _, dmg_sect in pairs(dmg_sects) do
-            if ini_sys:section_exist(dmg_sect) then
-                local dmg_str = ini_sys:r_string_ex(dmg_sect, closest_bone.name)
-                hit_scale = str_explode(dmg_str, ",")[1]
-            end
-        end
-        BoneArmor = ini_sys:r_float_ex(name .. "_protections", "skin_armor")
-        hit_fraction = ini_sys:r_float_ex(name .. "_protections", "hit_fraction_monster")
-
-    elseif IsStalker(target) then
-        pr("for npc stalker")
-        local visual_data = game.get_visual_userdata(visual)
-        local damages_sect = visual_data:r_string_ex("bone_protection", "bones_protection_sect")
-    
-        hit_fraction = ini_damages:r_float_ex(damages_sect, "hit_fraction_npc")
-        ap_scale = ini_damages:r_float_ex(damages_sect, "ap_scale") or 0
-        local dmg_list = parse_list(ini_sys, "stalker_damage", closest_bone.name)        
-        hit_scale = dmg_list[1]
-        BoneArmor = dmg_list[2]
-    end
-
-    --BoneArmor = clamp(BoneArmor, 0, 1) -- 1
-    --ap_scale = clamp(ap_scale, 0, 1) -- 2
-    --hit_fraction = clamp(hit_fraction, 0, 1) -- 3
-    --hit_scale = clamp(hit_scale, 0, 1) -- 4
-    pr("calculation values: %s", print_table({
-        k_ap = k_ap,
-        ap_modifier = ap_modifier,
-        ap = AP,
-        wpn_hit_power = hit_power,
-        ammo_hit_power = k_hit,
-        suppress_hit_power = bullet_hit_power_k,
-        base_hit_power = HitPower,
-        muzzle_velocity = muzzle_velocity,
-        impact_velocity = impact_velocity,
-        scale_factor = scale_factor,
-        bone_armour = BoneArmor,
-        ap_scale = ap_scale,
-        hit_fraction = hit_fraction,
-        hit_scale = hit_scale
-    }))
-    local d_hit_power = 0
-    if IsMonster(target) then
-        d_hit_power = (AP - BoneArmor) / AP
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
     else
-        d_hit_power = (AP - BoneArmor) / (AP * ap_scale)
-       
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
     end
-    d_hit_power = clamp(d_hit_power, hit_fraction, 1)
-    pr("clamped d_hit power: %s", d_hit_power)
-    HitPower = HitPower * d_hit_power * hit_scale
-    pr("base calc hit power: %s", HitPower)
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function get_hf_item_name(obj_sect, as_str_id)
+    local item_sect = ini_sys:r_string_ex(obj_sect, "item_section") or obj_sect
+    local name = ini_sys:r_string_ex(item_sect, "inv_name")
+    return as_str_id and name or gts(name)
+end
+
+function bone_to_part_name(bone_name, kind)
+    local part_name = ""
+    if kind == "generator" then
+        part_name = "hfg_prt_"
+        if contains({"link", "body", "frame-a", "frame-b"}, bone_name) then
+            part_name = part_name .. "frame"
+        elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
+            part_name = part_name .. bone_name
+        elseif contains({"but_belt", "top_belt"}, bone_name) then
+            part_name = part_name .. "band"
+        end
+    elseif kind == "solar_panel" then
+        part_name = "hfg_prt_sp_"
+        if contains({"bottom_frame", "top_frame"}, bone_name) then
+            part_name = part_name .. "frame"
+        elseif contains({"left_leg", "middle_leg", "right_leg"}, bone_name) then
+            part_name = part_name .. "leg"
+        elseif contains({"top_panel", "bottom_panel"}, bone_name) then
+            part_name = part_name .. "panel"
+        end
+    end
+    return part_name
+end
+
+function get_parts_tbl(sect)
+    local parts = itms_manager.ini_parts:r_string_ex("nor_parts_list", sect)
+    local parts_tbl = parts and str_explode(parts, ",") or {}
+    return parts_tbl
+end
+
+function valid_screen_pos(pos)
+	return (pos.x ~= -9999) and (pos.y ~= 0) and (pos.x <= 1024) and (pos.y <= 768)
+end
+
+-- demonized aoe
+function volumetric_check(obj, dist_sqrt)
+    local ray_pos = vector():set(obj:position()):add(vector():set(0, 0.4, 0))
+    local ray_dir = IsStalker(obj) and vector():set(utils_obj.safe_bone_pos(obj, "bip01_spine") or obj:position():add(vector():set(0, 0.4, 0))):sub(ray_pos):normalize()
+    local ray = demonized_geometry_ray.geometry_ray({
+        ray_range = dist_sqrt,
+    })
+    local res = ray:get(ray_pos, ray_dir)
+    if not demonized_geometry_ray.similar(res.distance, dist_sqrt, 0.01) then
+        return false
+    end
+    return true
+end
+
+function is_object_visible(id)
+    local visible = false
+    local obj = get_unknown_object({id=id}, "game")
+    if obj then
+        dbg("info", "object found")
+        local max_dist = ui_options.get("video/advanced/optimize_dynamic_geom") * 100
+        local dist_to_actor = distance_between(db.actor, obj)
+
+        if dist_to_actor < max_dist then
+            dbg("info", "object within distance")
+            local pos = vector():set(obj:position()):add(vector():set(0, 0, 0))
+            local vec = game.world2ui(pos, false, false)
+
+            if valid_screen_pos(vec) then
+                dbg("info", "valid screen pos")
+                visible = volumetric_check(obj, math.sqrt(dist_to_actor))
+                dbg("info", "checked if behind wall")
+            else
+                dbg("dev", "invalid screen pos")
+            end
+        else
+            dbg("error", "out of distance")
+        end
+    else
+        dbg("error", "obj not found")
+    end
+    dbg("dev", "Is %s visible: %s?", id, visible)
+    return visible
+end
+
+function get_bone_pos(obj, bone_name)    
+    --  local bid = obj:get_bone_id(bone_name)
+    --  local bpos = obj:bone_position(bid)
+    --  return bpos
+    return utils_obj.safe_bone_pos(obj, bone_name)
+end
+
+-- HFG Light furniture
+
+function is_light(sect)
+    return ini_sys:r_string_ex(sect, "placeable_type") == "light"
+end
+
+function is_powerable_device(sect)
+    local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
+    return contains(FUEL_SECTIONS, fuel_sect)
+end
+
+function is_solar_panel(sect)
+    return sect == PLACEABLE_SOLAR_PANELS
+end
+
+function get_powerable_devices(pos)
+    local powerable_devices = {}
+    local function search(obj)
+        local sect = obj:section()
+        if is_powerable_device(sect) then
+            powerable_devices[obj:id()] = obj
+        end
+    end
+    level.iterate_nearest(pos, SEARCH_RADIUS, search)
+    --pr("Found powerable devices: %s", (powerable_devices))
+    return powerable_devices
+end
+
+function get_solar_panels(pos)
+    local found_solar_panels = {}
+    local function search(obj)
+        local sect = obj:section()
+        if is_solar_panel(sect) then
+            found_solar_panels[#found_solar_panels + 1] = obj
+        end
+    end
+    level.iterate_nearest(pos, SEARCH_RADIUS, search)
+    return found_solar_panels
+end
+
+function sort_obj_by_closest_pos(t, a, b, pos)
+    local a_dist = t[a]:position():distance_to(pos)
+    local b_dist = t[b]:position():distance_to(pos)
+    return a_dist < b_dist
+end
+
+function cond_to_state(cond)
+    return (cond <= 10 and "broken")
+        or (cond <= 35 and "low")
+        or (cond <= 80 and "med")
+        or "high"
+end
+
+function bones_by_distance(obj, pos)
+    local obj_bones = obj:list_bones()
+    local bone_distances = {}
+    for idx, bone_name in pairs(obj_bones) do
+        local bone_pos = get_bone_pos(obj, bone_name)
+        local dist = bone_pos:distance_to(pos)
+        bone_distances[idx] = dist
+    end
+
+    local closest_bones = {}    
+    for idx, dist in spairs(bone_distances, function(t, a, b) return t[a] > t[b] end) do
+        closest_bones[idx] = {}
+        closest_bones[idx].dist = dist
+        closest_bones[idx].bone_name = obj_bones[idx]
+    end
+    return closest_bones
+end
+
+function update_power_source_cond(gen, cond, power_state, hit_damage)
+    if power_state ~= "broken" then
+        local anim_due = false
+        local loss_cond = cond - hit_damage
+        cond = loss_cond > 0 and loss_cond or MIN_COND
+
+        dbg("info", "updating cond: %s", cond)
+        if cond > BROKEN_COND then
+            hf_obj_manager.update_data(gen:id(), {condition=cond}) 
+        else
+            if power_state == "on" then
+                anim_due = true
+            end
+            hf_obj_manager.update_data(gen:id(), {
+                condition=cond,
+                last_power_state=power_state,
+                power_state="broken",
+                anim_due=anim_due
+            }) 
+        end
+    end
+end
+
+function on_gen_impact(bullet)
+    local bullet_pos = bullet.position
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then return end
+    if not contains(PLACEABLE_POWER, target:section()) then return end
+    local data = hf_obj_manager.get_data(target:id())
+    if contains(data, "anim_in_progress", true) and data["anim_in_progress"] then return end
+    if not contains(data, "parts", true) then return end
+
+    local parts = data["parts"]
+    -- Get Closest Bone to Bullet Impact Pos that isnt at lowest condition possible
+    -- Apply 
+    local closest_bone
+    local closest_part
+    local closest_bones = bones_by_distance(target, bullet_pos)
+    for idx, bone_info in pairs(closest_bones) do
+        for part_name, part_info in pairs(parts) do
+            if 
+                bone_to_part_name(bone_info.bone_name, "gen") == part_name 
+                and part_info.condition > BROKEN_COND
+            then
+                closest_bone = closest_bones[idx].bone_name
+                closest_part = bone_to_part_name(closest_bone, data["placeable_type"])
+                closest_bones[idx] = nil
+                break
+            end
+        end
+    end
+
+    if not closest_bone or not closest_part then return end -- cause gen to break down (drop parts)
+    dbg("debug", "%s hit gen at %s and %s is the closest", sect, bullet_pos, closest_part)
+
+    local max_damage = 1
+    -- Calculate hit damage and apply it to bone
+    --dbg("info", "updating damaged parts %s", parts)
+    for part_name, part_info in pairs(parts) do
+        local part_cond = part_info.condition
+        if part_name == closest_part then
+            if part_cond > BROKEN_COND then
+                dbg("info", "part found")
+                dbg("dev", "part name: %s, part cond: %s", part_name, part_cond)
+                local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1]
+                local new_part_cond = part_cond - hit_damage
+                dbg("dev", "new part cond: %s, hit damage: %s", new_part_cond, hit_damage)
+                parts[part_name].condition = clamp(new_part_cond, 0, 1)
+            end
+        end
+    end
    
-    return HitPower > 0 and HitPower or 0
+    dbg("info", "Calculating Total/Average Part Cond")
+    local total_part_cond = 0
+    local num_of_parts = 0
+    for part_name, part_info in pairs(parts) do
+        total_part_cond = total_part_cond + part_info.condition
+        num_of_parts = num_of_parts + 1
+    end   
+    local avg_part_cond = (total_part_cond / num_of_parts )
+    dbg("dev", "avg part cond: %s, total part cond: %s, gen cond: %s", avg_part_cond, total_part_cond, data["condition"])
+    data["parts"] = parts
+    update_power_source_cond(target, avg_part_cond, data["power_state"],  0)
+    hf_obj_manager.update_data(target:id(), data)
+end    
+
+function find_power_sources(pos, radius)
+    radius = not radius and SEARCH_RADIUS or radius
+    if not pos then
+        local targ_obj = level.get_target_obj()
+        pos = targ_obj and targ_obj:position() or db.actor:position()
+    end
+    
+    local power_sources = {}
+    for _, ps_sect in pairs(PLACEABLE_POWER_TRANSMITERS) do
+        dbg("dev", "searching for %s", ps_sect)
+        local found_power_sources = find_obj(ps_sect, pos, radius)
+        if is_not_empty(found_power_sources) then
+            
+            for i=1, #found_power_sources do
+                -- dbg("all", "Found: %s", found_power_sources[i])
+                power_sources[#power_sources + 1] = found_power_sources[i]
+            end
+        end
+    end
+    dbg("dev", "found power sources?: %s", is_not_empty(power_sources) and "yes" or "no")
+    return power_sources
 end
 
--- DEBUG print
 
-function print_table(tbl)
-    if is_empty(tbl) then return "{}" end
-    return utils_data.print_table(tbl, nil, true)
+-- Monkey Patches
+base_disassembly_item = item_parts.disassembly_item
+function item_parts.disassembly_item(obj, obj_d)
+    local sect = obj:section()
+    if not contains(ITEM_POWER_SOURCES, sect) then
+        dbg("info", "not diassembleing gen")
+        base_disassembly_item(obj, obj_d)
+        return
+    end
+
+    local data = hf_obj_manager.get_data(obj:id())
+    local parts = data["parts"]
+    if is_empty(parts) then
+        dbg("info", "damaged parts is empty")
+        base_disassembly_item(obj, obj_d)
+        return
+    end
+
+    local delay = actor_effects.is_animations_on() and 3 or 0
+    CreateTimeEvent("hfg_time_event","delay_disassembly", delay, disassemble_power_source, sect, parts, obj, obj_d)
 end
 
+function disassemble_power_source(sect, power_source_parts, obj, obj_d)
+    if is_empty(power_source_parts) then return true end
+    dbg("debug", "diassembling: %s", sect)
+    -- Degrade disassemble tool + Sound Effects
+    local degr_val = obj_d and GetItemList("disassemble")[obj_d:section()] or 0
+    if obj_d then utils_item.degrade( obj_d , degr_val ) end
+    utils_item.discharge( obj )
+    game_statistics.increment_statistic("items_disassembled")
+    actor_effects.play_item_fx("disassemble_metal_fast")
+
+    -- Part Text
+    local given_parts = false
+    local parts_created = {}
+
+    -- Give parts
+    for part_name, part_info in pairs(power_source_parts) do
+        if IsItem("part", part_name) and utils_item.is_degradable(nil, part_name) then
+            local part_cond = part_info.condition
+            if part_cond > PART_FUNC_COND then
+                dbg("info", "creating  part %s with %s cond", part_name, part_cond)
+                local se_obj = alife_create(part_name, db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                local item_data = utils_stpk.get_item_data(se_obj)
+                item_data.condition = item_parts.get_suitable_part_con(part_name, part_cond)
+                utils_stpk.set_item_data(item_data,se_obj)
+                alife():register(se_obj)
+                given_parts = true
+                parts_created[#parts_created + 1] = part_name
+            else
+                local components = part_info.components
+                if (game_achievements.has_achievement("recycler")) and (math.random(1,100) <= 33) then
+                    table.insert(components, components[math.random(#components)])
+                end
+                dbg("info", "%s is broken and will be scrapped", part_name)
+                for idx, comp_name in pairs(components) do
+                    if IsItem("part", comp_name) then
+                        local se_obj = alife_create(comp_name, db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                        local item_data = utils_stpk.get_item_data(se_obj)
+                        local comp_cond = math.random(1 / #components, 1)
+                        dbg("dev", "creating component %s with cond %s", comp_name, comp_cond)
+                        item_data.condition = item_parts.get_suitable_part_con(part_name, comp_cond)
+                        utils_stpk.set_item_data(item_data,se_obj)
+                        alife():register(se_obj)
+
+                        if obj_d then utils_item.degrade( obj_d , degr_val ) end
+                        game_statistics.increment_statistic("items_disassembled")
+                        actor_effects.play_item_fx("disassemble_metal_fast")
+                        given_parts = true
+                        parts_created[#parts_created + 1] = comp_name
+                    end
+                end
+            end
+        end
+    end
+    local name = ui_item.get_sec_name(sect)      
+    local parts_text = "\\n"
+    if is_empty(parts_created) then
+        parts_text = gts("st_hfg_no_gen_parts")
+    else
+        parts_text = parts_text .. item_parts.create_disassemble_list(parts_created) .. "\\n"
+    end
+    actor_menu.set_item_news(given_parts and "success" or "fail", "weapon_ammo", "st_dis_text_11", name, gts("st_dis_text_9"), parts_text)
+    return true
+end
+
+base_toggle_light = ui_furniture_light.toggle_light
+function ui_furniture_light.toggle_light(obj_id)
+    dbg("info", "on toggle light")
+    local power_sources = {}
+    local se_obj = alife_object(obj_id)
+    if not se_obj then return end
+    power_sources = find_power_sources(se_obj.position)
+    local light_name = get_hf_item_name(se_obj:section_name())
+
+    if is_not_empty(power_sources) then
+        dbg("dev", "power sources: %s", power_sources)
+        local not_connected_count = 0
+        for _, obj in spairs(power_sources, function(t, a, b) return sort_obj_by_closest_pos(t, a, b, se_obj.position) end) do
+            local found_ps = obj
+            local found_ps_id = found_ps:id()
+            local ps_data = hf_obj_manager.get_data(found_ps_id)
+            local found_ps_sect = found_ps:section()
+            local ps_name = get_hf_item_name(found_ps_sect)
+
+            if 
+                is_not_empty(ps_data["powerable_devices"])
+                and contains(ps_data["powerable_devices"], obj_id, true)
+            then
+                local power_state = ps_data["power_state"]
+                dbg("dev", "id:%s, sect:%s, power state: %s", found_ps_id, found_ps_sect, power_state)
+                if power_state ~= "on" then -- off or broken
+                    local is_on = hf_obj_manager.get_data(obj_id).is_on
+                    if is_on then
+                        dbg("dev", "switching off")
+                        base_toggle_light(obj_id)
+                        update_power_output(obj_id, found_ps_id)
+                        return
+                    end
+                    local msg = gts("st_requires_power", ps_name, power_state, light_name)
+                    actor_menu.set_msg(1, msg, 3)
+                    dbg("dev", "%s", msg)
+                    return
+                end
+            else
+                not_connected_count = not_connected_count + 1
+            end
+        end
+
+        if not_connected_count == #power_sources then
+            dbg("dev", "%s is not connected to a power source", light_name)
+            local msg = gts("st_needs_connecting", light_name)
+            actor_menu.set_msg(1, msg, 3)
+            return
+        end
+    end
+
+    dbg("dev", "base toggle light")
+    base_toggle_light(obj_id)
+    local pd_wrapper = bind_hf_base.get_wrapper(obj_id)
+    if pd_wrapper and pd_wrapper.power_source_id then
+        update_power_output(obj_id, pd_wrapper.power_source_id)
+    end
+end
+
+function update_power_output(pd_id, ps_id)
+    local is_on = hf_obj_manager.get_data(pd_id).is_on
+    local ps_data = hf_obj_manager.get_data(ps_id)
+    local curr_power_output = ps_data["power_output"]
+    local watts_needed = ps_data["powerable_devices"][pd_id].watts_needed
+    local new_power_output = is_on and curr_power_output - watts_needed or curr_power_output + watts_needed
+    dbg("dev", "changing power output, from: %s to %s", curr_power_output, new_power_output)
+    ps_data["power_output"] = new_power_output
+    hf_obj_manager.update_data(ps_id, ps_data)
+end
+
+--[[
+if  and  then
+                    dbg("dev", "init powerable device")
+                    local wrapper = bind_hf_base.get_wrapper(found_ps_id)
+                    if wrapper then
+                        ps_data["powerable_devices"][obj_id] = wrapper:InitPDInfo(se_obj)
+                        hf_obj_manager.update_data(found_ps_id, ps_data)
+
+                        local pd_wrapper = bind_hf_base.get_wrapper(obj_id)
+                        if pd_wrapper then
+                            dbg("dev", "init %s powered status", obj_id)
+                            pd_wrapper.power_source_id=found_ps_id
+                        end
+
+                        local msg = gts("st_connect_device", light_name, gen_name)
+                        actor_menu.set_msg(1, msg, 3)
+                        return
+                    end
+                end
+]]
+
+-- Callbacks
+
+function on_place_powerable_device(obj_id)
+    local se_obj = alife_object(obj_id)
+    local sect = se_obj:section_name()
+    local pos = se_obj.position or db.actor:position()
+    if se_obj and is_powerable_device(sect) then
+        dbg("info", "on place powerable device: %s", sect)
+        CreateTimeEvent("on_place_powerable_device"..se_obj.id, "init_pd"..se_obj.id, 0.4, function()        
+            local pd_wrapper = bind_hf_base.get_wrapper(se_obj.id)
+            if not pd_wrapper then return false end
+            if pd_wrapper.init_pd then return true end
+            -- Connect Powerable device to nearest power source
+            local power_sources = find_power_sources(pos)
+            if is_not_empty(power_sources) then
+                for _, obj in spairs(power_sources, function(t, a, b) return sort_obj_by_closest_pos(t, a, b, pos) end) do
+                    local power_source = obj
+                    local ps_id = power_source:id()
+                    local ps_sect = power_source:section()
+                    pd_wrapper.power_source_id=ps_id
+
+                    local ps_data = hf_obj_manager.get_data(ps_id)
+                    local ps_wrapper = bind_hf_base.get_wrapper(ps_id)
+                    if 
+                        ps_wrapper 
+                        and ps_data
+                        and not contains(ps_data["powerable_devices"], obj_id, true)
+                        and contains(ps_data, "power_output", true)
+                    then
+                        local pd_name = get_hf_item_name(sect)
+                        local ps_name = get_hf_item_name(ps_sect)
+                        
+                        ps_data["powerable_devices"][obj_id] = ps_wrapper:InitPDInfo(se_obj)
+                        if ps_data["power_output"] - ps_data["powerable_devices"][obj_id].watts_needed >= 0 then
+                            ps_data["powerable_devices"][obj_id].watts_satisfied = true
+                            hf_obj_manager.update_data(ps_id, ps_data)
+                            actor_menu.set_msg(1, gts("st_connect_device", pd_name, ps_name), 3)
+                            dbg("dev", "connected %s to %s", obj_id, ps_id)
+                            break
+                        end
+                    end
+                end
+            end
+            -- MonkeyPatch | Remove connected power source and reset the power sources power output value
+            local base_pickup = pd_wrapper.pickup
+            pd_wrapper.pickup = function(self)
+                local obj = self.object
+                local id = obj:id()
+                local sect = obj:section()
+                dbg("info", "on pickup powerable device %s", id)
+                if self.power_source_id then
+                    local ps_data = hf_obj_manager.get_data(self.power_source_id)
+                    local is_on = hf_obj_manager.get_data(id).is_on
+                    if 
+                        ps_data 
+                        and contains(ps_data, "powerable_devices", true)
+                        and contains(ps_data["powerable_devices"], id, true)
+                    then
+                        local curr_power_output = ps_data["power_output"]
+                        local watts_needed = ps_data["powerable_devices"][id].watts_needed
+                        local new_power_output = is_on and curr_power_output - watts_needed or curr_power_output + watts_needed
+                        if new_power_output <= ps_data["max_power_output"] then
+                            dbg("dev", "resetting power output from %s to %s", curr_power_output, new_power_output)
+                            ps_data["power_output"] = new_power_output
+                        end
+
+                        dbg("dev", "removing device:%s from source:%s", id, self.power_source_id)                        
+                        ps_data["powerable_devices"][id] = nil
+                        hf_obj_manager.update_data(self.power_source_id, ps_data)
+                    end
+                end
+                base_pickup(self)
+            end
+            pd_wrapper.init_pd = true
+        end)
+        return true
+    end
+end
+
+-- MCM
 function get_config(key)
     return hfg_mcm.get_config(key)
 end
 
-function dbg_pr(header, str, ...)
-    if get_config("enable_debug") then
-        printf(header, strformat(str, ...))
+function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
+    SEARCH_RADIUS = options["search_radius"]
+    BROKEN_COND = options["broken_cond"]
+end
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
+    RegisterScriptCallback("bullet_on_impact", on_gen_impact)
+end
+
+--[[
+
+function on_place_powerable_device(obj_id)
+    local se_obj = alife_object(obj_id)
+    local sect = se_obj:section_name()
+    local pos = se_obj.position or db.actor:position()
+    
+    if se_obj and is_powerable_device(sect) then
+        dbg("info", "on place powerable device: %s", sect)
+        for _, ps_sect in pairs(PLACEABLE_POWER_TRANSMITERS) do
+            local found_power_sources = find_obj(ps_sect, pos, SEARCH_RADIUS)
+            if is_not_empty(found_power_sources) then
+                dbg("info", "found gens")
+                for idx, found_ps in pairs(found_power_sources) do
+                    local data = hf_obj_manager.get_data(found_ps:id())
+                    if not contains(data["powerable_devices"], obj_id, true) then
+                        data["powerable_devices"][obj_id] = sect
+                        hf_obj_manager.update_data(found_ps:id(), data)
+                        dbg("dev", "adding %s to powerable devices", get_hf_item_name(sect))
+                    end
+                end
+            end
+        end
     end
 end
 
-function pr(str, ...)
-	if not filter_debug_msg(dbg_lvl) then return end
-    dbg_pr("[HFG|Utils]: %s", str, ...)
-end
+            wrapper.powered = false
+            wrapper.power_source_id = nil
 
+            wrapper.is_powered = function(self)
+                local obj = self.object
+                local id = obj:id()
+                local sec = obj:section()
+                --dbg("dev", "checking if %s is powered", id)
+                local data = hf_obj_manager.get_data(id)
+                if data then
+                    if is_light(sec) then
+                        dbg("all", "%s is powered?: %s", id, self.powered)
+                        if 
+                            self.powered and not data["is_on"]
+                            or not self.powered and data["is_on"]
+                        
+                        then
+                            data["is_on"] = false
+                            dbg("all", "switching %s off", id)
+                        end
+                        self.last_state = data["is_on"]
+                        hf_obj_manager.update_data(id, data)
+                    end
+                end
+            end
+            local base_update = wrapper.update
+            wrapper.update = function(self, delta)
+                -- dbg("dev", "updating powerable device binder")
+                base_update(self, delta)
+                if wrapper.is_powered then
+                    wrapper.is_powered(self)
+                end
+            end
 
-function mcm_debug_level()
-	return get_config("debug_level") or "player"
-end
-
-function filter_debug_msg(debug_level)
-	local mcm_dbg_lvl = mcm_debug_level()
-	local accepted_debug_msgs = {
-		["player"] = {"player"},
-		["dev"]    = {"player", "dev"},
-		["all"]    = {"player", "dev", "all"}
-	}
-	return contains(accepted_debug_msgs[mcm_dbg_lvl], debug_level)
-end
-
-function set_debug_level(new_dbg_level)
-	dbg_lvl = new_dbg_level
-end
+]]
