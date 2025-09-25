@@ -1,7 +1,13 @@
-[disel_generator_item]:tch_junk,booster
+[hfg_item_base]:tch_junk
 class									= II_ATTCH
 kind								    = i_tool
-visual									= dynamics\disel_generator_2.ogf
+icons_texture                           = ui\ui_hfg_icons
+use1_functor         				    = placeable_furniture.place_item
+use1_action_functor  					= placeable_furniture.func_place_item
+placeable_type                          = prop
+
+[disel_generator_item]:hfg_item_base,booster
+visual									= dynamics\disel_generator.ogf
 description								= st_disel_generator_descr
 inv_name								= st_disel_generator
 inv_name_short							= st_disel_generator
@@ -9,20 +15,16 @@ inv_grid_x								= 0
 inv_grid_y								= 0
 inv_grid_height							= 3
 inv_grid_width							= 3
-icons_texture							= ui\ui_hfg_icons
 cost									= 30000
 inv_weight								= 20
 condition_bar				            = condition_progess_bar
 use_condition                           = false
 
-use1_functor         				    = placeable_furniture.place_item
-use1_action_functor  					= placeable_furniture.func_place_item
-
 placeable_type                          = generator
 placeable_section                       = placeable_disel_generator
 
 [placeable_disel_generator]:physic_object
-visual                                   = dynamics\disel_generator_2.ogf
+visual                                   = dynamics\disel_generator.ogf
 startup_animation                        = idle
 
 script_binding                           = bind_disel_generator.init
@@ -36,6 +38,7 @@ ui_on_simple_interaction                 = bind_disel_generator.toggle_power
 bounding_box_size                        = 0.743, 0.840, 0.911
 bounding_box_origin                      = 0.035032, 0.91057, 0.061213
 
+max_power_output                         = 4500
 ; Modified OGF Bounding Box Vals
 ; 0.743, 0.910, 0.740
 ; 0.035, 0.91, 0.12
@@ -62,12 +65,9 @@ empty_sect                             = hfg_jerrycan_diesel_empty
 use2_functor         				   = placeable_furniture.place_item
 use2_action_functor  				   = placeable_furniture.func_place_item
 placeable_section                      = placeable_jerrycan_diesel
-placeable_type                         = prop
+placeable_type                         = jerrycan
 
-[hfg_jerrycan_diesel_empty]:tch_junk
-class								   = II_ATTCH
-kind								   = i_tool
-icons_texture						   = ui\ui_hfg_icons
+[hfg_jerrycan_diesel_empty]:hfg_item_base
 inv_grid_width                         = 2
 inv_grid_height                        = 2
 
@@ -79,17 +79,13 @@ inv_grid_x                             = 6
 inv_grid_y                             = 7
 inv_weight                             = 0.8
 
-use1_functor         				   = placeable_furniture.place_item
-use1_action_functor  				   = placeable_furniture.func_place_item
-
 cost                                   = 624
 placeable_section                      = placeable_jerrycan_diesel_empty
-placeable_type                         = prop
 fuel_source                            = true
 
 
 [placeable_jerrycan_base]:physic_object
-placeable_type                         = prop
+placeable_type                         = jerrycan
 script_binding                         = bind_generator_item.init
 bounding_box_size                      = 0.167712, 0.371525, 0.570807
 bounding_box_origin                    = 0.001506, 0.282296, -0.008672
@@ -114,16 +110,19 @@ on_explode = bind_generator_item.set_cond_on_explode
 ![grenade_gd-05]:tch_on_explode
 ![grenade_f1]:tch_on_explode
 
-[hfg_generator_poster]:tch_junk
-class									= II_ATTCH
-kind								    = i_tool
+;2025.08.21 Modded Exes Callback doesn't exist
+[tch_on_explode_barrel]
+on_explode = siphon_diesel_barrel.remove_fuel_barrel
+![explosive_barrel]:tch_on_explode_barrel
+![explosive_barrel_low]:tch_on_explode_barrel
+
+[hfg_generator_poster]:hfg_item_base
 visual									= dynamics\hfg_generator_poster.ogf
 
 description								= st_hfg_generator_poster_descr
 inv_name								= st_hfg_generator_poster
 inv_name_short							= st_hfg_generator_poster
 
-icons_texture							= ui\ui_hfg_icons
 inv_grid_x								= 9
 inv_grid_y								= 3
 inv_grid_width							= 1
@@ -132,10 +131,6 @@ inv_grid_height							= 2
 cost									= 20
 inv_weight								= 0.01
 
-use1_functor         				    = placeable_furniture.place_item
-use1_action_functor  					= placeable_furniture.func_place_item
-
-placeable_type                          = prop
 placeable_section                       = placeable_generator_poster
 
 [placeable_generator_poster]:physic_object
@@ -151,16 +146,13 @@ ui_texture                              = ui_hfg_icon_manual
 bounding_box_size                        = 0.623829, 0.747018, 0.016213
 bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
-[hfg_poster_1]:tch_junk
-class									= II_ATTCH
-kind								    = i_tool 
+[hfg_poster_1]:hfg_item_base
 visual									= dynamics\hfg_poster_1.ogf
 
 description								= st_hfg_poster_1_descr
 inv_name								= st_hfg_poster_1
 inv_name_short							= st_hfg_poster_1
 
-icons_texture							= ui\ui_hfg_icons
 inv_grid_x								= 10
 inv_grid_y								= 3
 inv_grid_width							= 1
@@ -169,10 +161,6 @@ inv_grid_height							= 2
 cost									= 20
 inv_weight								= 0.01
 
-use1_functor         				    = placeable_furniture.place_item
-use1_action_functor  					= placeable_furniture.func_place_item
-
-placeable_type                          = prop
 placeable_section                       = placeable_poster_1
 
 [placeable_poster_1]:physic_object
@@ -188,16 +176,13 @@ ui_texture                              = ui_hfg_icon_poster_1
 bounding_box_size                        = 0.623829, 0.747018, 0.016213
 bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
-[hfg_poster_2]:tch_junk
-class									= II_ATTCH
-kind								    = i_tool
+[hfg_poster_2]:hfg_item_base
 visual									= dynamics\hfg_poster_2.ogf
 
 description								= st_hfg_poster_2_descr
 inv_name								= st_hfg_poster_2
 inv_name_short							= st_hfg_poster_2
 
-icons_texture							= ui\ui_hfg_icons
 inv_grid_x								= 11
 inv_grid_y								= 3
 inv_grid_width							= 1
@@ -206,10 +191,6 @@ inv_grid_height							= 2
 cost									= 20
 inv_weight								= 0.01
 
-use1_functor         				    = placeable_furniture.place_item
-use1_action_functor  					= placeable_furniture.func_place_item
-
-placeable_type                          = prop
 placeable_section                       = placeable_poster_2
 
 [placeable_poster_2]:physic_object
@@ -225,16 +206,13 @@ ui_texture                              = ui_hfg_icon_poster_2
 bounding_box_size                        = 0.623829, 0.747018, 0.016213
 bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
-[hfg_poster_3]:tch_junk
-class									= II_ATTCH
-kind								    = i_tool
+[hfg_poster_3]:hfg_item_base
 visual									= dynamics\hfg_poster_3.ogf
 
 description								= st_hfg_poster_3_descr
 inv_name								= st_hfg_poster_3
 inv_name_short							= st_hfg_poster_3
 
-icons_texture							= ui\ui_hfg_icons
 inv_grid_x								= 12
 inv_grid_y								= 3
 inv_grid_width							= 1
@@ -243,10 +221,6 @@ inv_grid_height							= 2
 cost									= 20
 inv_weight								= 0.01
 
-use1_functor         				    = placeable_furniture.place_item
-use1_action_functor  					= placeable_furniture.func_place_item
-
-placeable_type                          = prop
 placeable_section                       = placeable_poster_3
 
 [placeable_poster_3]:physic_object
@@ -262,16 +236,13 @@ ui_texture                              = ui_hfg_icon_poster_3
 bounding_box_size                        = 0.623829, 0.747018, 0.016213
 bounding_box_origin                      = 0.005518, 0.011798, -0.005057
 
-[hfg_poster_4]:tch_junk
-class									= II_ATTCH
-kind								    = i_tool
+[hfg_poster_4]:hfg_item_base
 visual									= dynamics\hfg_poster_4.ogf
 
 description								= st_hfg_poster_4_descr
 inv_name								= st_hfg_poster_4
 inv_name_short							= st_hfg_poster_4
 
-icons_texture							= ui\ui_hfg_icons
 inv_grid_x								= 13
 inv_grid_y								= 3
 inv_grid_width							= 1
@@ -280,10 +251,6 @@ inv_grid_height							= 2
 cost									= 20
 inv_weight								= 0.01
 
-use1_functor         				    = placeable_furniture.place_item
-use1_action_functor  					= placeable_furniture.func_place_item
-
-placeable_type                          = prop
 placeable_section                       = placeable_poster_4
 
 [placeable_poster_4]:physic_object
@@ -298,3 +265,189 @@ ui_texture                              = ui_hfg_icon_poster_4
 
 bounding_box_size                        = 0.623829, 0.747018, 0.016213
 bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
+![placeable_monitor]
+ui_on_simple_interaction                = ui_monitor.start_ui
+
+; Traps
+
+[hfg_car_battery]:hfg_item_base,booster
+visual                                  = dynamics\hfg_car_battery.ogf
+description                             = st_hfg_car_battery_descr
+inv_name                                = st_hfg_car_battery
+inv_name_short                          = st_hfg_car_battery
+inv_grid_x                              = 10
+inv_grid_y                              = 5
+inv_grid_height                         = 2
+inv_grid_width                          = 2
+cost                                    = 1000
+inv_weight                              = 3
+use_condition                           = false
+
+;placeable_type                          = power_source
+placeable_type                          = prop
+placeable_section                       = placeable_car_battery
+
+[placeable_car_battery]:physic_object
+visual                                  = dynamics\hfg_car_battery.ogf
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_car_battery
+placeable_type                          = prop
+; ui_on_interaction                       = bind_power_source.show_connections
+; ui_on_simple_interaction                = bind_power_source.connect_wires
+
+bounding_box_origin                     = 0.000749, 0.11331, 0.001611 ; x, z, y
+bounding_box_size                       = 0.313, 0.227, 0.215
+;script_binding                          = bind_power_source.init
+
+
+[hfg_metal_fence]:hfg_item_base
+visual                                  = dynamics\hfg_barbed_fence_half.ogf
+description                             = st_hfg_metal_fence_descr
+inv_name                                = st_hfg_metal_fence
+inv_name_short                          = st_hfg_metal_fence
+inv_grid_x                              = 9
+inv_grid_y                              = 0
+inv_grid_height                         = 3
+inv_grid_width                          = 3
+cost                                    = 2000
+inv_weight                              = 10
+
+; placeable_type                          = power_receiver
+placeable_type                          = prop
+placeable_section                       = placeable_metal_fence
+
+[placeable_metal_fence]:physic_object
+visual                                  = dynamics\hfg_barbed_fence_half.ogf
+
+script_binding                          = bind_hf_base.init
+;script_binding                          = bind_power_receiver.init
+item_section                            = hfg_metal_fence
+base_rotation                           = 90
+placeable_type                          = prop
+;ui_on_interaction                       = bind_power_receiver.show_connections
+;ui_on_simple_interaction                = bind_power_receiver.connect_wires
+bounding_box_origin                     = 0.3288, 1.5025, -0 ; x, z, y
+bounding_box_size                       = 0.719, 3, 3.01
+on_physic_contact                       = hfg.on_contact
+
+[hfg_barbed_fence]:hfg_item_base
+visual                                  = dynamics\hfg_barbed_fence_full.ogf
+description                             = st_hfg_barbed_fence_descr
+inv_name                                = st_hfg_barbed_fence
+inv_name_short                          = st_hfg_barbed_fence
+inv_grid_x                              = 12
+inv_grid_y                              = 0
+inv_grid_height                         = 3
+inv_grid_width                          = 3
+cost                                    = 2500
+inv_weight                              = 8.5
+
+;placeable_type                          = power_receiver
+placeable_type                          = prop
+placeable_section                       = placeable_barbed_fence
+
+[placeable_barbed_fence]:physic_object
+visual                                  = dynamics\hfg_barbed_fence_full.ogf
+
+script_binding                          = bind_hf_base.init
+;script_binding                          = bind_power_receiver.init
+item_section                            = hfg_barbed_fence
+base_rotation                           = 90
+placeable_type                          = prop
+;ui_on_interaction                       = bind_power_receiver.show_connections
+;ui_on_simple_interaction                = bind_power_receiver.connect_wires
+bounding_box_origin                     = -0.32133, 1.5025, 0 ; x, z, y
+bounding_box_size                       = 0.719, 3, 3.01
+on_physic_contact                       = hfg.on_contact
+
+[hfg_solar_panel]:hfg_item_base
+visual                                  = dynamics\hfg_solar_panel.ogf
+description                             = st_hfg_solar_panel_descr
+inv_name                                = st_hfg_solar_panel
+inv_name_short                          = st_hfg_solar_panel
+inv_grid_x                              = 15
+inv_grid_y                              = 0
+inv_grid_height                         = 2
+inv_grid_width                          = 3
+cost                                    = 50000
+inv_weight                              = 14.51
+
+;placeable_type                          = power_receiver
+placeable_type                          = generator
+placeable_section                       = placeable_solar_panel
+
+[placeable_solar_panel]:physic_object
+visual                                  = dynamics\hfg_solar_panel.ogf
+
+script_binding                          = bind_solar_panel.init
+item_section                            = hfg_solar_panel
+base_rotation                           = 0
+placeable_type                          = generator
+;ui_on_interaction                       = bind_power_receiver.show_connections
+;ui_on_simple_interaction                 = hfg_utils.toggle_power
+bounding_box_origin                     = -0.18217, 1.1476, -0.030934 ; x, z, y
+bounding_box_size                       = 2.89, 2.5, 2.08
+
+max_power_output                        = 6000
+
+[hfg_solar_panel_poster]:hfg_item_base
+visual									= dynamics\hfg_solar_panel_poster.ogf
+
+description								= st_hfg_solar_panel_poster_descr
+inv_name								= st_hfg_solar_panel_poster
+inv_name_short							= st_hfg_solar_panel_poster
+
+inv_grid_x								= 13
+inv_grid_y								= 3
+inv_grid_width							= 1
+inv_grid_height							= 2
+
+cost									= 20
+inv_weight								= 0.01
+
+placeable_section                       = placeable_solar_panel_poster
+
+[placeable_solar_panel_poster]:physic_object
+visual									= dynamics\hfg_solar_panel_poster.ogf
+placeable_type                          = prop
+base_rotation                           = 0
+
+script_binding                          = bind_hf_base.init
+item_section                            = hfg_solar_panel_poster
+
+ui_texture                              = ui_hfg_solar_panel_poster
+
+bounding_box_size                        = 0.623829, 0.747018, 0.016213
+bounding_box_origin                      = 0.005518, 0.011798, -0.005057
+
+[hfg_inverter]:hfg_item_base
+visual = dynamics\hfg_inverter.ogf
+inv_name = st_hfg_inverter
+inv_name_short = st_hfg_inverter
+description = st_hfg_inverter_descr
+inv_grid_x = 5
+inv_grid_y = 3
+inv_grid_width = 2
+inv_grid_height = 2
+cost = 6000
+inv_weight = 5.2
+placeable_type = inverter
+placeable_section = placeable_inverter
+
+[placeable_inverter]:physic_object
+visual = dynamics\hfg_inverter.ogf
+startup_animation = idle_close
+
+script_binding = bind_inverter.init
+item_section = hfg_inverter
+placeable_type = inverter
+
+; ui_on_interaction                        = ui_diesel_generator.start_ui
+ui_on_simple_interaction                 = bind_inverter.toggle_power
+
+bounding_box_origin = 0, 0, 0
+bounding_box_size = 0.475, 0.171, 0.658
+base_rotation = 180
+
+max_power_output = 12000
