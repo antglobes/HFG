@@ -1,0 +1,581 @@
+-- Library Imports
+ag_utils.import_metatable(this, ag_configs)
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+
+gts = get_translation
+
+-- Script Imports
+throttle = hfg_utils.throttle
+add_functor = custom_functor_autoinject.add_functor
+
+-- Utils
+get_parts_tbl = hfg_utils.get_parts_tbl
+get_config = hfg_utils.get_config
+bone_to_part_name = hfg_utils.bone_to_part_name
+get_hf_item_name = hfg_utils.get_hf_item_name
+
+-- Constants
+LOG_HEADER = "[HFG|Blueprint]"
+
+-- Globals
+GUI = nil
+ini_blueprints = ini_file_ex("items\\items\\items_hfg_blueprints.ltx")
+placed_blueprints = {}
+use_functor_args = {}
+removed_attachments = {}
+placing_blueprints = {}
+
+-- Locals
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function is_blueprint(sect)
+    return ini_sys:r_bool_ex(sect, "blueprint", false)
+end
+
+function on_hf_place(obj_id)
+    local se_obj = alife_object(obj_id)
+    local obj_sect = se_obj:section_name()
+    local item_sect = ini_sys:r_string_ex(obj_sect, "item_section")
+    if use_functor_args.item_sect ~= item_sect then
+        placing_blueprints[obj_id] = true
+        CreateTimeEvent("hfg_blueprint", "on_hf_place"..obj_id, 0, place_blueprint, obj_id)
+    end
+end
+
+function place_blueprint(obj_id)
+    dbg("dev", "placing blueprint %s", obj_id)
+    local obj = get_unknown_object({id=obj_id}, "game")
+    if not obj then return false end
+    local id = obj:id()
+    local hf_sect = obj:section()
+    dbg("dev", "get manual sect")
+    local manual_sect
+    for section, _ in pairs(ini_blueprints:get_sections(true)) do
+        
+        if ini_blueprints:r_string_ex(section, "placeable_section") == hf_sect then
+            manual_sect = section
+            dbg("dev", "manual sect: %s, hf sect: %s", section, hf_sect)
+        end
+    end
+    if not manual_sect then
+        dbg("dev", "manual sect not found for: %s", hf_sect)   
+        placing_blueprints[id] = nil
+        return true
+    end
+    dbg("dev", "hiding obj bones")
+    local wrapper = bind_hf_base.get_wrapper(obj_id)
+    obj = wrapper and wrapper.object or obj
+    show_bones(obj, false)
+
+    dbg("dev", "setting attach args")
+    -- attachment
+    -- local hf_sect = ini_blueprints:r_string_ex(manual_sect, "placeable_section")
+    local blueprint_info = {}
+    local att_name = strformat("blueprint_%s_%s", hf_sect, id)
+
+    blueprint_info.manual_sect = manual_sect
+    blueprint_info.hf_sect = hf_sect
+    blueprint_info.parts = {}
+    local binder_func_str = ini_blueprints:r_string_ex(manual_sect, "binder_func")
+    local binder_func_tbl = str_explode(binder_func_str, "%.")
+    blueprint_info.binder_func = {file=binder_func_tbl[1], functor=binder_func_tbl[2]}
+    blueprint_info.hf_loc = {
+        pos = obj:position(),
+        lvl_id = obj:level_vertex_id(),
+        g_id = obj:game_vertex_id(),        
+    }
+
+    blueprint_info.att_name = att_name
+    blueprint_info.att_visual = ini_blueprints:r_string_ex(manual_sect, "blueprint_visual")
+    blueprint_info.att_highlight_radius = ini_blueprints:r_float_ex(manual_sect, "highlight_radius")
+    blueprint_info.att_parent_bone = ini_blueprints:r_string_ex(manual_sect, "parent_bone")
+    blueprint_info.att_exclude_bones = parse_list(ini_blueprints, manual_sect, "exclude_bones")
+    blueprint_info.att_bone_to_submesh = get_ltx_pairs(ini_blueprints, manual_sect, "bone_to_submesh", tonumber)
+    blueprint_info.att_blueprint_shader = "models_xdistortinv"
+    blueprint_info.att_highlight_shader = "models_pautina"
+    blueprint_info.att_placed_submeshes = {}
+    dbg("dev", "init att args")
+    blueprint_info.att = obj:add_attachment(blueprint_info.att_name, blueprint_info.att_visual)
+    blueprint_info.att:set_parent_bone(blueprint_info.att_parent_bone)
+    blueprint_info.att:set_type(script_attachment_type.World)
+    blueprint_info.att:set_shader(-1, blueprint_info.att_blueprint_shader)
+    placed_blueprints[id] = blueprint_info
+    dbg("dev", "blueprint_info for %s: \n%s", id, blueprint_info)
+    placing_blueprints[id] = nil
+    return true
+end
+
+actor_on_update = throttle(
+    function()
+        if is_empty(placed_blueprints) or not level.present() then return end
+        for id, info in pairs(placed_blueprints) do
+            local obj = get_unknown_object({id=id}, "game")
+            if obj and obj:section() == info.hf_sect then
+                local obj_pos = obj:position()
+                local obj_on_screen = is_on_screen(obj_pos)
+                if obj_on_screen then
+                    if not info.att then
+                        reinit_attachment(id, info)
+                    end
+                    -- dbg("dev", "is %s on screen?: %s", id, obj_on_screen)
+                    local targ_pos = level.get_target_pos() -- within highlight radius
+                    local actor_pos = db.actor:position()
+                    local highlight_radius = info.att_highlight_radius
+                    -- dbg("dev", "actor looking at: %s, standing at: %s", targ_pos, actor_pos)
+                    if within_range(actor_pos, obj_pos, highlight_radius) then --within_range(obj_pos, targ_pos, highlight_radius)
+                        local target_bone = get_target_bone(targ_pos, info)
+                        local submesh_id = get_submesh_id(target_bone, info)
+                        if
+                            submesh_id
+                            and (
+                                is_empty(info.att_placed_submeshes)
+                                or not contains(info.att_placed_submeshes, submesh_id)
+                            )
+                        then
+                            if 
+                                submesh_id
+                                and not contains(info, "highlighted_submesh_id", true)
+                            then
+                                -- dbg("dev", "target bone: %s, submesh id: %s", target_bone, submesh_id)
+                                dbg("dev", "highlighting %s with: %s", submesh_id, info.att_highlight_shader)
+                                info.att:set_shader(submesh_id, info.att_highlight_shader)
+                                info.highlighted_submesh_id = submesh_id
+                                info.current_shader = info.att_highlight_shader
+                            elseif 
+                                submesh_id 
+                                and contains(info, "highlighted_submesh_id", true) 
+                                and submesh_id ~= info.highlighted_submesh_id 
+                            then
+                                dbg("dev", "unhighlighting %s with: %s", info.highlighted_submesh_id, info.att_blueprint_shader)
+                                info.att:set_shader(info.highlighted_submesh_id, info.att_blueprint_shader)
+                                info.highlighted_submesh_id = nil
+                                info.current_shader = info.att_blueprint_shader
+                            end
+                        elseif 
+                            is_not_empty(info.att_placed_submeshes)
+                            and size_table(info.att_placed_submeshes) == size_table(info.att_bone_to_submesh)
+                        then
+                            dbg("all parts placed")
+                            -- for id, name in pairs(obj:list_bones()) do
+                                -- obj:set_bone_visible(id, true, true)
+                            -- end
+                            -- obj:remove_attachment(info.att_name)
+                            remove_attachment(obj:id())
+                           
+                            if 
+                                _G[info["binder_func"].file] 
+                                and _G[info["binder_func"].file][info["binder_func"].functor] 
+                            then
+                                dbg("dev", "binding object")
+                                placed_blueprints[id] = nil
+                                _G[info["binder_func"].file][info["binder_func"].functor](obj)
+                                local data = hf_obj_manager.get_data(id)
+                                if data and contains(data, "parts", true) then
+                                    for part_name, part_info in pairs(info["parts"]) do
+                                        if data[part_name].condition ~= part_info.condition then
+                                            data[part_name].condition = part_info.condition
+                                        end
+                                    end
+                                    hf_obj_manager.update_data(id, data)
+                                end
+                            end
+                        end
+                    else
+                        if info.current_shader ~= info.att_blueprint_shader then
+                            dbg("dev", "outside of highlight radius")
+                            for name, id in pairs(info.att_bone_to_submesh) do
+                                if not contains(info.att_placed_submeshes, id) then
+                                    dbg("dev", "setting %s to %s", id, info.att_blueprint_shader)
+                                    info.att:set_shader(id, info.att_blueprint_shader)
+                                end
+                            end
+                            info.current_shader = info.att_blueprint_shader
+                        end
+                    end
+                end
+            end
+        end
+    end, 200)
+
+function is_on_screen(obj_pos)
+    local on_screen = false
+    local screen_pos = get_screen_pos(obj_pos)
+    if screen_pos_valid(screen_pos) then
+        on_screen = true
+    end
+    return on_screen
+end
+
+function get_screen_pos(pos)
+    return game.world2ui(pos, false, true)
+end
+
+function screen_pos_valid(vec)
+	return (vec.x ~= -9999) and (vec.y ~= 0) and (vec.x <= 1024) and (vec.y <= 768)
+end
+
+function within_range(pos_a, pos_b, radius)
+    return pos_a:distance_to(pos_b) <= radius
+end
+
+function get_target_bone(target_pos, info)
+    target_pos = target_pos or level.get_target_pos()
+    local screen_pos = get_screen_pos(target_pos)
+    target_pos = vector():set(screen_pos.x, screen_pos.y, 0)
+    local target_bone
+    local closest_dist
+    -- dbg("dev", "getting target bone: at %s", target_pos)
+    local att = info.att
+    if att then
+        for id, name in pairs(att:list_bones()) do
+            local bone_screen_pos = get_screen_pos(att:bone_position(name))
+            local bone_pos = vector():set(bone_screen_pos.x, bone_screen_pos.y, 0)
+            local dist = target_pos:distance_to(bone_pos)
+            if not contains(info["att_exclude_bones"], name) and (not target_bone or closest_dist > dist) then
+                target_bone = name
+                closest_dist = dist
+                -- dbg("dev", "found %s: dist:%s, pos:%s", target_bone, closest_dist, bone_pos)
+            end
+        end
+    end
+    return target_bone
+end
+
+function get_submesh_id(target_bone, info)
+    -- dbg("dev", "getting submesh id: for %s", target_bone)
+    return contains(info.att_bone_to_submesh, target_bone, true) and info.att_bone_to_submesh[target_bone] or false
+end
+
+function get_ltx_pairs(ini, sect, key, convert_func)
+    local tmp = {}
+    local tbl = parse_list(ini, sect, key)
+    for i=1, #tbl, 2 do
+        local k = tbl[i]
+        local v = convert_func and convert_func(tbl[i + 1]) or tbl[i + 1]
+        tmp[k] = v
+    end
+    return tmp
+end
+
+function highest_val(tbl, by_key)
+    local highest_val
+    for k, v in pairs(tbl) do
+        if by_key then
+            if not highest_val or k > highest_val then
+                highest_val = k
+            end
+        else
+            if not highest_val or v > highest_val then
+                highest_val = v
+            end
+        end
+    end
+    return highest_val
+end
+
+-- ===========================================
+
+function group_duplicates(tbl)
+	local tmp = {}
+	for k, v in pairs(tbl) do
+        tmp[v] = tmp[v] or {}
+        tmp[v][#tmp[v] + 1] = k
+    end
+    return tmp
+end
+
+function get_closest_blueprint(pos)
+    if is_empty(placed_blueprints) then return end
+    pos = not pos and db.actor:position() or pos
+    local closest_blueprint_id
+    local closest_dist
+    for id, info in pairs(placed_blueprints) do
+        local obj = get_unknown_object({id=id}, "game")
+        if obj then
+            local dist = pos:distance_to(obj:position())
+            if not closest_blueprint_id or closest_dist < dist then
+                closest_blueprint_id = id
+                closest_dist = dist
+            end
+        end
+    end
+    return closest_blueprint_id
+end
+
+function place_part_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    return ini_sys:r_bool_ex(sect, "blueprint_part", false)
+end
+
+function place_blueprint_menu()
+    return gts("st_hfg_place_blueprint")
+end
+
+function place_part_menu()
+    return gts("st_hfg_place_part")
+end
+
+function place_part_func(item)
+    local sect = item:section()
+    dbg("dev", "attempting to place: %s", sect)
+    local id = get_closest_blueprint()
+    if not id then return end
+    local info = placed_blueprints[id]
+    if not info then return end
+    -- dbg("dev", "blueprint_info: %s", info)
+    local submesh_to_bone = group_duplicates(info.att_bone_to_submesh)
+    --dbg("dev", "getting submesh to bone tbl: %s", submesh_to_bone)
+    local submesh_id = info.highlighted_submesh_id
+    dbg("dev", "highlighted submesh id: %s", submesh_id)
+    dbg("dev", "placed submeshes: %s", info.att_placed_submeshes)
+    if 
+        submesh_id 
+        and not info.att_placed_submeshes 
+        or ( 
+            info.att_placed_submeshes
+            and size_table(info.att_placed_submeshes) < size_table(info.att_bone_to_submesh)
+        )
+    then
+        dbg("dev", "looking at blueprint")
+        local bone_names = submesh_to_bone[info.highlighted_submesh_id]
+        local placeable_type = ini_sys:r_string_ex(info.manual_sect, "placeable_type")
+        for _, bone_name in pairs(bone_names) do
+            local part_name = bone_to_part_name(bone_name, placeable_type)
+            dbg("dev", "is %s equal to %s, bone name: %s", sect, part_name, bone_name)
+            if part_name and sect == part_name then
+                hide_hud_inventory()
+                dbg("dev", "adding %s to exclude bones", bone_name)
+                info.att_exclude_bones[#info.att_exclude_bones + 1] = bone_name
+                info.att_placed_submeshes = info.att_placed_submeshes or {}
+                dbg("dev", "adding %s to placed submeshes", submesh_id)
+                info.att_placed_submeshes[#info.att_placed_submeshes + 1] = submesh_id
+                dbg("dev", "resetting %s", submesh_id)
+                info.highlighted_submesh_id = nil
+                info.att:reset_shader(submesh_id)
+                
+                local obj = info.att:get_parent().object
+                local obj_id = obj:id()
+                info.parts = info.parts or {}
+                info["parts"][part_name] = info["parts"][part_name] or {}
+                info["parts"][part_name].condition = item:condition() or 1
+
+                alife_release(alife_object(item:id()))
+            end
+        end
+        placed_blueprints[id] = info
+    end
+end
+
+add_functor("hfg_place_part", place_part_cond, place_part_menu, nil, place_part_func)
+
+function pickup_blueprint_menu(obj)
+    return gts("st_hfg_pickup_blueprint")
+end
+
+function pickup_blueprint_func(obj)
+    local id = get_closest_blueprint()
+    if not id then return end
+    if remove_attachment(id) then
+        alife_release(alife_object(obj:id()))
+        local info = placed_blueprints[id]
+        alife_create_item(info.manual_sect, db.actor)
+        placed_blueprints[id] = nil
+    end
+end
+
+function place_all_parts(item_section)
+    local found_parts = {}
+    local item_parts = hfg_utils.get_parts_tbl(item_section)
+    if is_empty(item_parts) then 
+        dbg("dev", "couldnt get parts for %s", item_section)
+        return
+    end
+    dbg("dev", "item parts for %s: \n%s", item_section, item_parts)
+    itr_inv(db.actor, function(_, obj)
+        local sect = obj:section()
+        if IsItem("part", sect) and contains(item_parts, sect) then
+            found_parts[#found_parts + 1] = obj
+            dbg("dev", "found part: %s", sect)
+        end
+    end)
+    if is_empty(found_parts) then 
+        dbg("dev", "couldnt find parts in player inventory")
+        return
+    end
+    dbg("dev", "found parts in inv, placing all")
+    for _, obj in pairs(found_parts) do
+        place_part_func(obj)
+    end
+end
+-- hfg_blueprint.place_all_parts("disel_generator_item")
+
+
+
+-- =================================
+base_action_custom = ui_inventory.UIInventory.Action_Custom
+function ui_inventory.UIInventory.Action_Custom(self, obj, bag, temp, i)
+   	local g_obj = self:CheckItem(obj,"Action_Custom " .. i)
+
+    local sect = g_obj:section()
+    local functor_str = ini_sys:r_string_ex(sect, "use".. i .. "_action_functor")
+    if functor_str then
+        local functor_tbl = str_explode(functor_str, "%.")
+        local functor_file = functor_tbl[1]
+        local functor_name = functor_tbl[2]
+        
+        use_functor_args = {
+            item_sect = sect,
+            name = functor_name,
+        }
+        dbg("dev", "custom_use_functor clicked: sect: %s, functor name: %s", sect, functor_name)
+    end
+    base_action_custom(self, obj, bag, temp, i)
+end
+
+function reinit_attachment(id, info)
+    if contains(placed_blueprints, id, true) then 
+        dbg("dev", "%s already in placed blueprints", id)
+        return 
+    end
+    CreateTimeEvent("hfg_blueprint"..id, "reinit_att"..id, 0.2, function()
+        -- local info = placed_blueprints[id]
+        local obj = get_unknown_object({id=id}, "game")
+        dbg("dev", "attempting reinit %s", id)
+        if obj and not obj:get_attachment(info.att_name) then
+            dbg("dev", "reinit attachment")
+            info.att = obj:add_attachment(info.att_name, info.att_visual)
+            info.att:set_parent_bone(info.att_parent_bone)
+            info.att:set_type(script_attachment_type.World)
+            info.att:set_shader(-1, info.att_blueprint_shader)
+            info.att_name = strformat("blueprint_%s_%s", info.hf_sect, id)
+            info.hf_loc = {
+                pos = obj:position(),
+                lvl_id = obj:level_vertex_id(),
+                g_id = obj:game_vertex_id(),        
+            }
+            show_bones(obj, false)
+            removed_attachments[id] = nil
+            placed_blueprints[id] = info
+            return true
+        end
+        return false
+    end)
+end
+
+function remove_attachment(id)
+    if not contains(placed_blueprints, id, true) then return end
+    local info = placed_blueprints[id]
+    local obj = get_unknown_object({id=id}, "game")
+    if obj then
+        dbg("dev", "removing %s with %s", info.att_name, id)
+        obj:remove_attachment(info.att_name)
+        info.att = nil
+        info.att_name = nil
+        show_bones(obj, true)
+        placed_blueprints[id] = info
+        return true
+    end
+    return false
+end
+
+function show_bones(obj, show)
+    for id, name in pairs(obj:list_bones()) do
+        obj:set_bone_visible(id, show, true)
+    end
+end
+
+function on_save(mdata)
+    dbg("dev", "on save")
+    for id, info in pairs(placed_blueprints) do
+        dbg("dev", "info for %s: %s", id, info)
+        if remove_attachment(id) then
+            local se_obj = alife_create(info.hf_sect,
+                info["hf_loc"].pos, info["hf_loc"].lvl_id, info["hf_loc"].g_id)
+            removed_attachments[se_obj.id] = info
+            placed_blueprints[id] = nil
+            alife_release(alife_object(id))
+        end
+    end
+    mdata.removed_attachments = removed_attachments
+    mdata.placed_blueprints = placed_blueprints
+end
+
+function on_load(mdata)
+    dbg("dev", "on load")
+    placed_blueprints = mdata.placed_blueprints or {}
+    removed_attachments = mdata.removed_attachments or {}
+end
+
+function on_game_load()
+    dbg("dev", "on game load")
+    for id, info in pairs(removed_attachments) do
+        local att_lvl_name = alife():level_name(game_graph():vertex(info["hf_loc"].g_id):level_id())
+        local actor_lvl_name = alife():level_name(game_graph():vertex(db.actor:game_vertex_id()):level_id())
+        dbg("dev", "lvl name for: att %s, actor: %s", att_lvl_name, actor_lvl_name)
+        if actor_lvl_name == att_lvl_name then
+            reinit_attachment(id, info)
+        end
+    end
+end
+
+function on_game_start()
+    RegisterScriptCallback("hf_on_furniture_place", on_hf_place)
+    RegisterScriptCallback("actor_on_update", actor_on_update)
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
+    RegisterScriptCallback("on_game_load", on_game_load)
+end
+
+--[[
+blueprint_shaders = {
+    transparent_gloss = "models_xdistort",
+    transparent_solid = "models_xdistortinv"
+    translucent_glass = "models_pautina",
+    transparent_color_light = "models_xdistortcolorl",
+    transparent_color = "models_xdistortcolor",
+  -- Tables
+bone_to_submesh = {
+    ["frame-a"] = 1,
+    ["frame-b"] = 1,
+    ["l_rotor"] = 2,
+    ["r_rotor"] = 3,    
+    ["top_belt"] = 4,
+    ["but_belt"] = 4,
+    ["fan"] = 5,
+    ["pipes"] = 6,
+    ["engine"] = 7,
+    ["turbine"] = 8,
+    ["wires"] = 9,
+    ["battery"] = 10,
+    ["exhaust"] = 11,
+    ["tank"] = 12,
+}  
+
+}
+]]
