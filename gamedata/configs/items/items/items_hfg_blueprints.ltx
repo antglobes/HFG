@@ -1,0 +1,64 @@
+[hfg_blueprint_base]
+use1_functor         				     = hfg_blueprint.place_blueprint_menu
+use1_action_functor  					 = placeable_furniture.func_place_item
+blueprint                                = true
+highlight_radius                         = 3
+
+[hfg_empty_blueprint]:tch_letter
+icons_texture = ui\ui_hfg_icons
+inv_grid_width = 1
+inv_grid_height = 1
+inv_grid_x                               = 12
+inv_grid_y                               = 5
+cost                                     = 600
+visual                                   = dynamics\equipments\trade\book1.ogf
+description                              = st_hfg_empty_blueprint_descr
+inv_name                                 = st_hfg_empty_blueprint
+inv_name_short                           = st_hfg_empty_blueprint
+recipe									 = true
+use1_functor                             = hfg_blueprint.pickup_blueprint_menu
+use1_action_functor                      = hfg_blueprint.pickup_blueprint_func
+
+; Manual
+[hfg_diesel_generator_manual]:tch_letter, hfg_blueprint_base
+icons_texture = ui\ui_hfg_icons
+inv_grid_width = 1
+inv_grid_height = 1
+inv_grid_x                               = 4
+inv_grid_y                               = 3
+cost                                     = 2000
+visual                                   = dynamics\equipments\trade\book1.ogf
+description                              = st_hfg_manual_descr
+inv_name                                 = st_hfg_manual
+inv_name_short                           = st_hfg_manual
+recipe									 = true
+; HFG Blueprint Fields
+parent_bone                              = body
+blueprint_visual                         = dynamics\disel_generator_blueprint.ogf
+exclude_bones                            = link, body
+placeable_type                           = generator
+placeable_section                        = placeable_disel_generator
+bone_to_submesh                          = frame-a,1 ,frame-b,1 ,l_rotor,2 ,r_rotor,3, top_belt,4 ,but_belt,4 ,fan,5 ,pipes,6 ,engine,7 ,turbine,8 ,wires,9 ,battery,10 ,exhaust,11 ,tank,12
+binder_func                              = bind_disel_generator.init
+
+; Manual
+[hfg_solar_panel_manual]:tch_letter, hfg_blueprint_base
+icons_texture = ui\ui_hfg_icons
+inv_grid_width = 1
+inv_grid_height = 1
+inv_grid_x                               = 14
+inv_grid_y                               = 6
+cost                                     = 4000
+visual                                   = dynamics\equipments\trade\book1.ogf
+description                              = st_hfg_sp_manual_descr
+inv_name                                 = st_hfg_sp_manual
+inv_name_short                           = st_hfg_sp_manual
+recipe									 = true
+; HFG Blueprint Fields
+parent_bone                              = link
+blueprint_visual                         = dynamics\hfg_solar_panel.ogf
+exclude_bones                            = link, angle_bone
+placeable_type                           = solar_panel
+placeable_section                        = placeable_solar_panel
+bone_to_submesh                          = bottom_frame,1 ,bottom_panel,2 ,left_leg,3 ,middle_leg,4 ,right_leg,5 ,top_frame,6 ,top_panel,7
+binder_func                              = bind_solar_panel.init
