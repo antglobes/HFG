@@ -402,8 +402,12 @@ function pickup_blueprint_func(obj)
     local id = get_closest_blueprint()
     if not id then return end
     if remove_attachment(id) then
+        -- Remove Empty Blueprint Item
         alife_release(alife_object(obj:id()))
+        -- Remove Object that Blueprint was attached to
+        alife_release(alife_object(id))
         local info = placed_blueprints[id]
+        -- Create Manual of the removed blueprint
         alife_create_item(info.manual_sect, db.actor)
         placed_blueprints[id] = nil
     end
