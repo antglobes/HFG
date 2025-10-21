@@ -207,8 +207,8 @@ function add_fuel_cond(obj)
     if gen and gen:section() == "placeable_disel_generator" then
 
         if distance_between(db.actor, gen) > 2 then
-            actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
             hide_hud_inventory()
+            actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
             return false
         end
 
@@ -280,6 +280,50 @@ function add_fuel(jerrycan, genny_id)
     hf_obj_manager.update_data(genny_id, {stored_fuel=(fuel_to_add + stored_fuel), fuel_transfer=transfer_occured})
 end
 
+function take_fuel_menu()
+    return gts("st_take_fuel")
+end
+
+function take_fuel_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    
+    if not is_generator_item(sect) and not is_fuel_source(sect) then
+        return false
+    end
+
+    local gen = level.get_target_obj()
+    if gen and gen:section() == "placeable_disel_generator" then
+
+        if distance_between(db.actor, gen) > 2 then
+            hide_hud_inventory()
+            actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
+            return false
+        end
+
+        local uses = hf_obj_manager.get_data(obj:id()).uses
+        local power_state = hf_obj_manager.get_data(gen:id()).power_state
+        return not uses or (uses and uses == 0) and power_state ~= "broken"
+    end
+    return false
+end
+
+function take_fuel_func(obj)
+    local found_gen = level.get_target_obj()
+    if not found_gen then
+        dbg("dev", "generator not found")
+        return
+    end
+    if (found_gen and found_gen:section() ~= "placeable_disel_generator") then
+        dbg("dev", "power source is not disel generator: %s", found_gen:section())
+        return 
+    end
+
+    if take_fuel_cond(obj) then
+        take_fuel(obj, found_gen:id())
+    end
+end
 
 function take_fuel(jerrycan, genny_id)
     local data = hf_obj_manager.get_data(jerrycan:id())
