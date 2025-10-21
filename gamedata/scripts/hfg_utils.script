@@ -58,6 +58,7 @@ part_damage_multi = {
         turbine = 1,
         engine = 1,
         pipes = 2,
+        fan = 2,
         l_rotor = 2,
         r_rotor = 2,
         battery = 2,
