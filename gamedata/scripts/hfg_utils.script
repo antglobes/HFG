@@ -52,7 +52,21 @@ GENERATOR_BONE_NAMES = {
     "battery", "wires", "turbine", "engine",
     "pipes", "fan", "frame-a", "frame-b"
 }
-
+part_damage_multi = {
+    generator = {
+        frame = 1,
+        turbine = 1,
+        engine = 1,
+        pipes = 2,
+        l_rotor = 2,
+        r_rotor = 2,
+        battery = 2,
+        band = 3,
+        exhaust = 3,
+        tank = 5,
+        wires = 5,
+    }
+}
 
 -- Group Bones for actor/npc
 bone_groups = {
@@ -191,6 +205,14 @@ function is_light(sect)
     return ini_sys:r_string_ex(sect, "placeable_type") == "light"
 end
 
+function is_power_unit(sect)
+    return is_powerable_device(sect) or is_power_source(sect)
+end
+
+function is_power_source(sect)
+    return contains(PLACEABLE_POWER, sect)
+end
+
 function is_powerable_device(sect)
     local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
     return contains(FUEL_SECTIONS, fuel_sect)
@@ -280,32 +302,52 @@ function update_power_source_cond(gen, cond, power_state, hit_damage)
 end
 
 function on_gen_impact(bullet)
+    dbg("dev", "on gen impact")
     local bullet_pos = bullet.position
     local sect = bullet.section
     local wpn_id = bullet.weapon_id
     local p_id = bullet.parent_id
     local t_id = bullet.target_id
-
+    local bullet_info = {
+        pos=bullet_pos,
+        sect=sect,
+        wpn_id=wpn_id,
+        parent_id=p_id,
+        target_id=t_id,
+    }
     local npc = get_unknown_object({id=p_id}, "game")
     local wpn = get_unknown_object({id=wpn_id}, "game")
     local target = get_unknown_object({id=t_id}, "game")
 
-    if not (npc and wpn and target) then return end
-    if not contains(PLACEABLE_POWER, target:section()) then return end
+    if not (npc and wpn and target) then
+        local found_npc = npc and true or false
+        local found_wpn = wpn and true or false
+        local found_target = target and true or false
+        dbg("dev", "At least one game object not found. npc?:%s, wpn?:%s, target?:%s", found_npc, found_wpn, found_target)
+        return
+    end
+    if not contains(PLACEABLE_POWER, target:section()) then
+        dbg("dev", "target is not a power source")
+        return 
+    end
     local data = hf_obj_manager.get_data(target:id())
-    if contains(data, "anim_in_progress", true) and data["anim_in_progress"] then return end
-    if not contains(data, "parts", true) then return end
-
+    if contains(data, "anim_in_progress", true) and data["anim_in_progress"] then
+        dbg("dev", "Cannot process as animation in progress")
+        return
+    end
+    if not contains(data, "parts", true) then
+        dbg("dev", "no parts found")    
+        return
+    end
+-- Get Closest Bone to Bullet Impact Pos that isnt at lowest condition possible
     local parts = data["parts"]
-    -- Get Closest Bone to Bullet Impact Pos that isnt at lowest condition possible
-    -- Apply 
     local closest_bone
     local closest_part
     local closest_bones = bones_by_distance(target, bullet_pos)
     for idx, bone_info in pairs(closest_bones) do
         for part_name, part_info in pairs(parts) do
             if 
-                bone_to_part_name(bone_info.bone_name, "gen") == part_name 
+                bone_to_part_name(bone_info.bone_name, data["placeable_type"]) == part_name 
                 and part_info.condition > BROKEN_COND
             then
                 closest_bone = closest_bones[idx].bone_name
@@ -329,7 +371,7 @@ function on_gen_impact(bullet)
                 dbg("info", "part found")
                 dbg("dev", "part name: %s, part cond: %s", part_name, part_cond)
                 local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1]
-                local new_part_cond = part_cond - hit_damage
+                local new_part_cond = part_cond - (hit_damage * part_info.dam_multi)
                 dbg("dev", "new part cond: %s, hit damage: %s", new_part_cond, hit_damage)
                 parts[part_name].condition = clamp(new_part_cond, 0, 1)
             end
