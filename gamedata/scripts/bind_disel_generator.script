@@ -605,14 +605,20 @@ function placeable_disel_generator_wrapper:Explode()
     aoe_args.explosion_damage = aoe_args.damage + (aoe_args.damage / 4)
     aoe_args.damage_period = (aoe_args.lifetime / 2) * 1000
 
-    local found_generators = find_obj(self.object:section(), self.object:position(), 10)
-    for _, obj in pairs(found_generators) do
-        local data = hf_obj_manager.get_data(obj:id())
-        if data.condition > BROKEN_COND then
-            update_power_source_cond(obj, data.condition, data.power_state, aoe_args.damage)
+    local found_generators = find_obj(self.section, aoe_args.position, 10)
+    aoe_args.radius = 3
+    if is_not_empty(found_generators) then
+        local nearest_gen = get_nearest(found_generators, aoe_args.position)
+        aoe_args.radius = clamp(nearest_gen:position():distance_to(aoe_args.position), 3, 10)
+        for _, obj in pairs(found_generators) do
+            local data = hf_obj_manager.get_data(obj:id())
+            if data.condition > BROKEN_COND then
+                update_power_source_cond(obj, data.condition, data.power_state, aoe_args.damage)
+            end
         end
     end
 
+    self.stored_fuel = self.stored_fuel - (self.stored_fuel * round_idp(math.random(0.8, 1), 2))
     AOE(aoe_args)
     dbg("dev", "aoe_args: %s", aoe_args)
 end
