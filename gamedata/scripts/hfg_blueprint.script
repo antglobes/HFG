@@ -126,6 +126,7 @@ function place_blueprint(obj_id)
     placed_blueprints[id] = blueprint_info
     dbg("dev", "blueprint_info for %s: \n%s", id, blueprint_info)
     placing_blueprints[id] = nil
+    alife_create_item("hfg_empty_blueprint", db.actor)
     return true
 end
 
