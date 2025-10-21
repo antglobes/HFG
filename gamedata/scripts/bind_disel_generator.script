@@ -45,9 +45,7 @@ BROKEN_COND = 0.1
 MAX_FUEL = 60
 MAX_POWER_OUTPUT = 5000
 
--- Variables
-GUI = nil
-placed_generators = {}
+-- Locals
 local dbg_pr = nil
 
 -- DEBUGGING
@@ -574,6 +572,7 @@ function placeable_disel_generator_wrapper:InitParts()
             parts[part_name].bone_name = bone_name
             parts[part_name].bone_id = bone_id
             parts[part_name].components = get_parts_tbl(part_name)
+            parts[part_name].dam_multi = hfg_utils.part_damage_multi[self.placeable_type] + round_idp(math.random(0.01, 0.5), 2)
             -- dbg("dev", "adding %s to parts", part_name)
         end
     end
