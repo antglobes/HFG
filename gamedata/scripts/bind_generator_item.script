@@ -401,7 +401,7 @@ function bind_item.func_separate(obj)
     local id = obj:id()
     local sect = obj:section()
     local data = hf_obj_manager.get_data(id)
-    if not hfg_obj_persistance.in_cache(id, data["item_section"]) then
+    if not data or not hfg_obj_persistance.in_cache(id, data["item_section"]) then
         dbg("dev", "base separate: %s", id)
         base_separate(obj)
         return
@@ -609,7 +609,7 @@ end
 
 function on_option_change(options)
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
-    SEARCH_RADIUS = options["search_radius"]
+    SEARCH_RADIUS = options["power_source_search_radius"]
     MAX_FUEL = options["max_fuel"]
     dbg("debug", "Received options")
 end
