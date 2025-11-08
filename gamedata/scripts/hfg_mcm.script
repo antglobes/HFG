@@ -4,17 +4,28 @@ AddScriptCallback("hfg_on_option_change")
 defaults = {
     max_fuel = 60,
     max_power_output = 5000,
-    generator_search_radius = 50,
-    generator_broken_cond = 0.1,
+    power_source_search_radius = 50,
+    power_source_broken_cond = 0.1,
     siphon_activation_range = 3,
     enable_debug = false,
     debug_level = 1,
+    colour_blind_type = 1,
+    blueprint_toggle_hud = DIK_keys.DIK_U,
+    blueprint_toggle_preview = DIK_keys.DIK_P,
+    blueprint_toggle_preview_anim_style = "Bounce",
+    blueprint_toggle_preview_anim_duration = 3,
+    blueprint_scroll_up = DIK_keys.DIK_NUMPAD9,
+    blueprint_scroll_down = DIK_keys.DIK_NUMPAD6,
+    blueprint_scroll_step = 20,
+    blueprint_hud_modifier = 1,
+    blueprint_hud_mode = 0,
+    blueprint_key_trigger_time = 0.1,
 }
 LOG_HEADER = "[HFG|MCM]"
 
-hfg_version = "0.4.7"
+hfg_version = "0.13.0"
 hfg_authors = "antglobes"
-hfg_last_update = "05-08-25"
+hfg_last_update = "08-11-25"
 setup_init = false
 
 local dbg_pr = nil
@@ -47,14 +58,67 @@ function debugging_enabled()
 	return get_config("enable_debug")
 end
 
+function has_mcm_keybinds()
+    return ui_mcm and ui_mcm.key_hold
+end
+
 function on_mcm_load()
     return { id="hfg", sh=true, gr={
-        {id="title", type="slide", link="ui_options_slider_player", text="", size={512, 50}, spacing=20},
+        {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title", size={512, 50}, spacing=20},
         {id="max_fuel", type="track", val=2, min=0, max=100, step=1, def=60},
         {id="max_power_output", type="track", val=2, min=0, max=100000, step=100, def=5000}, --1
-        {id="generator_search_radius", type="track", val=2, min=0, max=100, step=1, def=50},
-        {id="generator_broken_cond", type="track", val=2, min=0, max=1, step=0.1, def=0.1},
+        {id="power_source_search_radius", type="track", val=2, min=0, max=100, step=1, def=50},
+        {id="power_source_broken_cond", type="track", val=2, min=0, max=1, step=0.1, def=0.1},
         {id="siphon_activation_range", type="track", val=2, min=0.5, max=5, step=0.1, def=3},
+        {id="colour_blind_type", type="list", val=2, def=1,
+            content={
+                {1, "normal"},
+                {2, "achromatopsia"},
+                {3, "achromatomaly"},
+                {4, "deuteranopia"},
+                {5, "deuteranomaly"},
+                {6, "protanopia"},
+                {7, "protanomaly"},
+                {8, "tritanopia"},
+                {9, "tritanomaly"},
+            }
+        },
+        {id="title_blueprint"},
+        {id="blueprint_toggle_hud", type="key_bind", val=2, def=DIK_keys.DIK_U, precondition={has_mcm_keybinds}},
+        {id="blueprint_toggle_preview", type="key_bind", val=2, def=DIK_keys.DIK_P, precondition={has_mcm_keybinds}},
+        {id="blueprint_toggle_preview_anim_style", type="list", val=0, def="Bounce", precondition={has_mcm_keybinds}, 
+            content={
+                {"Quadratic", "Quadratic"},
+                {"Cubic", "Cubic"},
+                {"Quartic", "Quartic"},
+                {"Quintic", "Quintic"},
+                {"Sine", "Sine"},
+                {"Circular", "Circular"},
+                {"Exponential", "Exponential"},
+                {"Elastic", "Elastic"},
+                {"Back", "Back"},
+                {"Bounce", "Bounce"},
+            }
+        },
+        {id="blueprint_toggle_preview_anim_duration", type="track", val=2, def=3.0, min=0.1, max=60.0, step=0.1, precondition={has_mcm_keybinds}},
+        {id="blueprint_scroll_up", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD9, precondition={has_mcm_keybinds}},
+        {id="blueprint_scroll_down", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD6, precondition={has_mcm_keybinds}},
+        {id="blueprint_scroll_step", type="track", val=2, def=20, min=1, max=100, step=1, precondition={has_mcm_keybinds}},
+        {id="blueprint_hud_modifier", type=ui_mcm.kb_mod_list, val=2, def=1, hint="mcm_kb_modifier", precondition={has_mcm_keybinds},
+            content={
+                {0,"mcm_kb_mod_none"},
+                {1,"mcm_kb_mod_shift"},
+                {3,"mcm_kb_mod_alt"}
+            }
+        },
+        {id = "blueprint_hud_mode", type=ui_mcm.kb_mod_radio, val=2, def=0, hint="mcm_kb_mode", precondition={has_mcm_keybinds}, 
+            content={
+                {0,"mcm_kb_mode_press"},
+                {1,"mcm_kb_mode_dtap"},
+                {2,"mcm_kb_mode_hold"}
+            }
+        },
+        {id="blueprint_key_trigger_time", type="track", val=2, def=0.1, min=0.1, max=10.0, step=0.1, precondition={has_mcm_keybinds}},
         {id="enable_debug", type="check", val=1, def=false},
         {id="debug_level", type="list", val=2, def=1, precondition={debugging_enabled},
 				content={
@@ -71,17 +135,12 @@ function on_mcm_load()
 end
 
 
-
 function on_option_change()
-    local options = {
-        search_radius = get_config("generator_search_radius"),
-        broken_cond = get_config("generator_broken_cond"),
-        max_fuel = get_config("max_fuel"),
-        max_power_output = get_config("max_power_output"),
-        enable_debug = get_config("enable_debug"),
-        debug_level = get_config("debug_level"),
-        siphon_range = get_config("siphon_activation_range")
-    }
+    local options = {}
+    for k, _ in pairs(defaults) do
+        options[k] = get_config(k)
+    end
+
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
     dbg("debug", "Loading Options: \n%s", options)
     SendScriptCallback("hfg_on_option_change", options)
