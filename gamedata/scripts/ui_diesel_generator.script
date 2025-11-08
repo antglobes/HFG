@@ -889,10 +889,10 @@ end
 function on_option_change(options)
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
     dbg("debug", "Received options")
-    SEARCH_RADIUS = options["search_radius"]
+    SEARCH_RADIUS = options["power_source_search_radius"]
     MAX_FUEL = options["max_fuel"]
     MAX_POWER_OUTPUT = options["max_power_output"]
-    BROKEN_COND = options["broken_cond"]
+    BROKEN_COND = options["power_source_broken_cond"]
 end
 
 function cache_mouse(x, y, disabled, flags)

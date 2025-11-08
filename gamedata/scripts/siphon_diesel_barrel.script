@@ -617,7 +617,7 @@ end
 
 function on_option_change(options)
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
-    SIPHON_RANGE = options["siphon_range"]
+    SIPHON_RANGE = options["siphon_activation_range"]
     MAX_FUEL = options["max_fuel"]
     dbg("debug", "Received options")
 end
