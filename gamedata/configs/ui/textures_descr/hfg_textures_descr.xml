@@ -47,4 +47,16 @@
         <texture id="ui_hfg_prt_l_rotor"       x="50"   y="300"   width="50"    height="50" />
         <texture id="ui_hfg_prt_r_rotor"       x="100"  y="300"   width="50"    height="50" />
     </file>
+
+    <file name="ui\ui_color_picker">
+        <texture id="ui_clr_picker_clr_block" x="0" y="0" width="138" height="138"/>
+    </file>
+
+    <file name="ui\ui_hfg_blueprint">
+        <texture id="ui_hfg_blueprint_clipboard" x="26" y="4" width="500" height="952" />
+        <texture id="ui_hfg_blueprint_checkbox"  x="553" y="58" width="143" height="137" />
+        <texture id="ui_hfg_blueprint_tick"      x="559" y="202" width="178" height="198" />
+        <texture id="ui_hfg_blueprint_mark"      x="551" y="406" width="148" height="136" />
+        <texture id="ui_hfg_blueprint_key_background" x="562" y="558" width="127" height="129" />
+    </file>
 </w>

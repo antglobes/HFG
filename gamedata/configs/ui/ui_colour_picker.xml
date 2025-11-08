@@ -1,0 +1,120 @@
+<w>
+    <control_panel  x="613" y="10" width="400" height="120">
+        <background x="613" y="10" width="260" height="120"> <!--width=257-->
+            <texture>ui_inGame2_hint_wnd_main_window</texture>
+        </background>
+    </control_panel>
+
+    <!-- Col titles -->
+    <title_unit_rgb x="15" y="5" width="20" height="20" stretch="1" complex_desc="0">
+        <text font="small" complex_mode="1" align="c" vert_align="c">UNIT</text>
+    </title_unit_rgb>
+
+    <title_float_rgb x="45" y="5" width="20" height="20" stretch="1" complex_desc="0">
+        <text font="small" complex_mode="1" align="c" vert_align="c">FLOAT</text>
+    </title_float_rgb>
+
+    <!-- Color values -->
+    <!-- RED -->
+    <title_red x="5" y="30" width="10" height="15" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c">R</text>
+    </title_red>
+
+    <input_red_unit x="15" y="30" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_red_unit>
+
+    <input_red_float x="45" y="30" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_red_float>
+
+    <track_red x="75" y="30" width="107" height="10" stretch="1" step="1"/>
+
+    <!-- GREEN -->
+    <title_green x="5" y="50" width="10" height="15" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c">G</text>
+    </title_green>
+
+    <input_green_unit x="15" y="50" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_green_unit>
+
+    <input_green_float x="45" y="50" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_green_float>
+
+    <track_green x="75" y="50" width="107" height="10" stretch="1" step="1"/>
+
+    <!-- BLUE -->
+    <title_blue x="5" y="70" width="10" height="15" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c">B</text>
+    </title_blue>
+
+    <input_blue_unit x="15" y="70" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_blue_unit>
+
+    <input_blue_float x="45" y="70" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_blue_float>
+
+    <track_blue x="75" y="70" width="107" height="10" stretch="1" step="1"/>
+
+    <!-- ALPHA -->
+    <title_alpha x="5" y="90" width="10" height="15" stretch="1" complex_desc="0">
+        <text font="letterica18" complex_mode="1" align="c" vert_align="c">A</text>
+    </title_alpha>
+
+    <input_alpha_unit x="15" y="90" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_alpha_unit>
+
+    <input_alpha_float x="45" y="90" width="20" height="10">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </input_alpha_float>
+
+    <track_alpha x="75" y="90" width="107" height="10" stretch="1" step="1"/>
+
+    <!-- Bottom Bar -->
+    <!-- Colorblindness -->
+    <clr_blind_title x="5" y="115" width="50" height="15" stretch="1" complex_desc="0">
+        <text font="medium" complex_mode="1" align="c" vert_align="c">Colorblindness</text>
+    </clr_blind_title>
+    
+    <clr_blind_list x="60" y="115" width="50" height="120" stretch="1" list_length="8">
+        <list_font r="170" g="170" b="170" font="medium"/>
+        <text_color>
+            <e r="170" g="170" b="170"/>
+            <d r="70" g="70" b="70"/>
+        </text_color>
+    </clr_blind_list>
+
+    <!-- Hex Representation -->
+    <clr_hex_title x="115" y="115" width="15" height="15" stretch="1" complex_desc="0">
+        <text font="medium" complex_mode="1" align="c" vert_align="c">Hex</text>
+    </clr_hex_title>
+
+    <clr_hex_input x="135" y="115" width="40" height="15" stretch="1">
+        <text x="5" font="medium" vert_align="c" align="l"/>
+        <texture>ui_inGame2_edit_box_2</texture>
+    </clr_hex_input>
+    
+    <pick_btn x="180" y="115" width="65" height="15" check_mode="0" stretch="1">
+        <window_name>button_pick</window_name>
+        <text font="medium">Pick Colour</text>
+        <texture>ui_button_ordinary</texture>
+    </pick_btn>
+
+    <!-- <colour_block x="875" y="10" width="138" height="138" stretch="1"> -->
+    <colour_block x="185" y="30" width="60" height="70" stretch="1">
+        <texture>ui_clr_picker_clr_block</texture>
+    </colour_block>
+</w>
