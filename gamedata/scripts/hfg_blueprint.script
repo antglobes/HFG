@@ -4,32 +4,78 @@ ag_utils.import_metatable(this, ag_game_objects)
 ag_utils.import_metatable(this, ag_npc)
 ag_utils.import_metatable(this, ag_strings)
 ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_colours)
 
 gts = get_translation
 
 -- Script Imports
-throttle = hfg_utils.throttle
 add_functor = custom_functor_autoinject.add_functor
+has_mcm_keybinds = hfg_mcm.has_mcm_keybinds
 
 -- Utils
+throttle = hfg_utils.throttle
 get_parts_tbl = hfg_utils.get_parts_tbl
+get_part_parent = hfg_utils.get_part_parent
 get_config = hfg_utils.get_config
 bone_to_part_name = hfg_utils.bone_to_part_name
 get_hf_item_name = hfg_utils.get_hf_item_name
+dik_to_str = hfg_utils.dik_to_str
+simple_press = hfg_utils.simple_press
+double_tap = hfg_utils.double_tap
+get_anim_offset = hfg_utils.get_anim_offset
 
 -- Constants
 LOG_HEADER = "[HFG|Blueprint]"
+snd_pencil_scribble_single = [[blueprint\pencil_scribble_single]]
+snd_pencil_scribble_multiple = [[blueprint\pencil_scribble_multiple]]
+snd_place_part = [[interface\place_object]]
+
+-- MCM
+CLR_BLIND_TYPE          = get_config("colour_blind_type")
+TOGGLE_HUD_KEYBIND      = get_config("blueprint_toggle_hud")
+TOGGLE_PREVIEW_KEYBIND   = get_config("blueprint_toggle_preview")
+SCROLL_LIST_UP_KEYBIND   = get_config("blueprint_scroll_up")
+SCROLL_LIST_DOWN_KEYBIND = get_config("blueprint_scroll_down")
+SCROLL_LIST_STEP = get_config("blueprint_scroll_step")
+HUD_MODIFIER_KEYBIND    = get_config("blueprint_hud_modifier")
+HUD_MODE_KEYBIND        = get_config("blueprint_hud_mode")
+TOGGLE_PREVIEW_ANIM_STYLE = get_config("blueprint_toggle_preview_anim_style")
+TOGGLE_PREVIEW_ANIM_DURATION = get_config("blueprint_toggle_preview_anim_duration")
+KEY_TRIGGER_TIME = get_config("blueprint_key_trigger_time")
 
 -- Globals
-GUI = nil
+HUD = nil
 ini_blueprints = ini_file_ex("items\\items\\items_hfg_blueprints.ltx")
 placed_blueprints = {}
 use_functor_args = {}
 removed_attachments = {}
 placing_blueprints = {}
 
+
 -- Locals
 local dbg_pr = nil
+
+-- Tables
+keybind_to_func = {
+    [TOGGLE_HUD_KEYBIND] = function()
+        dbg("dev", "on toggle hud")
+        HUD:ToggleHud()
+    end,
+    [TOGGLE_PREVIEW_KEYBIND] = function() --TODO Slide out animation
+        dbg("dev", "on toggle preview")
+        HUD:TogglePreview()
+    end,
+    [SCROLL_LIST_UP_KEYBIND] = function()
+        dbg("dev", "on scroll list up")
+        HUD:MoveList("up")
+    end,
+    [SCROLL_LIST_DOWN_KEYBIND] = function()
+        dbg("dev", "on scroll list down")
+        HUD:MoveList("down")
+    end,
+    
+}
 
 -- DEBUGGING
 function setup_log(level, header, enabled)
@@ -52,10 +98,7 @@ function dbg(level, fmt, ...)
     dbg_pr:Log(level, fmt, ...)
 end
 
-function is_blueprint(sect)
-    return ini_sys:r_bool_ex(sect, "blueprint", false)
-end
-
+-- Blueprint Entry Point
 function on_hf_place(obj_id)
     local se_obj = alife_object(obj_id)
     local obj_sect = se_obj:section_name()
@@ -66,19 +109,22 @@ function on_hf_place(obj_id)
     end
 end
 
+-- TimedEvent needs to return a boolean
+function place_blueprint_menu()
+    return gts("st_hfg_place_blueprint")
+end
+
 function place_blueprint(obj_id)
-    dbg("dev", "placing blueprint %s", obj_id)
+    dbg("dev", "Attempting placing blueprint %s", obj_id)
     local obj = get_unknown_object({id=obj_id}, "game")
     if not obj then return false end
     local id = obj:id()
     local hf_sect = obj:section()
-    dbg("dev", "get manual sect")
+    dbg("dev", "Attempeting to get manual sect")
     local manual_sect
     for section, _ in pairs(ini_blueprints:get_sections(true)) do
-        
         if ini_blueprints:r_string_ex(section, "placeable_section") == hf_sect then
             manual_sect = section
-            dbg("dev", "manual sect: %s, hf sect: %s", section, hf_sect)
         end
     end
     if not manual_sect then
@@ -86,29 +132,36 @@ function place_blueprint(obj_id)
         placing_blueprints[id] = nil
         return true
     end
+    dbg("dev", "manual sect: %s, hf sect: %s", manual_sect, hf_sect)
     dbg("dev", "hiding obj bones")
     local wrapper = bind_hf_base.get_wrapper(obj_id)
     obj = wrapper and wrapper.object or obj
     show_bones(obj, false)
 
-    dbg("dev", "setting attach args")
-    -- attachment
-    -- local hf_sect = ini_blueprints:r_string_ex(manual_sect, "placeable_section")
+    dbg("dev", "Initalising Blueprint Info")
+    dbg("dev", "blueprint info table size: %s", size_table(placed_blueprints))
     local blueprint_info = {}
     local att_name = strformat("blueprint_%s_%s", hf_sect, id)
 
+    dbg("dev", "init common args")
     blueprint_info.manual_sect = manual_sect
+    blueprint_info.placeable_type = ini_sys:r_string_ex(blueprint_info.manual_sect, "placeable_type")
     blueprint_info.hf_sect = hf_sect
+    blueprint_info.item_sect = ini_sys:r_string_ex(blueprint_info.hf_sect, "item_section")
     blueprint_info.parts = {}
-    local binder_func_str = ini_blueprints:r_string_ex(manual_sect, "binder_func")
-    local binder_func_tbl = str_explode(binder_func_str, "%.")
-    blueprint_info.binder_func = {file=binder_func_tbl[1], functor=binder_func_tbl[2]}
+    blueprint_info.parts_tbl = get_parts_tbl(blueprint_info.item_sect)
     blueprint_info.hf_loc = {
         pos = obj:position(),
         lvl_id = obj:level_vertex_id(),
         g_id = obj:game_vertex_id(),        
     }
 
+    dbg("dev", "init binder funcs")
+    local binder_func_str = ini_blueprints:r_string_ex(manual_sect, "binder_func")
+    local binder_func_tbl = str_explode(binder_func_str, "%.")
+    blueprint_info.binder_func = {file=binder_func_tbl[1], functor=binder_func_tbl[2]}
+
+    dbg("dev", "init att args")
     blueprint_info.att_name = att_name
     blueprint_info.att_visual = ini_blueprints:r_string_ex(manual_sect, "blueprint_visual")
     blueprint_info.att_highlight_radius = ini_blueprints:r_float_ex(manual_sect, "highlight_radius")
@@ -118,36 +171,50 @@ function place_blueprint(obj_id)
     blueprint_info.att_blueprint_shader = "models_xdistortinv"
     blueprint_info.att_highlight_shader = "models_pautina"
     blueprint_info.att_placed_submeshes = {}
-    dbg("dev", "init att args")
+
+    dbg("dev", "init attachment")
     blueprint_info.att = obj:add_attachment(blueprint_info.att_name, blueprint_info.att_visual)
     blueprint_info.att:set_parent_bone(blueprint_info.att_parent_bone)
     blueprint_info.att:set_type(script_attachment_type.World)
     blueprint_info.att:set_shader(-1, blueprint_info.att_blueprint_shader)
+
+    dbg("dev", "init extra args")
+    blueprint_info.within_range = within_range(db.actor:position(), blueprint_info.hf_loc["pos"], blueprint_info.att_highlight_radius)
+
     placed_blueprints[id] = blueprint_info
-    dbg("dev", "blueprint_info for %s: \n%s", id, blueprint_info)
-    placing_blueprints[id] = nil
     alife_create_item("hfg_empty_blueprint", db.actor)
+    placing_blueprints[id] = nil
+    start_hud()
+    dbg("dev", "blueprint_info for %s: \n%s", id, blueprint_info)
     return true
 end
 
 actor_on_update = throttle(
     function()
-        if is_empty(placed_blueprints) or not level.present() then return end
+        if not placed_blueprints or is_empty(placed_blueprints) or not level.present() then
+            stop_hud()    
+            return 
+        end
+
         for id, info in pairs(placed_blueprints) do
             local obj = get_unknown_object({id=id}, "game")
             if obj and obj:section() == info.hf_sect then
                 local obj_pos = obj:position()
-                local obj_on_screen = is_on_screen(obj_pos)
-                if obj_on_screen then
+                if is_on_screen(obj_pos) then
                     if not info.att then
+                        dbg("dev", "data exists but no attachment, reinit")
                         reinit_attachment(id, info)
                     end
+                    if not has_hud_instance() then start_hud() end
                     -- dbg("dev", "is %s on screen?: %s", id, obj_on_screen)
                     local targ_pos = level.get_target_pos() -- within highlight radius
                     local actor_pos = db.actor:position()
                     local highlight_radius = info.att_highlight_radius
                     -- dbg("dev", "actor looking at: %s, standing at: %s", targ_pos, actor_pos)
                     if within_range(actor_pos, obj_pos, highlight_radius) then --within_range(obj_pos, targ_pos, highlight_radius)
+                        info.within_range = true
+                        restore_shown_state()
+                        -- (Un)/Highlight targeted parts on a model
                         local target_bone = get_target_bone(targ_pos, info)
                         local submesh_id = get_submesh_id(target_bone, info)
                         if
@@ -157,6 +224,9 @@ actor_on_update = throttle(
                                 or not contains(info.att_placed_submeshes, submesh_id)
                             )
                         then
+                            -- Set Hud to read from only the one being targetted
+                            HUD:Reset(id)
+
                             if 
                                 submesh_id
                                 and not contains(info, "highlighted_submesh_id", true)
@@ -177,35 +247,39 @@ actor_on_update = throttle(
                                 info.current_shader = info.att_blueprint_shader
                             end
                         elseif 
+                            -- No more parts to be placed clean up and bind blueprint to hf object
                             is_not_empty(info.att_placed_submeshes)
                             and size_table(info.att_placed_submeshes) == size_table(info.att_bone_to_submesh)
                         then
-                            dbg("all parts placed")
-                            -- for id, name in pairs(obj:list_bones()) do
-                                -- obj:set_bone_visible(id, true, true)
-                            -- end
-                            -- obj:remove_attachment(info.att_name)
+                            dbg("info", "all parts placed", id)
                             remove_attachment(obj:id())
-                           
+                            dbg("dev", "Cleaning UI/Info")
+                            placed_blueprints[id] = nil
+                            if not next(placed_blueprints) then
+                                stop_hud()
+                            end
+
+                            dbg("dev", "attempeting to binding object from blueprint")
                             if 
                                 _G[info["binder_func"].file] 
-                                and _G[info["binder_func"].file][info["binder_func"].functor] 
+                                and _G[info["binder_func"].file][info["binder_func"].functor]
                             then
-                                dbg("dev", "binding object")
-                                placed_blueprints[id] = nil
                                 _G[info["binder_func"].file][info["binder_func"].functor](obj)
                                 local data = hf_obj_manager.get_data(id)
                                 if data and contains(data, "parts", true) then
                                     for part_name, part_info in pairs(info["parts"]) do
-                                        if data[part_name].condition ~= part_info.condition then
-                                            data[part_name].condition = part_info.condition
+                                        if data["parts"][part_name].condition ~= part_info.condition then
+                                            data["parts"][part_name].condition = part_info.condition
                                         end
                                     end
                                     hf_obj_manager.update_data(id, data)
                                 end
+                                dbg("dev", "Updating hf data:\n%s", data)
                             end
                         end
                     else
+                        info.within_range = false
+                        -- No Blueprint is being targeted so reset to default state
                         if info.current_shader ~= info.att_blueprint_shader then
                             dbg("dev", "outside of highlight radius")
                             for name, id in pairs(info.att_bone_to_submesh) do
@@ -216,11 +290,434 @@ actor_on_update = throttle(
                             end
                             info.current_shader = info.att_blueprint_shader
                         end
+                        -- Hud should always be shown unless not in range of a blueprint
+                        local at_least_one_in_range = false
+                        local blueprint_tbl_size = size_table(placed_blueprints)
+                        for tmp_id, tmp_info in pairs(placed_blueprints) do
+                            if (blueprint_tbl_size == 1 or tmp_id ~= id) and tmp_info.within_range then
+                                at_least_one_in_range = true
+                            end
+                        end
+                        show_hud(at_least_one_in_range)
                     end
                 end
             end
         end
     end, 200)
+
+-- HUD Controls 
+function has_hud_instance()
+    return HUD ~= nil
+end
+
+function start_hud()
+    if has_hud_instance() then return end
+    dbg("dev", "starting hud")
+    HUD = HUDBlueprintStatus()
+    get_hud():AddDialogToRender(HUD)
+end
+
+function stop_hud()
+    if not has_hud_instance() then return end
+    dbg("dev", "stopping hud")
+    get_hud():RemoveDialogToRender(HUD)
+    HUD = nil
+end
+
+function update_hud()
+    if not HUD then return end
+    HUD:Update()
+end
+
+function show_hud(show)
+    if not HUD then return end
+    HUD:Show(show)
+end
+
+function is_hud_shown()
+    return HUD and HUD:IsShown()
+end
+
+function restore_shown_state()
+    if not HUD then return end
+    show_hud(HUD.shown_state)
+end
+
+-- Blueprint HUD
+class "HUDBlueprintStatus" (CUIScriptWnd)
+function HUDBlueprintStatus:__init() super()
+    dbg("dev", "init blueprint hud")
+    self.ratio = utils_xml.screen_ratio()
+    self.shown_state = true
+    self:InitControls()
+end
+
+function HUDBlueprintStatus:InitControls()
+    -- Init Main HUD Elements
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_hfg_blueprint.xml")
+    self.dialog = self.xml:InitStatic("dialog", self)
+    self.title = self.xml:InitTextWnd("title", self.dialog)
+    self.stick_note_title = self.xml:InitTextWnd("sticky_note_title", self.dialog)
+    self.icon = self.xml:InitStatic("icon", self.dialog)
+    self.status_list = self.xml:InitListBox("status_list", self.dialog)
+
+    -- Init Sticky Note Elements
+    self.sticky_note = {}
+    self.sticky_note["toggle_hud"] = {}
+    self.sticky_note["toggle_hud"].frame = self.xml:InitStatic("toggle_hud", self.dialog)
+    self.sticky_note["toggle_hud"].key_bg = self.xml:InitStatic("toggle_hud:key_bg", self.sticky_note["toggle_hud"].frame)
+    self.sticky_note["toggle_hud"].key_text = self.xml:InitTextWnd("toggle_hud:key_text", self.sticky_note["toggle_hud"].key_bg)
+    self.sticky_note["toggle_hud"].title = self.xml:InitTextWnd("toggle_hud:title", self.sticky_note["toggle_hud"].frame)
+
+    self.sticky_note["toggle_preview"] = {}
+    self.sticky_note["toggle_preview"].frame = self.xml:InitStatic("toggle_preview", self.dialog)
+    self.sticky_note["toggle_preview"].key_bg = self.xml:InitStatic("toggle_preview:key_bg", self.sticky_note["toggle_preview"].frame)
+    self.sticky_note["toggle_preview"].key_text = self.xml:InitTextWnd("toggle_preview:key_text", self.sticky_note["toggle_preview"].key_bg)
+    self.sticky_note["toggle_preview"].title = self.xml:InitTextWnd("toggle_preview:title", self.sticky_note["toggle_preview"].frame)
+
+    -- Set HUD Element Colours
+    local graphite_clr = misc_clr_tbl["graphite"]
+    graphite_clr.a = 255
+    local clr_blind_graphite = get_colourblind_clr(graphite_clr, CLR_BLIND_TYPE)
+    self.title:SetTextColor(clr_blind_graphite)
+    self.stick_note_title:SetTextColor(clr_blind_graphite)
+    self.sticky_note["toggle_hud"].key_bg:SetTextureColor(clr_blind_graphite)
+    self.sticky_note["toggle_hud"].title:SetTextColor(clr_blind_graphite)
+    self.sticky_note["toggle_preview"].key_bg:SetTextureColor(clr_blind_graphite)
+    self.sticky_note["toggle_preview"].title:SetTextColor(clr_blind_graphite)
+    local black_clr = vanilla_clr_tbl["black"]
+    black_clr.a = 255
+    local clr_blind_black = get_colourblind_clr(black_clr, CLR_BLIND_TYPE)
+    self.sticky_note["toggle_hud"].key_text:SetTextColor(clr_blind_black)
+    self.sticky_note["toggle_preview"].key_text:SetTextColor(clr_blind_black)
+
+    -- Set Sticky Note Keybind 
+    self.sticky_note["toggle_hud"].dik = TOGGLE_HUD_KEYBIND
+    self.sticky_note["toggle_preview"].dik = TOGGLE_PREVIEW_KEYBIND
+    self.sticky_note["toggle_hud"].key_text:SetText(dik_to_str(TOGGLE_HUD_KEYBIND, true))
+    self.sticky_note["toggle_preview"].key_text:SetText(dik_to_str(TOGGLE_PREVIEW_KEYBIND, true))
+
+    -- Set HUD to Preview State
+    local dialog_pos = self.dialog:GetWndPos()
+    local hide_y = self.dialog:GetHeight() * 0.75
+    local reduced_y = dialog_pos.y - hide_y
+    self.status_hud = {}
+    self.status_hud["pos"] = {}
+    self.status_hud["pos"].full = vector2():set(dialog_pos.x, dialog_pos.y)
+    self.status_hud["pos"].preview = vector2():set(dialog_pos.x, dialog_pos.y - hide_y)
+    self.dialog:SetWndPos(self.status_hud["pos"].preview)
+    self.status_hud["pos"].current = "preview"
+    self.first_anim = true
+
+    self:Show(true)
+    dbg("info", "finished init controls")
+end
+
+function HUDBlueprintStatus:Reset(id)
+    if self.id and self.id == id then return end
+    dbg("dev", "Reseting blueprint status ui: %s", id)
+    self.id = id
+    local blueprint_info = placed_blueprints[self.id]
+    local item_sect = blueprint_info.item_sect
+
+    self.stick_note_title:SetText(gts("st_hfg_blueprint_status_title", get_item_name(item_sect)))
+    local path, pos, size = get_obj_icon(nil, item_sect)
+    self.icon:InitTexture(path)
+    self.icon:SetTextureRect(Frect():set(pos.x, pos.y, pos.x + size.w, pos.y + size.h))
+    self:LoadStatusInfo()
+    self.status_list:ScrollToBegin()
+end
+
+function HUDBlueprintStatus:Close()
+    if self:IsShown() then
+       self:Show(false)
+    end
+    dbg("info", "closing blueprint status ui")
+end
+
+function HUDBlueprintStatus:IsShown()
+    return self.dialog:IsShown()
+end
+
+function HUDBlueprintStatus:Show(toggle_hud)
+    if self:IsShown() ~= toggle_hud then
+        self.dialog:Show(toggle_hud)
+    end
+end
+
+function HUDBlueprintStatus:Update()
+    CUIScriptWnd.Update(self)
+
+    self:AnimateHUD()
+    self:UpdateStatusInfo()
+    self:UpdateStickyNote()
+end -- dbg("debug", "Loading Blueprint Status UI: %s", id)
+
+function HUDBlueprintStatus:SetMovement(allow_movement)
+    self.movement_allowed = allow_movement
+end
+
+function HUDBlueprintStatus:GetMovement()
+    return self.movement_allowed
+end
+
+function HUDBlueprintStatus:LoadStatusInfo()
+    if not self.id then return end
+    dbg("info", "loading status info")
+    self.status_list:RemoveAll()
+    local idx = 0
+    local status_info = self:GetStatusInfo()
+    local blueprint_info = placed_blueprints[self.id]
+    for _, part_name in pairs(blueprint_info.parts_tbl) do 
+        local item = status_item(idx, status_info[part_name])
+        self.status_list:AddExistingItem(item)
+        idx = idx + 1
+    end
+end
+
+function HUDBlueprintStatus:GetStatusInfo()
+    if not self.id then return end
+    local status_info = {}
+    local num_parts_placed = {}
+    local amount_part_occurs = {}
+    local avg_part_condition = {}
+    local blueprint_info = placed_blueprints[self.id]
+    if not blueprint_info then return status_info end
+    --dbg("info", "blueprint info: %s", blueprint_info)
+    local parts_tbl = blueprint_info.parts_tbl
+    local submesh_to_bone = group_duplicates(blueprint_info.att_bone_to_submesh)
+    --dbg("info", "getting status info")
+    for _, part_name in pairs(parts_tbl) do
+        -- Max possible amount of parts that can be placed
+        if contains(amount_part_occurs, part_name, true) then
+            amount_part_occurs[part_name] = amount_part_occurs[part_name] + 1
+        else
+            amount_part_occurs[part_name] = 1
+        end
+        -- Average Condition based on number of placed parts
+        if 
+            contains(blueprint_info, "parts", true)
+            and is_not_empty(blueprint_info["parts"])
+            and contains(blueprint_info["parts"][part_name], "condition", true) 
+        then
+            --dbg("dev", "Parts for %s: %s", part_name, blueprint_info["parts"])
+            avg_part_condition[part_name] = blueprint_info["parts"][part_name].condition
+        end
+
+        -- Count amount of parts already placed
+        
+        num_parts_placed[part_name] = 0
+        -- dbg("dev", "number of placed parts for: %s", part_name)
+        for idx, submesh_id in pairs(blueprint_info.att_placed_submeshes) do
+            local bone_names = submesh_to_bone[submesh_id]
+            local last_submesh_id = submesh_id -- for multiple bones for one part/submesh
+            for _, bone_name in pairs(bone_names) do
+                local found_part_name = bone_to_part_name(bone_name, blueprint_info.placeable_type)
+                if 
+                    contains(num_parts_placed, part_name, true)
+                    and found_part_name == part_name
+                    and last_submesh_id == submesh_id
+                then
+                    num_parts_placed[part_name] = num_parts_placed[part_name] + 1
+                    last_submesh_id = submesh_id
+                    -- dbg("dev", "submesh id: %s, bone name: %s, last submesh id: %s", submesh_id, bone_name, last_submesh_id)
+                    -- dbg("dev", "found part_name: %s, part name: %s, placeable type: %s", found_part_name, part_name, blueprint_info.placeable_type)
+                    -- dbg("dev", "num_parts_placed: %s\n", num_parts_placed[part_name])
+                end
+            end
+        end
+    end
+    --dbg("info", "num_parts_placed: %s", num_parts_placed)
+    --dbg("info", "amount_part_occurs: %s", amount_part_occurs)
+    --dbg("info", "avg_part_condition: %s", avg_part_condition)
+
+
+    --dbg("info", "building status info table")
+    for _, part_name in pairs(parts_tbl) do
+        status_info[part_name] = {}
+        status_info[part_name].part_name = part_name
+        status_info[part_name].max_placed = amount_part_occurs[part_name]
+        status_info[part_name].amount_placed = clamp(num_parts_placed[part_name], 0, status_info[part_name].max_placed)
+        if is_not_empty(avg_part_condition) and contains(avg_part_condition, part_name, true) then
+            --dbg("dev", "avg part condition for %s: %s", part_name, avg_part_condition[part_name])
+            status_info[part_name].avg_condition = avg_part_condition[part_name] / status_info[part_name].amount_placed
+        end
+        status_info[part_name].all_placed = status_info[part_name].amount_placed == status_info[part_name].max_placed
+    end
+    --dbg("info", "acquired status info: %s", status_info)
+    return status_info
+end
+
+function HUDBlueprintStatus:UpdateStatusInfo()
+    if self.status_list:GetSize() == 0 then return end
+
+    local status_info = self:GetStatusInfo()
+    if is_empty(status_info) then return end
+    for i=0, self.status_list:GetSize() - 1 do
+        local itm = self.status_list:GetItemByIndex(i)
+        local part_name = itm["status_info"].part_name
+        local new_status_info = status_info[part_name]
+        
+        if itm["status_info"].amount_placed ~= new_status_info.amount_placed then
+            local p_name = capitalise(get_item_name(itm["status_info"].part_name))
+            local amount_placed = new_status_info.amount_placed
+            local max_placed = itm["status_info"].max_placed
+
+            local graphite_clr = misc_clr_tbl["graphite"]
+            graphite_clr.a = 255
+            local clr_blind_graphite = get_colourblind_clr(graphite_clr, CLR_BLIND_TYPE, true)
+            local clr_str_graphite = strformat("%c[%s,%s,%s,%s]", clr_blind_graphite.a, clr_blind_graphite.r, clr_blind_graphite.g, clr_blind_graphite.b)
+            local part_name_txt = strformat("%s%s", clr_str_graphite, p_name)
+
+            local condition_argb = get_condition_colour(amount_placed / max_placed)
+            condition_argb.a = 255
+            local clr_blind_condition = get_colourblind_clr(condition_argb, CLR_BLIND_TYPE, true)
+            local clr_str_condition = strformat("%c[%s,%s,%s,%s]", clr_blind_condition.a, clr_blind_condition.r, clr_blind_condition.g, clr_blind_condition.b)
+            local parts_placed_txt = strformat("%s/%s", strformat("%s%s", clr_str_condition, amount_placed), strformat("%s%s", clr_str_condition, max_placed))
+
+            itm.status:SetText(gts("st_hfg_blueprint_status", part_name_txt, parts_placed_txt))
+            dbg("dev", "Updating status info from: %s to %s", itm["status_info"], new_status_info)
+            utils_obj.play_sound(snd_pencil_scribble_single)
+            itm["status_info"] = new_status_info
+        end
+    end
+end
+
+function HUDBlueprintStatus:UpdateStickyNote()
+    for name, info in pairs(self.sticky_note) do
+        local key = name == "toggle_hud" and TOGGLE_HUD_KEYBIND or TOGGLE_PREVIEW_KEYBIND
+        if info["dik"] ~= key then
+            info["key_text"]:SetText(dik_to_str(key, true))
+        end
+    end
+end
+
+function HUDBlueprintStatus:ToggleHud()
+    local shown_state = self.shown_state
+    self.shown_state = not shown_state
+    self:Show(self.shown_state)
+end
+
+function HUDBlueprintStatus:MoveList(dir)
+    dbg("dev", "moving status list: %s", dir)
+    local list_pos = {min=self.status_list:GetMinScrollPos(), max=self.status_list:GetMaxScrollPos()}
+    list_pos["diff"] = list_pos["max"] - list_pos["min"]
+    dbg("dev", "list pos args:%s", list_pos)    
+    local curr_pos = self.status_list:GetCurrentScrollPos()
+    local step = round(list_pos["diff"] * (SCROLL_LIST_STEP / 100))
+    dbg("dev", "curr scroll pos: %s, step: %s", curr_pos, step)
+    local new_pos = (dir == "up" and curr_pos > list_pos["min"] and curr_pos - step) 
+        or (dir == "down" and curr_pos < list_pos["max"] and curr_pos + step) 
+        or false
+    if new_pos then
+        dbg("dev", "new scroll pos: %s", new_pos)
+        self.status_list:SetScrollPos(new_pos)
+    end
+end
+
+function HUDBlueprintStatus:TogglePreview()
+    if self.animation_active then dbg("dev", "cannot start as a preview anim active") return end
+    dbg("dev", "init anim hud")
+    local curr_state = self.status_hud["pos"]["current"]
+    local swap_state = {preview="full", full="preview"}
+    local end_state = swap_state[curr_state]
+    dbg("dev", "Animating from %s, to %s", curr_state, end_state)
+    self.anim_data = {
+        curr_state = curr_state,
+        end_state = end_state,
+        start_pos = self.status_hud["pos"][curr_state],
+        end_pos = self.status_hud["pos"][end_state],
+        start_time = time_global(),
+        end_time = time_global() + (TOGGLE_PREVIEW_ANIM_DURATION * 1000),
+        anim_style = strformat("%sEase%s", TOGGLE_PREVIEW_ANIM_STYLE, (not self.first_anim and curr_state == "full") and "Out" or "In")
+    }
+    dbg("dev", "anim data: %s", self.anim_data)
+    self.animation_active = true
+end
+
+function HUDBlueprintStatus:AnimateHUD()
+    if not self.animation_active then return end
+    local curr_state = self.anim_data["curr_state"]
+    local norm_time = normalize(time_global(), self.anim_data["start_time"], self.anim_data["end_time"])
+    if self.first_anim or curr_state == "preview" then norm_time = 1 - norm_time dbg("dev", "norm time: %s", norm_time) end
+    local anim_state = clamp(norm_time, 0, 1)
+    local anim_offset = get_anim_offset(self.anim_data["anim_style"], anim_state)
+    local new_pos = vector2():set(0, 0)
+    if curr_state == "full" then
+        new_pos = vector2():set(self.anim_data["start_pos"].x, lerp(self.anim_data["start_pos"].y, self.anim_data["end_pos"].y, anim_offset))
+    else
+        new_pos = vector2():set(self.anim_data["start_pos"].x, lerp(self.anim_data["end_pos"].y, self.anim_data["start_pos"].y, anim_offset))
+    end
+    dbg("dev", "anim offset: %s", anim_offset)
+    dbg("dev", "new pos: %s", new_pos)
+    self.dialog:SetWndPos(new_pos)
+    if time_global() >= self.anim_data["end_time"] then
+        dbg("dev", "stopping animation at: %s", time_global())
+        self.animation_active = false
+        self.status_hud["pos"].current = self.anim_data["end_state"]
+        if self.first_anim then self.first_anim = false end
+    end
+end
+
+function HUDBlueprintStatus:__finalize()
+end
+
+-- Blueprint Status UI, List Item
+class "status_item" (CUIListBoxItem)
+function status_item:__init(idx, status_info) super(idx, status_info)
+    dbg("info", "init status item: %s, %s, %s", idx, status_info["part_name"], status_info["amount_placed"])
+    self.idx = idx
+    self.status_info = status_info
+    
+    local width = 166
+    local height = 38
+    local padding = 5
+    -- dbg("info", "width: %s, height: %s, padding: %s", width, height, padding)
+    self:SetWndSize(vector2():set(width, height - padding))
+    self:SetWndPos(vector2():set(0, 0))
+
+    local icon_w = (height) * 0.75
+    local icon_h = icon_w
+    self.icon = self:AddIconField(1) -- part icon
+    self.icon:InitTexture(strformat("ui_%s", status_info.part_name))
+    self.icon:SetStretchTexture(true)
+    self.icon:SetWndSize(vector2():set(icon_w, icon_h))
+    self.icon:SetWndPos(vector2():set(padding, padding))
+    -- dbg("info", "init status")
+    local p_name = capitalise(get_item_name(status_info.part_name))
+    local amount_placed = status_info.amount_placed
+    local max_placed = status_info.max_placed
+
+    local graphite_clr = misc_clr_tbl["graphite"]
+    graphite_clr.a = 255
+    local clr_blind_graphite = get_colourblind_clr(graphite_clr, CLR_BLIND_TYPE, true)
+    local clr_str_graphite = strformat("%c[%s,%s,%s,%s]", clr_blind_graphite.a, clr_blind_graphite.r, clr_blind_graphite.g, clr_blind_graphite.b)
+    local part_name_txt = strformat("%s%s", clr_str_graphite, p_name)
+
+    local condition_argb = get_condition_colour(amount_placed / max_placed)
+    condition_argb.a = 255
+    local clr_blind_condition = get_colourblind_clr(condition_argb, CLR_BLIND_TYPE, true)
+    local clr_str_condition = strformat("%c[%s,%s,%s,%s]", clr_blind_condition.a, clr_blind_condition.r, clr_blind_condition.g, clr_blind_condition.b)
+    local parts_placed_txt = strformat("%s/%s", strformat("%s%s", clr_str_condition, amount_placed), strformat("%s%s", clr_str_condition, max_placed))
+
+    self.status = self:AddTextField(gts("st_hfg_blueprint_status", part_name_txt, parts_placed_txt), 1) -- Engine 1/1
+    self.status:SetTextAlignment(CGameFont.alLeft)
+    self.status:SetWndSize(vector2():set(width - icon_w - (padding * 2), icon_h * 0.5))
+    self.status:SetWndPos(vector2():set(icon_w + (padding * 2), icon_h * 0.5))
+    self.status:AdjustWidthToText()
+    self.status:SetTextComplexMode(true)
+    
+    -- dbg("info", "finished init status")
+end
+
+function status_item:__finalize()
+end
+
+-- Helper Funcs
+function is_blueprint(sect)
+    return ini_sys:r_bool_ex(sect, "blueprint", false)
+end
 
 function is_on_screen(obj_pos)
     local on_screen = false
@@ -298,8 +795,6 @@ function highest_val(tbl, by_key)
     return highest_val
 end
 
--- ===========================================
-
 function group_duplicates(tbl)
 	local tmp = {}
 	for k, v in pairs(tbl) do
@@ -314,155 +809,31 @@ function get_closest_blueprint(pos)
     pos = not pos and db.actor:position() or pos
     local closest_blueprint_id
     local closest_dist
+    dbg("dev", "getting closest blueprint")
     for id, info in pairs(placed_blueprints) do
         local obj = get_unknown_object({id=id}, "game")
         if obj then
-            local dist = pos:distance_to(obj:position())
-            if not closest_blueprint_id or closest_dist < dist then
-                closest_blueprint_id = id
-                closest_dist = dist
+            local obj_pos = obj:position()
+            if within_range(pos, obj_pos, info.att_highlight_radius) then
+                local dist = pos:distance_to(obj_pos)
+                if not closest_blueprint_id or closest_dist > dist then
+                    closest_blueprint_id = id
+                    closest_dist = dist
+                    dbg("dev", "id: %s, dist: %s", closest_blueprint_id, closest_dist)
+                end
             end
         end
     end
     return closest_blueprint_id
 end
 
-function place_part_cond(obj)
-    local p = obj:parent()
-	if not (p and p:id() == AC_ID) then return end
-    local sect = obj:section()
-    return ini_sys:r_bool_ex(sect, "blueprint_part", false)
-end
-
-function place_blueprint_menu()
-    return gts("st_hfg_place_blueprint")
-end
-
-function place_part_menu()
-    return gts("st_hfg_place_part")
-end
-
-function place_part_func(item)
-    local sect = item:section()
-    dbg("dev", "attempting to place: %s", sect)
-    local id = get_closest_blueprint()
-    if not id then return end
-    local info = placed_blueprints[id]
-    if not info then return end
-    -- dbg("dev", "blueprint_info: %s", info)
-    local submesh_to_bone = group_duplicates(info.att_bone_to_submesh)
-    --dbg("dev", "getting submesh to bone tbl: %s", submesh_to_bone)
-    local submesh_id = info.highlighted_submesh_id
-    dbg("dev", "highlighted submesh id: %s", submesh_id)
-    dbg("dev", "placed submeshes: %s", info.att_placed_submeshes)
-    if 
-        submesh_id 
-        and not info.att_placed_submeshes 
-        or ( 
-            info.att_placed_submeshes
-            and size_table(info.att_placed_submeshes) < size_table(info.att_bone_to_submesh)
-        )
-    then
-        dbg("dev", "looking at blueprint")
-        local bone_names = submesh_to_bone[info.highlighted_submesh_id]
-        local placeable_type = ini_sys:r_string_ex(info.manual_sect, "placeable_type")
-        for _, bone_name in pairs(bone_names) do
-            local part_name = bone_to_part_name(bone_name, placeable_type)
-            dbg("dev", "is %s equal to %s, bone name: %s", sect, part_name, bone_name)
-            if part_name and sect == part_name then
-                hide_hud_inventory()
-                dbg("dev", "adding %s to exclude bones", bone_name)
-                info.att_exclude_bones[#info.att_exclude_bones + 1] = bone_name
-                info.att_placed_submeshes = info.att_placed_submeshes or {}
-                dbg("dev", "adding %s to placed submeshes", submesh_id)
-                info.att_placed_submeshes[#info.att_placed_submeshes + 1] = submesh_id
-                dbg("dev", "resetting %s", submesh_id)
-                info.highlighted_submesh_id = nil
-                info.att:reset_shader(submesh_id)
-                
-                local obj = info.att:get_parent().object
-                local obj_id = obj:id()
-                info.parts = info.parts or {}
-                info["parts"][part_name] = info["parts"][part_name] or {}
-                info["parts"][part_name].condition = item:condition() or 1
-
-                alife_release(alife_object(item:id()))
-            end
-        end
-        placed_blueprints[id] = info
+function show_bones(obj, show)
+    for id, name in pairs(obj:list_bones()) do
+        obj:set_bone_visible(id, show, true)
     end
 end
 
-add_functor("hfg_place_part", place_part_cond, place_part_menu, nil, place_part_func)
-
-function pickup_blueprint_menu(obj)
-    return gts("st_hfg_pickup_blueprint")
-end
-
-function pickup_blueprint_func(obj)
-    local id = get_closest_blueprint()
-    if not id then return end
-    if remove_attachment(id) then
-        -- Remove Empty Blueprint Item
-        alife_release(alife_object(obj:id()))
-        -- Remove Object that Blueprint was attached to
-        alife_release(alife_object(id))
-        local info = placed_blueprints[id]
-        -- Create Manual of the removed blueprint
-        alife_create_item(info.manual_sect, db.actor)
-        placed_blueprints[id] = nil
-    end
-end
-
-function place_all_parts(item_section)
-    local found_parts = {}
-    local item_parts = hfg_utils.get_parts_tbl(item_section)
-    if is_empty(item_parts) then 
-        dbg("dev", "couldnt get parts for %s", item_section)
-        return
-    end
-    dbg("dev", "item parts for %s: \n%s", item_section, item_parts)
-    itr_inv(db.actor, function(_, obj)
-        local sect = obj:section()
-        if IsItem("part", sect) and contains(item_parts, sect) then
-            found_parts[#found_parts + 1] = obj
-            dbg("dev", "found part: %s", sect)
-        end
-    end)
-    if is_empty(found_parts) then 
-        dbg("dev", "couldnt find parts in player inventory")
-        return
-    end
-    dbg("dev", "found parts in inv, placing all")
-    for _, obj in pairs(found_parts) do
-        place_part_func(obj)
-    end
-end
--- hfg_blueprint.place_all_parts("disel_generator_item")
-
-
-
--- =================================
-base_action_custom = ui_inventory.UIInventory.Action_Custom
-function ui_inventory.UIInventory.Action_Custom(self, obj, bag, temp, i)
-   	local g_obj = self:CheckItem(obj,"Action_Custom " .. i)
-
-    local sect = g_obj:section()
-    local functor_str = ini_sys:r_string_ex(sect, "use".. i .. "_action_functor")
-    if functor_str then
-        local functor_tbl = str_explode(functor_str, "%.")
-        local functor_file = functor_tbl[1]
-        local functor_name = functor_tbl[2]
-        
-        use_functor_args = {
-            item_sect = sect,
-            name = functor_name,
-        }
-        dbg("dev", "custom_use_functor clicked: sect: %s, functor name: %s", sect, functor_name)
-    end
-    base_action_custom(self, obj, bag, temp, i)
-end
-
+-- Attachment Funcs
 function reinit_attachment(id, info)
     if contains(placed_blueprints, id, true) then 
         dbg("dev", "%s already in placed blueprints", id)
@@ -509,11 +880,270 @@ function remove_attachment(id)
     return false
 end
 
-function show_bones(obj, show)
-    for id, name in pairs(obj:list_bones()) do
-        obj:set_bone_visible(id, show, true)
+
+function has_been_placed(part_sect, closest_blueprint_id)
+    local info = placed_blueprints[closest_blueprint_id]
+    local obj = get_unknown_object({id=closest_blueprint_id}, "game")
+    if not obj then return false end
+    for _, bone_name in pairs(obj:list_bones()) do
+        local part_name = bone_to_part_name(bone_name, info.placeable_type)
+        if part_name == part_sect then
+            local submesh_id = info.att_bone_to_submesh[bone_name]
+            if contains(info.att_placed_submeshes, submesh_id) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+
+function get_anim_offset(anim_style, anim_state)
+    return demonized_randomizing_functions[anim_style](anim_state)
+end
+
+-- Inventory Context Menu Functors
+function place_part_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    local closest_blueprint_id = get_closest_blueprint()
+    return ini_sys:r_bool_ex(sect, "blueprint_part", false) and closest_blueprint_id ~= nil and not has_been_placed(sect, closest_blueprint_id)
+end
+
+function place_part_menu()
+    return gts("st_hfg_place_part")
+end
+
+function place_part_func(item)
+    local sect = item:section()
+    dbg("dev", "attempting to place: %s", sect)
+
+    local id = get_closest_blueprint()
+    dbg("dev", "closest blueprint id: %s", id)
+    if not id then return end
+    local info = placed_blueprints[id]
+    if not info then return end
+    --dbg("dev", "blueprint_info: %s", info)
+    local submesh_to_bone = group_duplicates(info.att_bone_to_submesh)
+    --dbg("dev", "getting submesh to bone tbl: %s", submesh_to_bone)
+    local submesh_id = info.highlighted_submesh_id
+    dbg("dev", "highlighted submesh id: %s", submesh_id)
+    dbg("dev", "placed submeshes: %s", info.att_placed_submeshes)
+    if 
+        submesh_id
+        and info.highlighted_submesh_id ~= nil
+        and not info.att_placed_submeshes 
+        or ( 
+            info.att_placed_submeshes
+            and not contains(info.att_placed_submeshes, submesh_id)
+            and size_table(info.att_placed_submeshes) < size_table(info.att_bone_to_submesh)
+        )
+    then
+        dbg("dev", "looking at blueprint")
+        if not contains(submesh_to_bone, info.highlighted_submesh_id, true) then return end
+        local item_id = item:id()
+        local item_sect = item:section()
+        local bone_names = submesh_to_bone[info.highlighted_submesh_id]
+        for _, bone_name in pairs(bone_names) do
+            local part_name = bone_to_part_name(bone_name, info.placeable_type)
+            dbg("dev", "is %s equal to %s, bone name: %s", sect, part_name, bone_name)
+            -- if part_name and sect == part_name and not contains(info["parts"], part_name, true) then
+            if part_name and sect == part_name then
+                hide_hud_inventory()
+                dbg("dev", "adding %s to exclude bones", bone_name)
+                info.att_exclude_bones[#info.att_exclude_bones + 1] = bone_name
+                info.att_placed_submeshes = info.att_placed_submeshes or {}
+                dbg("dev", "adding %s to placed submeshes", submesh_id)
+                info.att_placed_submeshes[#info.att_placed_submeshes + 1] = submesh_id
+                dbg("dev", "resetting %s", submesh_id)
+                info.highlighted_submesh_id = nil
+                info.att:reset_shader(submesh_id)
+                
+                local obj = info.att:get_parent().object
+                local obj_id = obj:id()
+                info.parts = info.parts or {}
+                info["parts"][part_name] = info["parts"][part_name] or {}
+                info["parts"][part_name].condition = item:condition() or 1
+
+                -- Remove item only once
+                local inv_parts = find_inv_item(item_sect)
+                if is_not_empty(inv_parts) then
+                    for _, found_part in pairs(inv_parts) do
+                        if found_part:id() == item_id then
+                            alife_release(alife_object(item_id))
+                        end
+                    end
+                end
+            end
+        end
+        dbg("dev", "num of placed submeshes: %s, num of bone to submesh: %s", size_table(info.att_placed_submeshes), size_table(info.att_bone_to_submesh))
+        placed_blueprints[id] = info
+        utils_obj.play_sound(snd_place_part)
     end
 end
+
+add_functor("hfg_place_part", place_part_cond, place_part_menu, nil, place_part_func)
+
+
+function place_all_parts_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    dbg("dev", "place all parts cond")
+    if not IsItem("part", sect) or not ini_sys:r_bool_ex(sect, "blueprint_part", false) then
+        dbg("dev", "%s is not a blueprint part", sect)
+        return
+    end
+
+
+    local closest_blueprint_id = get_closest_blueprint()
+    if not closest_blueprint_id then
+        dbg("dev", "No Blueprint found nearby")
+        return
+    end
+
+    if has_been_placed(sect, closest_blueprint_id) then
+        dbg("dev", "%s has been placed already", sect)
+    end
+
+    local info = placed_blueprints[closest_blueprint_id]
+    local item_sect = info.item_sect
+    local item_parts = get_parts_tbl(item_sect)
+    local _, idx = contains(item_parts, sect, nil, nil, true)
+    dbg("dev", "item parts: %s", item_parts)
+    item_parts[idx] = nil
+    dbg("dev", "removed %s from %s", sect, item_parts)
+    dbg("dev", "looking for parts in inventory")
+    for _, part_name in pairs(item_parts) do
+        local inv_parts = find_inv_item(part_name)
+        if is_not_empty(inv_parts) then
+            return true
+        end
+    end
+    return false
+end
+
+function place_all_parts_menu(obj)
+    return  gts("st_hfg_place_all_parts")
+end
+
+function place_all_parts_func(obj)
+    local id = get_closest_blueprint()
+    if not id then dbg("dev", "No Blueprint Found nearby") return end
+    local blueprint_info = placed_blueprints[id]   
+    local item_sect = blueprint_info.item_sect
+
+    local found_parts = {}
+    local item_parts = get_parts_tbl(item_sect)
+    if is_empty(item_parts) then 
+        dbg("dev", "couldnt get parts for %s", item_sect)
+        return
+    end
+    dbg("dev", "item parts for %s: \n%s", item_sect, item_parts)
+    for _, part_name in pairs(item_parts) do
+        local inv_parts = find_inv_item(part_name)
+        if is_not_empty(inv_parts) and not contains(found_parts, part_name, true) then
+            found_parts[part_name] = inv_parts[#inv_parts]
+            dbg("dev", "found part: %s", inv_parts[#inv_parts]:section())
+        end
+    end
+
+    if is_empty(found_parts) then 
+        dbg("dev", "couldnt find parts for %s in inventory", item_sect)
+        return
+    end
+
+    dbg("dev", "found parts in inv, placing all:\n%s", found_parts)
+    for bone_name, _ in pairs(blueprint_info.att_bone_to_submesh) do
+        local part_name = bone_to_part_name(bone_name, blueprint_info.placeable_type)
+        local submesh_id = blueprint_info.att_bone_to_submesh[bone_name]
+        if contains(found_parts, part_name, true) then
+            local item = found_parts[part_name]
+            placed_blueprints[id].highlighted_submesh_id = submesh_id
+            place_part_func(item)
+        end
+    end
+end
+
+add_functor("hfg_place_all_parts", place_all_parts_cond, place_all_parts_menu, nil, place_all_parts_func)
+-- hfg_blueprint.place_all_parts("disel_generator_item")
+
+-- Pickup Blueprint Inventory Context Menu Functors
+function pickup_blueprint_menu(obj)
+    return gts("st_hfg_pickup_blueprint")
+end
+
+function pickup_blueprint_func(obj)
+    local id = get_closest_blueprint()
+    if not id then return end
+    if remove_attachment(id) then
+        -- Remove Empty Blueprint Item
+        alife_release(alife_object(obj:id()))
+        -- Remove Object that Blueprint was attached to
+        alife_release(alife_object(id))
+        local info = placed_blueprints[id]
+        -- Create Already placed parts in inventory
+        for part_name, part_info in pairs(info["parts"]) do
+            alife_create_item(part_name, db.actor, {cond=part_info["condition"]})
+        end
+
+        -- Create Manual of the removed blueprint
+        alife_create_item(info.manual_sect, db.actor)
+        placed_blueprints[id] = nil
+    end
+end
+
+-- Testing
+function spawn_blueprint_parts()
+end
+
+-- Monkey Patches
+base_action_custom = ui_inventory.UIInventory.Action_Custom
+function ui_inventory.UIInventory.Action_Custom(self, obj, bag, temp, i)
+   	local g_obj = self:CheckItem(obj,"Action_Custom " .. i)
+
+    local sect = g_obj:section()
+    local functor_str = ini_sys:r_string_ex(sect, "use".. i .. "_action_functor")
+    if functor_str then
+        local functor_tbl = str_explode(functor_str, "%.")
+        local functor_file = functor_tbl[1]
+        local functor_name = functor_tbl[2]
+        
+        use_functor_args = {
+            item_sect = sect,
+            name = functor_name,
+        }
+        dbg("dev", "custom_use_functor clicked: sect: %s, functor name: %s", sect, functor_name)
+    end
+    base_action_custom(self, obj, bag, temp, i)
+end
+
+-- Callbacks
+
+function on_first_update()
+    if is_empty(placed_blueprints) then return end
+    dbg("info", "on first update")
+    for id, info in pairs(placed_blueprints) do
+        local obj = get_unknown_object({id=id}, "server")
+        if obj then
+            local obj_pos = obj.position
+            if is_on_screen(obj_pos) then
+                local actor_pos = db.actor:position()
+                local highlight_radius = info.att_highlight_radius
+                if within_range(actor_pos, obj_pos, highlight_radius) then
+                    start_hud()
+                    break
+                end
+            end
+        end 
+    end
+end
+
+function on_net_destroy()
+    stop_hud()
+end
+
 
 function on_save(mdata)
     dbg("dev", "on save")
@@ -542,11 +1172,66 @@ function on_game_load()
     for id, info in pairs(removed_attachments) do
         local att_lvl_name = alife():level_name(game_graph():vertex(info["hf_loc"].g_id):level_id())
         local actor_lvl_name = alife():level_name(game_graph():vertex(db.actor:game_vertex_id()):level_id())
-        dbg("dev", "lvl name for: att %s, actor: %s", att_lvl_name, actor_lvl_name)
         if actor_lvl_name == att_lvl_name then
+            dbg("dev", "actor on same lvl name as att: att %s, actor: %s", att_lvl_name, actor_lvl_name)
             reinit_attachment(id, info)
         end
     end
+end
+
+function on_key_hold(key)
+    if
+        has_mcm_keybinds()
+        and HUD ~= nil
+        and contains(keybind_to_func, key, true)
+        and HUD_MODE_KEYBIND == 2
+        and ui_mcm.get_mod_key(HUD_MODIFIER_KEYBIND)
+        and is_key_held(key, KEY_TRIGGER_TIME * 1000)
+    then
+        dbg("dev", "on key hold: %s", dik_to_str(key))
+        keybind_to_func[key]()
+    end
+end
+
+function on_key_press(key)
+    if 
+        has_mcm_keybinds()
+        and HUD ~= nil
+        and contains(keybind_to_func, key, true)
+    then
+        if 
+            HUD_MODE_KEYBIND == 0
+            and ui_mcm.get_mod_key(HUD_MODIFIER_KEYBIND)
+        then
+            simple_press(key, function()
+                dbg("dev", "on simple key press: %s", dik_to_str(key))
+                keybind_to_func[key]()
+            end)
+        elseif 
+            HUD_MODE_KEYBIND == 1
+            and ui_mcm.get_mod_key(HUD_MODIFIER_KEYBIND)
+            and double_tap(key)
+        then
+            dbg("dev", "on double tap key press: %s", dik_to_str(key))
+            keybind_to_func[key]()
+        end
+    end
+end
+
+function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
+    CLR_BLIND_TYPE = options["colour_blind_type"]
+    TOGGLE_HUD_KEYBIND = options["blueprint_toggle_hud"]
+    TOGGLE_PREVIEW_KEYBIND = options["blueprint_toggle_preview"]
+    SCROLL_LIST_UP_KEYBIND = options["blueprint_scroll_up"]
+    SCROLL_LIST_DOWN_KEYBIND = options["blueprint_scroll_down"]
+    SCROLL_LIST_STEP = options["blueprint_scroll_step"]
+    HUD_MODIFIER_KEYBIND = options["blueprint_hud_modifier"]
+    HUD_MODE_KEYBIND = options["blueprint_hud_mode"]
+    TOGGLE_PREVIEW_ANIM_STYLE = options["blueprint_toggle_preview_anim_style"]
+    TOGGLE_PREVIEW_ANIM_DURATION = options["blueprint_toggle_preview_anim_duration"]
+    KEY_TRIGGER_TIME = options["blueprint_key_trigger_time"]
 end
 
 function on_game_start()
@@ -555,7 +1240,24 @@ function on_game_start()
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
     RegisterScriptCallback("on_game_load", on_game_load)
+    RegisterScriptCallback("actor_on_first_update",on_first_update)
+	RegisterScriptCallback("actor_on_net_destroy",on_net_destroy)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("on_key_hold", on_key_hold)
+    RegisterScriptCallback("on_key_press", on_key_press)
+    -- RegisterScriptCallback("on_before_key_press", on_before_key_press)
+    -- RegisterScriptCallback("on_before_key_hold", on_before_key_hold)
 end
+
+--[[
+- Blueprint Status UI
+- per blueprint sub table
+- amount/total, part name, part icon
+- amount/total red at 0%, green at 100%
+- init when blueprint gets placed
+- show on when blueprint is on screen
+- update when new submesh gets placed
+]]
 
 --[[
 blueprint_shaders = {
