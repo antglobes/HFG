@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <string_table>
 	<!-- MCM -->
+	<string id="ui_mcm_menu_hfg">
+		<text>HFG</text>
+	</string>
 	<string id="ui_mcm_hfg_title">
 		<text>Hideout Furniture Generator</text>
 	</string>
@@ -10,11 +13,11 @@
 	<string id="ui_mcm_hfg_max_power_output">
 		<text>Max Power Output</text>
 	</string>
-	<string id="ui_mcm_hfg_generator_search_radius">
-		<text>Generator Search Radius</text>
+	<string id="ui_mcm_hfg_power_source_search_radius">
+		<text>Power Source Search Radius</text>
 	</string>
-	<string id="ui_mcm_hfg_generator_broken_cond">
-		<text>Generator Broken Condition</text>
+	<string id="ui_mcm_hfg_power_source_broken_cond">
+		<text>Power Source Broken Condition</text>
 	</string>
 	<string id="ui_mcm_hfg_siphon_activation_range">
 		<text>Siphon Activation Range</text>
@@ -22,6 +25,38 @@
 	<string id="ui_mcm_hfg_enable_debug">
 		<text>Enable Debugging</text>
 	</string>
+	<string id="ui_mcm_hfg_debug_level">
+		<text>Debugging Level</text>
+	</string>
+	<string id="ui_mcm_hfg_colour_blind_type">
+		<text>Colourblindness Type</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_toggle_hud">
+		<text>Toggle Blueprint Hud</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_scroll_up">
+		<text>Scroll Blueprint Hud Up</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_scroll_down">
+		<text>Scroll Blueprint Hud Down</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_scroll_step">
+		<text>Scroll Step</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_toggle_preview">
+		<text>Toggle Blueprint Hud Preview</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_toggle_preview_anim_style">
+		<text>Toggle Blueprint Hud Preview Animation Style</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_toggle_preview_anim_duration">
+		<text>Toggle Blueprint Hud Preview Animation Duration</text>
+	</string>
+	<string id="ui_mcm_hfg_blueprint_key_trigger_time">
+		<text>Blueprint KeyTrigger Time</text>
+	</string>
+	<!-- List Options -->
+	<!-- Debugging -->
 	<string id="ui_mcm_lst_player">
 		<text>PLAYER</text>
 	</string>
@@ -40,7 +75,66 @@
 	<string id="ui_mcm_lst_all">
 		<text>ALL</text>
 	</string>
-
+    <!-- Colour blind types -->
+    <string id="ui_mcm_lst_normal">
+        <text>Normal</text>
+    </string>
+    <string id="ui_mcm_lst_achromatopsia">
+        <text>Achromatopsia</text>
+    </string>
+    <string id="ui_mcm_lst_achromatomaly">
+        <text>Achromatomaly</text>
+    </string>
+    <string id="ui_mcm_lst_deuteranopia">
+        <text>Deuteranopia</text>
+    </string>
+    <string id="ui_mcm_lst_deuteranomaly">
+        <text>Deuteranomaly</text>
+    </string>
+    <string id="ui_mcm_lst_protanopia">
+        <text>Protanopia</text>
+    </string>
+    <string id="ui_mcm_lst_protanomaly">
+        <text>Protanomaly</text>
+    </string>
+    <string id="ui_mcm_lst_tritanopia">
+        <text>Tritanopia</text>
+    </string>
+    <string id="ui_mcm_lst_tritanomaly">
+        <text>Tritanomaly</text>
+    </string>
+	<!-- Anim Style -->
+	<string id="ui_mcm_lst_Quadratic">
+        <text>Quadratic</text>
+    </string>
+	<string id="ui_mcm_lst_Cubic">
+        <text>Cubic</text>
+    </string>
+	<string id="ui_mcm_lst_Quartic">
+        <text>Quartic</text>
+    </string>
+	<string id="ui_mcm_lst_Quintic">
+        <text>Quintic</text>
+    </string>
+	<string id="ui_mcm_lst_Sine">
+        <text>Sine</text>
+    </string>
+	<string id="ui_mcm_lst_Circular">
+        <text>Circular</text>
+    </string>
+	<string id="ui_mcm_lst_Exponential">
+        <text>Exponential</text>
+    </string>
+	<string id="ui_mcm_lst_Elastic">
+        <text>Elastic</text>
+    </string>
+	<string id="ui_mcm_lst_Back">
+        <text>Back</text>
+    </string>
+	<string id="ui_mcm_lst_Bounce">
+        <text>Bounce</text>
+    </string>
+	
 
     <string id="st_disel_generator_descr">
         <text>
@@ -604,6 +698,9 @@
 	<string id="st_add_fuel">
 		<text>add fuel</text>
 	</string>
+	<string id="st_take_fuel">
+		<text>take fuel</text>
+	</string>
 	<string id="st_no_gen_nearby">
 		<text>Stand Closer to a Generator</text>
 	</string>
@@ -726,6 +823,9 @@
 	<string id="st_hfg_place_part">
 		<text>Place Part</text>
 	</string>
+	<string id="st_hfg_place_all_parts">
+		<text>Place All Parts</text>
+	</string>
 	<string id="st_hfg_place_blueprint">
 		<text>Place Blueprint</text>
 	</string>
@@ -791,4 +891,24 @@
 		<text>Technical document that details how to build a solar panel system</text>
 	</string>
 
-</string_table>
+	<string id="st_hfg_start_wiring">
+		<text>start wiring</text>
+	</string>
+
+	<string id="st_hfg_blueprint_status">
+		<text>%s %s</text>
+	</string>
+
+	<string id="st_hfg_blueprint_status_title">
+		<text>%s Blueprint</text>
+	</string>
+
+	<string id="st_hfg_blueprint_toggle_hud">
+		<text>toggle hud</text>
+	</string>
+
+	<string id="st_hfg_blueprint_toggle_scroll">
+		<text>toggle scrolling</text>
+	</string>
+
+</string_table> 
