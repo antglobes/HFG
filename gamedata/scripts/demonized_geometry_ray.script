@@ -82,6 +82,7 @@ flags (bit map = values can be added together for combined effect):
 function geometry_ray:__init(args)
     local args = args or {}
     if args.ray_range == nil and args.contact_range == nil then
+        printf("geo ray init: params in valid")
         return nil
     end
 
@@ -105,6 +106,7 @@ direction:
 ]]--
 function geometry_ray:get(position, direction)    
     if position == nil or direction == nil then
+        printf("geo ray get: params in valid")
         return nil
     end
 
