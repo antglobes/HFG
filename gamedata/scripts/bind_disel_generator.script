@@ -113,7 +113,11 @@ function init(obj, was_blueprint)
     local id = obj:id()
     local sect = obj:section()
     dbg("dev", "attempt binding %s", sect)
-    if contains(hfg_blueprint.placed_blueprints, id, true) then
+    if 
+        contains(hfg_blueprint.placing_blueprints, id, true)
+        or contains(hfg_blueprint.placed_blueprints, id, true)
+        or contains(hfg_blueprint.removed_attachments, id, true)
+    then
         dbg("dev", "cannot bind %s, as is a blueprint ", sect)
         return
     end
@@ -132,12 +136,12 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     -- Object Fields
     self.section = self.object:section()
     self.item_section = ini_sys:r_string_ex(self.section, "item_section")
-    self.condition = (contains(data, "condition", true) and data["condition"]) or 1
+    self.condition = contains(data, "condition", true) and data["condition"] or 1
     self.placeable_type = ini_sys:r_string_ex(self.item_section, "placeable_type")
     self.parts = contains(data, "parts", true) and data["parts"] or self:InitParts()
     
     -- Object State
-    self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
+    self.power_state = self.condition > BROKEN_COND and (contains(data, "power_state", true) and data["power_state"] or "off") or "broken"
     self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
     self.current_motion = "idle"
     self.powerable_device_tmr = 0
@@ -562,6 +566,7 @@ function placeable_disel_generator_wrapper:ProcessFuel()
 end
 
 function placeable_disel_generator_wrapper:InitParts()
+    dbg("info", "init parts")
     local parts = {}
     for bone_id, bone_name in pairs(self.object:list_bones()) do
         local part_name = bone_to_part_name(bone_name, self.placeable_type)
@@ -574,7 +579,7 @@ function placeable_disel_generator_wrapper:InitParts()
             parts[part_name].components = get_parts_tbl(part_name)
             local name = part_name:gsub("hfg_prt_", "")
             local dam_multi = hfg_utils.part_damage_multi[self.placeable_type][name]
-            dbg("dev", "name: %s, dam multi: %s", name, dam_multi)
+            --dbg("dev", "name: %s, dam multi: %s", name, dam_multi)
             parts[part_name].dam_multi =  dam_multi + round_idp(math.random(0.01, 0.5), 2)
             -- dbg("dev", "adding %s to parts", part_name)
         end
@@ -836,8 +841,8 @@ end
 function on_option_change(options)
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
     dbg("debug", "Received options")
-    SEARCH_RADIUS = options["search_radius"]
-    BROKEN_COND = options["broken_cond"]
+    SEARCH_RADIUS = options["power_source_search_radius"]
+    BROKEN_COND = options["power_source_broken_cond"]
     MAX_FUEL = options["max_fuel"]
     MAX_POWER_OUTPUT = options["max_power_output"]
 end
