@@ -11,6 +11,7 @@ ag_utils.import_metatable(this, ag_npc)
 ag_utils.import_metatable(this, ag_position)
 ag_utils.import_metatable(this, ag_strings)
 ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_configs)
 
 gts = get_translation
 
@@ -30,6 +31,9 @@ SOLAR_PANEL_ITEM = "hfg_solar_panel"
 -- MCM Variables
 SEARCH_RADIUS = 50
 BROKEN_COND = 0.1
+
+-- Globals
+ini_key_to_dik = ini_file_ex("plugins\\key_to_DIK.ltx")
 
 -- Locals
 local dbg_pr = nil
@@ -324,11 +328,11 @@ function on_gen_impact(bullet)
         local found_npc = npc and true or false
         local found_wpn = wpn and true or false
         local found_target = target and true or false
-        dbg("dev", "At least one game object not found. npc?:%s, wpn?:%s, target?:%s", found_npc, found_wpn, found_target)
+        -- dbg("dev", "At least one game object not found. npc?:%s, wpn?:%s, target?:%s", found_npc, found_wpn, found_target)
         return
     end
     if not contains(PLACEABLE_POWER, target:section()) then
-        dbg("dev", "target is not a power source")
+        -- dbg("dev", "target is not a power source")
         return 
     end
     local data = hf_obj_manager.get_data(target:id())
@@ -416,6 +420,16 @@ function find_power_sources(pos, radius)
     return power_sources
 end
 
+function dik_to_str(dik, sentence_case)
+    if not is_number(dik) then return end
+    local keyname = dik_to_keyname(dik)
+    if not ini_key_to_dik:line_exist("keys", keyname) then return end
+    local dik_str = ini_key_to_dik:r_string_ex("keys", keyname, "none")
+    local pattern = dik_str:find("mouse") and "_" or "DIK_"
+    local replacement = dik_str:find("mouse") and " " or ""
+    dik_str = replace(dik_str, pattern, replacement)
+    return sentence_case and capitalise(lowercase(dik_str)) or lowercase(dik_str)
+end
 
 -- Monkey Patches
 base_disassembly_item = item_parts.disassembly_item
@@ -678,11 +692,23 @@ function get_config(key)
     return hfg_mcm.get_config(key)
 end
 
+function is_key_held(key, duration)
+    return ui_mcm.key_hold("hfg", key, duration)
+end
+
+function simple_press(key, func)
+    ui_mcm.simple_press("hfg", key, func)
+end
+
+function double_tap(key)
+    return ui_mcm.double_tap("hfg", key)
+end
+
 function on_option_change(options)
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
     dbg("debug", "Received options")
-    SEARCH_RADIUS = options["search_radius"]
-    BROKEN_COND = options["broken_cond"]
+    SEARCH_RADIUS = options["power_source_search_radius"]
+    BROKEN_COND = options["power_source_broken_cond"]
 end
 
 function on_game_start()
