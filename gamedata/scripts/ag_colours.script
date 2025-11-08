@@ -1,0 +1,371 @@
+ag_utils.import_metatable(this, ag_maths)
+
+---Utility Functions that focus on colour mainpulation in argb and fcolor format
+---Apart of `ag_utils` library
+---@author antglobes
+clr_cache = {}
+
+---Get vanilla colour
+---@author antglobes
+---@param name string
+---@return string
+function get_colour(name)
+    return utils_xml.get_color(name)
+end
+
+--- Returns XML valid colour string
+---@author antglobes
+---@param name string
+---@return string
+function get_colour_string(name, str)
+	if str then
+		return strformat("%c[%s]%s", name, str)
+	end
+    return strformat("%c[%s]", name)
+end
+
+--- Get colour based on medpack's condition
+---@author antglobes
+---@param condition number
+---@return string
+function get_condition_colour(condition, as_string)
+    condition = round(condition * 100)
+	local clr = "d_red"
+    if condition > 75 then
+		clr = "d_green"
+    elseif condition > 50  then
+        clr = "pda_yellow"
+    elseif condition > 25 then
+        clr = "d_orange"
+    end
+	return as_string and get_colour_string(clr) or vanilla_clr_tbl[clr]
+end
+
+---Change the alpha of an argb value represented as a 32 bit float
+---@author antglobes
+---@param clr number
+---@param a number
+---@return number
+function change_alpha(clr, a)
+    if not clr and a ~= nil then return end
+
+    if not clr_cache[clr .. "_" .. a] then
+        local b = bit.band(clr, 255)
+        local g = bit.band(bit.rshift(clr, 8), 255)
+        local r = bit.band(bit.rshift(clr, 16), 255)
+        clr_cache[clr .. "_" .. a] = GetARGB(a, r, g, b)
+    end
+
+    return clr_cache[clr .. "_" .. a]
+end
+
+---Get an argb value represented as a 32 bit number or as a table from a float
+---@author antglobes
+---@param clr number
+---@param as_table boolean
+---@return number|table
+function float2argb(clr, as_table)
+    local argb = {
+        r = bit.band(bit.rshift(clr, 24), 255),
+        g = bit.band(bit.rshift(clr, 16), 255),
+        b = bit.band(bit.rshift(clr, 8), 255),
+        a = bit.band(clr, 255)
+    }
+    if as_table then
+        return argb
+    end
+    return GetARGB(argb.a, argb.r, argb.g, argb.b)
+end
+
+function fcolor2argb(clr, as_table)
+	local red = clr.r or clr[1]
+	local green = clr.g or clr[2]
+	local blue = clr.b or clr[3]
+	local alpha = clr.a or clr[4]
+	local argb = {r=red, g=green, b=blue, a=alpha}
+
+	if as_table then
+		return argb
+	end
+	return GetARGB(alpha, red, green, blue)
+end
+
+function argb2fcolor(clr, precision)
+	precision = not precision and 3 or precision
+	local float = {}
+	for clr, val in pairs(clr) do
+		float[clr] = round_idp(val / 255, precision)
+	end
+	return fcolor():set(float.r, float.g, float.b, float.a)
+end
+
+-- Sourced from https://devforum.roblox.com/t/how-do-i-convert-an-rgb-color-value-to-a-decimal-color-value/1404828
+function argb2Hex(clr, as_table)
+	local red = clr.r or clr[1]
+	local green = clr.g or clr[2]
+	local blue = clr.b or clr[3]
+	local alpha = clr.a or clr[4]
+
+	local rh = string.format("%02x", red) -- minimum returned numbers 2, left padded with 0's see https://developer.roblox.com/en-us/articles/Format-String
+	local gh = string.format("%02x", green)
+	local bh = string.format("%02x", blue)
+	local ah = string.format("%02x", alpha)
+	return as_table and {r=rh, g=gh, b=bh, a=ah} or rh .. gh .. bh .. ah
+end
+
+idx_to_clr_key = {
+	[1]="r",
+	[2]="b",
+	[3]="g",
+	[4]="a"
+}
+function Hex2argb(hex_str, as_argb)
+	local argb = {r=0, b=0, g=0, a=0}
+	local idx=1
+	hex_str = hex_str:gsub("#","")
+	for i=1, #hex_str, 2 do
+		local hex_char = hex_str:sub(i, i + 1)
+		local hex_s = "0x"..hex_char
+		local unit = tonumber(hex_s)
+		local clr_key = idx_to_clr_key[idx]
+		argb[clr_key] = unit
+		idx = idx + 1
+	end
+	return as_argb and tbl2argb(argb) or argb
+end
+
+function tbl2argb(clr)
+	local red = clr.r or clr[1]
+	local green = clr.g or clr[2]
+	local blue = clr.b or clr[3]
+	local alpha = clr.a or clr[4]
+    return GetARGB(alpha, red, green, blue)
+end
+
+function compare_argb(clr_x, clr_y, op)
+	if op == "and" then
+		return clr_x.r ~= clr_y.r
+			and clr_x.g ~= clr_y.g
+			and clr_x.b ~= clr_y.b
+			and clr_x.a ~= clr_y.a
+	elseif op == "or" then
+		return clr_x.r ~= clr_y.r
+			or clr_x.g ~= clr_y.g
+			or clr_x.b ~= clr_y.b	
+			or clr_x.a ~= clr_y.a	
+	end
+end
+
+-- Converting default_rgb to colorblind safe default_rgb
+-- Sourced from https://create.roblox.com/store/asset/6219049766/rgbToColorblindRgb?assetType=Model&externalSource=www
+colourblind_transform_matrices = {
+	Normal = {
+		R = {100, 0, 0},
+		G = {0, 100, 0},
+		B = {0, 0, 100}
+	},
+	Achromatopsia = {
+		R = {29.9, 58.7, 11.4},
+		G = {29.9, 58.7, 11.4},
+		B = {29.9, 58.7, 11.4}
+	},
+	Achromatomaly = {
+		R = {61.8, 32, 6.2},
+		G = {16.3, 77.5, 6.2},
+		B = {16.3, 32.0, 51.6}
+	},
+	Deuteranopia =  {
+		R = {62.5, 37.5, 0},
+		G = {70, 30, 0},
+		B = {0, 30, 70}},
+	Deuteranomaly = {
+		R = {80, 20, 0},
+		G = {25.833, 74.167, 0},
+		B = {0, 14.167, 85.833}
+	},
+	Protanopia = {
+		R = {56.667, 43.333, 0},
+		G = {55.833, 44.167, 0},
+		B =  {0, 24.167, 75.833}},
+	Protanomaly = {
+		R = {81.667, 18.333, 0},
+		G = {33.333, 66.667, 0},
+		B = {0, 12.5, 87.5}
+	},
+	Tritanopia = {
+		R = {95, 5, 0},
+		G = {0, 43.333, 56.667},
+		B = {0, 47.5, 52.5}
+	},
+	Tritanomaly = {
+		R = {96.667, 3.333, 0},
+		G = {0, 73.333, 26.667},
+		B = {0, 18.333, 81.667}
+	},
+}
+
+num_to_matrix_name = {
+	[1] = "Normal",
+	[2] = "Achromatopsia",
+	[3] = "Achromatomaly",
+	[4] = "Deuteranopia",
+	[5] = "Deuteranomaly",
+	[6] = "Protanopia",
+	[7] = "Protanomaly",
+	[8] = "Tritanopia",
+	[9] = "Tritanomaly",
+}
+
+---Get Transformation Matrix depending on the colourblind type
+---@author antglobes
+---@param matrix_name string
+---@return table
+function get_colourblind_transform_matrix(matrix_name)
+    return colourblind_transform_matrices[matrix_name]
+end
+
+---Get a colour according to a specific colourblindness type
+---@author antglobes
+---@param matrix_name string
+---@param r number
+---@param g number
+---@param b number
+---@return number, number, number
+function get_colourblind_rgb(matrix_name, r, g, b)
+    local default_rgb = {0, 0, 0}
+    if r == nil or g == nil or b == nil then
+		return unpack(default_rgb)
+	end
+		
+	if type(r) ~= 'number' or type(g) ~= 'number' or type(b) ~= 'number' then
+		return unpack(default_rgb)
+	end
+
+	if is_number(matrix_name) then
+		matrix_name = num_to_matrix_name[matrix_name]
+	end
+    local matrix_entry = get_colourblind_transform_matrix(matrix_name)
+
+    local converted_rgb_channel_vals = {
+        r = (r * matrix_entry.R[1] / 100.0) + (g * matrix_entry.R[2] / 100.0) + (b * matrix_entry.R[3] / 100.0),
+        g = (r * matrix_entry.G[1] / 100.0) + (g * matrix_entry.G[2] / 100.0) + (b * matrix_entry.G[3] / 100.0),
+        b = (r * matrix_entry.B[1] / 100.0) + (g * matrix_entry.B[2] / 100.0) + (b * matrix_entry.B[3] / 100.0)
+    }
+
+    for clr, val in pairs(converted_rgb_channel_vals) do
+		converted_rgb_channel_vals[clr] = math.min(val, 255) -- to prevent invalid ranges
+	end
+
+    return converted_rgb_channel_vals
+end
+
+function get_colourblind_clr(clr, colourblind_type, as_table)
+	local red = clr.r or clr[1]
+	local green = clr.g or clr[2]
+	local blue = clr.b or clr[3]
+	local alpha = clr.a or clr[4]
+    local rgb = get_colourblind_rgb(colourblind_type, red, green, blue)
+    -- pr("For cb type: %s,  from: %s getting cb safe clr %s", colourblind_type, print_table(clr_tbl), print_table{r, g, b})
+    if as_table then
+        return {a=alpha, r=rgb.r, g=rgb.g, b=rgb.b}
+    end
+    return GetARGB(alpha, rgb.r, rgb.g, rgb.b)
+end
+
+-- HSL + HSV Conversion to and from rgb
+-- Sourced from https://github.com/EmmanuelOga/columns/blob/master/utils/color.lua
+-- Modified to accept alpha channel
+
+---Table of <string, table<r, g, b>> values taken from utils_xml
+vanilla_clr_tbl = {
+    -- Additional COLOURS
+    ["black"]       = {r=0,  g=0, b=0},
+    ["blue"]        = {r=34, g=106, b=226},
+    ["magenta"]     = {r=209, g=74, b=169},
+
+    -- Base Game COLOURS
+	["white"]       = {r=255,g=255,b=255},
+	["green"]       = {r=0,g=255,b=0},
+	["yellow"]      = {r=255,g=255,b=0},
+	["red"]         = {r=255,g=0,b=0},
+	["orange"]      = {r=250,g=150,b=0},
+	["d_orange"]    = {r=238,g=153,b=26},
+	["d_red"]       = {r=204,g=0,b=51},
+	["d_cyan"]      = {r=153,g=255,b=255},
+	["d_purple"]    = {r=93,g=0,b=116},
+	["d_green"]     = {r=51,g=255,b=102},
+	["d_blue"]      = {r=100,g=100,b=255},	
+	["ui_gray_1"]   = {r=170,g=170,b=170},
+	["ui_gray_2"]   = {r=140,g=140,b=140},
+	["pda_green"]   = {r=56,g=209,b=115},
+	["pda_blue"]    = {r=56,g=166,b=209},
+	["pda_yellow"]  = {r=209,g=209,b=56},
+	["pda_white"]   = {r=250,g=250,b=250},
+}
+
+---Set the opacity of a colour from clr_table
+clr_table_opacity = {
+    -- Additional COLOURS
+    ["black"]       = function(opacity) return GetARGB(opacity, 0, 0, 0) end,
+    ["blue"]        = function(opacity) return GetARGB(opacity, 34, 106, 226) end,
+    ["magenta"]     = function(opacity) return GetARGB(opacity, 209, 74, 169) end,
+
+    -- Base Game COLOURS
+	["white"]       = function(opacity) return GetARGB(opacity,255,255,255) end,
+	["green"]       = function(opacity) return GetARGB(opacity,0,255,0) end,
+	["yellow"]      = function(opacity) return GetARGB(opacity,255,255,0) end,
+	["red"]         = function(opacity) return GetARGB(opacity,255,0,0) end,
+	["orange"]      = function(opacity) return GetARGB(opacity,250,150,0) end,
+	["d_orange"]    = function(opacity) return GetARGB(opacity,238,153,26) end,
+	["d_red"]       = function(opacity) return GetARGB(opacity,204,0,51) end,
+	["d_cyan"]      = function(opacity) return GetARGB(opacity,153,255,255) end,
+	["d_purple"]    = function(opacity) return GetARGB(opacity,93,0,116) end,
+	["d_green"]     = function(opacity) return GetARGB(opacity,51,255,102) end,
+	["d_blue"]      = function(opacity) return GetARGB(opacity,100,100,255) end,	
+	["ui_gray_1"]   = function(opacity) return GetARGB(opacity,170,170,170) end,
+	["ui_gray_2"]   = function(opacity) return GetARGB(opacity,140,140,140) end,
+	["pda_green"]   = function(opacity) return GetARGB(opacity,56,209,115) end,
+	["pda_blue"]    = function(opacity) return GetARGB(opacity,56,166,209) end,
+	["pda_yellow"]  = function(opacity) return GetARGB(opacity,209,209,56) end,
+	["pda_white"]   = function(opacity) return GetARGB(opacity,250,250,250) end,
+}
+
+---Table containing functions to set the opacity of faction_to_colour table
+faction_to_colour_opacity = {
+    ["stalker"]     = function(opacity) return GetARGB(opacity, 241, 196, 15) end,
+    ["csky"]        = function(opacity) return GetARGB(opacity, 0, 191, 255) end,
+    ["bandit"]      = function(opacity) return GetARGB(opacity, 194, 125, 14) end,
+    ["army"]        = function(opacity) return GetARGB(opacity, 118, 139, 5) end,
+    ["killer"]      = function(opacity) return GetARGB(opacity, 61, 104, 145) end,
+    ["monolith"]    = function(opacity) return GetARGB(opacity, 33, 148, 150) end,
+    ["ecolog"]      = function(opacity) return GetARGB(opacity, 122, 199, 184)end,
+    ["dolg"]        = function(opacity) return GetARGB(opacity, 178, 34, 34) end,
+    ["freedom"]     = function(opacity) return GetARGB(opacity, 34, 139, 34) end,
+    ["greh"]        = function(opacity) return GetARGB(opacity, 14, 1, 1) end,
+    ["renegade"]    = function(opacity) return GetARGB(opacity, 168, 67, 0) end,
+    ["isg"]         = function(opacity) return GetARGB(opacity, 184, 102, 135) end,
+    ["monster"]     = function(opacity) return GetARGB(opacity, 74, 46, 16) end,
+    ["default"]     = function(opacity) return GetARGB(opacity, 250, 250, 250) end,
+}
+
+---Each faction's colour in rgb format
+faction_to_colour = {
+    ["stalker"]     = {241, 196, 15},
+    ["csky"]        = {0, 191, 255},
+    ["bandit"]      = {194, 125, 14},
+    ["army"]        = {118, 139, 5},
+    ["killer"]      = {61, 104, 145},
+    ["monolith"]    = {33, 148, 150},
+    ["ecolog"]      = {122, 199, 184},
+    ["dolg"]        = {178, 34, 34},
+    ["freedom"]     = {34, 139, 34},
+    ["greh"]        = {14, 1, 1},
+    ["renegade"]    = {168, 67, 0},
+    ["isg"]         = {184, 102, 135},
+    ["monster"]     = {74, 46, 16},
+    ["default"]     = {250, 250, 250},
+}
+
+misc_clr_tbl = {
+	["graphite"] = {r=107,g=107,b=107} -- 92,98,116
+}

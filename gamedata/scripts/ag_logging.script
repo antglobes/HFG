@@ -25,76 +25,7 @@ function AG_Log:__init(info)
 	self:SetLevel(info.level)
 	self.enabled = info.enabled and info.enabled or false
 	self.flush_tmr = 0
-
-	self.obj_info_actions = {
-		id = function(obj, typ, lvl)
-			return typ == "game" and obj:id() or obj.id
-		end,
-		sect = function(obj, typ)
-			return get_unknown_sect(obj, typ)
-		end,
-		clsid = function(obj, typ, lvl)
-			if lvl < self.log_levels.DEBUG then return end
-			return obj:clsid()
-		end,
-		condition = function(obj, typ, lvl)
-			if lvl < self.log_levels.DEBUG then return end
-			local sect = get_unknown_sect(obj, typ)
-			return IsInvItem(nil, sect) and obj.condition and obj:condition()
-		end,
-		name = function(obj, typ, lvl)
-			if lvl < self.log_levels.INFO then return end
-			local sect = get_unknown_sect(obj, typ)
-			local is_stalker = typ == "game" and IsStalker(obj) or IsStalker(nil, sect)
-			if is_stalker then
-				return obj:character_name()
-			end
-			local is_monster = typ == "game" and IsMonster(obj) or IsMonster(nil, sect)
-			if is_monster then
-				get_species(sect)
-			end
-			return hfg_utils.get_hf_item_name(sect)
-		end,
-		visual = function(obj, typ, lvl)
-			if lvl < self.log_levels.INFO then return end
-			local sect = get_unknown_sect(obj, typ)
-			return has_key(sect, "visual") and get_visual(sect)
-		end,
-		weight = function(obj, typ, lvl)
-			if lvl < self.log_levels.INFO then return end
-			local sect = get_unknown_sect(obj, typ)
-			return has_key(sect, "inv_weight") and get_item_weight(sect)
-		end,
-		cost = function(obj, typ, lvl)
-			if lvl < self.log_levels.INFO then return end
-			local sect = get_unknown_sect(obj, typ)
-			return has_key(sect, "cost") and get_item_cost(sect, true)
-		end,
-		max_uses = function(obj, typ, lvl)
-			if lvl < self.log_levels.DEV then return end
-			local sect = get_unknown_sect(obj, typ)
-			return has_key(sect, "max_uses") and get_max_uses(nil, sect)
-		end,
-		uses = function(obj, typ, lvl)
-			if lvl < self.log_levels.DEV then return end
-			local sect = get_unknown_sect(obj, typ)
-			return typ == "game" and IsItem("multiuse", sect) and obj:get_remaining_uses()
-		end,
-		icon = function(obj, typ, lvl)
-			if lvl < self.log_levels.DEV then return end
-			local sect = get_unknown_sect(obj, typ)
-			return IsInvItem(nil, sect) and print_table({get_obj_icon(nil, sect)}) or IsStalker(obj) and obj:character_icon()
-		end,
-		pos = function(obj, typ, lvl)
-			if lvl < self.log_levels.DEV then return end
-			local position = typ == "game" and obj:position() or obj.position
-			return vec_to_str(position)
-		end,
-		bones = function(obj, typ, lvl)
-			if self.log_levels.ALL then return end
-			return typ == "game" and obj:get_physics_shell() and vec_to_str(obj:list_bones())
-		end,
-	}
+	self:SetupObjectTable()
 -- alive, faction, 
 end
 
@@ -193,18 +124,18 @@ function AG_Log:printf(header, fmt, ...)
 				end
 				return 'userdata'
 			elseif (type(p[i]) == "table") then
-				printf("checking for userdata/object")
 				local contains_obj = false
 				local obj_tbl = {}
 				for k, v in pairs(p[i]) do
 					if type(v) == "userdata" and v.id then
 						contains_obj = true
 						local str = self:ObjectToTable(v)
-						obj_tbl[k] = str
+						if str ~= nil then
+							obj_tbl[k] = str
+						end
 					end
 				end
 				if contains_obj then
-					printf("found: %s", ag_tables.print_table(obj_tbl))
 					return ag_tables.print_table(obj_tbl)
 				end
                 return ag_tables.print_table(p[i])    
@@ -229,19 +160,92 @@ function AG_Log:printf(header, fmt, ...)
 	end
 end
 
+function AG_Log:SetupObjectTable()
+	self.obj_info_actions = {
+		id = function(obj, typ, lvl)
+			return typ == "game" and obj:id() or obj.id
+		end,
+		sect = function(obj, typ)
+			return get_unknown_sect(obj, typ)
+		end,
+		clsid = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEBUG then return end
+			return obj:clsid()
+		end,
+		condition = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEBUG then return end
+			local sect = get_unknown_sect(obj, typ)
+			return IsInvItem(nil, sect) and obj.condition and obj:condition()
+		end,
+		name = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			local is_stalker = typ == "game" and IsStalker(obj) or IsStalker(nil, sect)
+			if is_stalker then
+				return obj:character_name()
+			end
+			local is_monster = typ == "game" and IsMonster(obj) or IsMonster(nil, sect)
+			if is_monster then
+				get_species(sect)
+			end
+			return hfg_utils.get_hf_item_name(sect)
+		end,
+		visual = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "visual") and get_visual(sect)
+		end,
+		weight = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "inv_weight") and get_item_weight(sect)
+		end,
+		cost = function(obj, typ, lvl)
+			if lvl < self.log_levels.INFO then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "cost") and get_item_cost(sect, true)
+		end,
+		max_uses = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local sect = get_unknown_sect(obj, typ)
+			return has_key(sect, "max_uses") and get_max_uses(nil, sect)
+		end,
+		uses = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local sect = get_unknown_sect(obj, typ)
+			return typ == "game" and IsItem("multiuse", sect) and obj:get_remaining_uses()
+		end,
+		icon = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local sect = get_unknown_sect(obj, typ)
+			return IsInvItem(nil, sect) and print_table({get_obj_icon(nil, sect)}) or IsStalker(obj) and obj:character_icon()
+		end,
+		pos = function(obj, typ, lvl)
+			if lvl < self.log_levels.DEV then return end
+			local position = typ == "game" and obj:position() or obj.position
+			return vec_to_str(position)
+		end,
+		bones = function(obj, typ, lvl)
+			if self.log_levels.ALL then return end
+			return typ == "game" and obj:get_physics_shell() and vec_to_str(obj:list_bones())
+		end,
+	}
+end
+
 ---Convert Server/Game Objects to a string represented table
 ---@author antglobes
 function AG_Log:ObjectToTable(obj)
 	local obj_tbl = {}
-	if obj then
-		local lvl = self:GetLevel()
-		local typ = get_obj_type(obj)
-		for action_key, action_func in pairs(self.obj_info_actions) do
-			local action_result = action_func(obj, typ, lvl)
-			if action_result then
-				-- printf("action key: %s, action result: %s", action_key, action_result)
-				obj_tbl[tostring(action_key)] = action_result
-			end
+	local default = "userdata"
+	if not obj then return end 
+	local lvl = self:GetLevel()
+	local typ = get_obj_type(obj)
+	if not typ or typ == "" then return default end
+	for action_key, action_func in pairs(self.obj_info_actions) do
+		local action_result = action_func(obj, typ, lvl)
+		if action_result then
+			-- printf("action key: %s, action result: %s", action_key, action_result)
+			obj_tbl[tostring(action_key)] = action_result
 		end
 	end
 	-- printf("1st table size: %s", size_table(obj_tbl))

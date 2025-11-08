@@ -312,3 +312,21 @@ end
 function round_dp(num, dp)
     return string.format("%." .. dp .. "f", num)
 end
+
+---@type fun(tile_count: number, height: number, width: number): number
+--- Sourced from https://stackoverflow.com/questions/868997/max-square-size-for-unknown-number-inside-rectangle
+function get_max_size_within_rect(tile_count, height, width)
+    local max_size = math.sqrt((height * width) / tile_count)
+    local num_possible_whole_tiles_h = math.floor(height / max_size)
+    local num_possible_whole_tiles_w = math.floor(width / max_size)
+    local total = num_possible_whole_tiles_h * num_possible_whole_tiles_w
+
+    while total < tile_count or total < 0 do
+        max_size = max_size - 1
+        num_possible_whole_tiles_h = math.floor(height / max_size)
+        num_possible_whole_tiles_w = math.floor(width / max_size)
+        total = num_possible_whole_tiles_h * num_possible_whole_tiles_w
+    end
+    
+    return max_size
+end

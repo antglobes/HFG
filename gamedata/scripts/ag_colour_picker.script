@@ -1,0 +1,481 @@
+-- Library Imports
+ag_utils.import_metatable(this, ag_colours)
+ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_maths)
+
+-- Utils
+get_config = hfg_utils.get_config
+
+-- Constants
+FLOAT_PRECISION = 3
+FLOAT_MAX = 1
+FLOAT_MIN = 0
+UNIT_MAX = 255
+UNIT_MIN = 0
+LOG_HEADER = "[HFG|Colour Picker UI]"
+
+-- Locals
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function init(owner, path, ele_base)
+    return UIColourPicker(owner, path, ele_base)
+end
+
+class "UIColourPicker" (CUIScriptWnd)
+
+function UIColourPicker:__init(owner, path, ele_base) super(owner, path, ele_base)
+    dbg("dev", "init colour picker")
+    self.shown = false
+    self.parent = owner
+    self.xml = owner.xml_colour_picker
+    self.clr_key_to_clr = {
+        r = "red",
+        g = "green",
+        b = "blue",
+        a = "alpha"
+    }
+    self.clrs = {
+        [1]="red",
+        [2]= "green",
+        [3]="blue",
+        [4]="alpha"
+    }
+    self.default_colour = {a=255,r=255,g=255,b=255}
+    self.mouse_1_pressed = false
+    self:InitControls(owner, path, ele_base)
+    self:InitCallBacks()
+    dbg("dev", "finished init colour picker")
+end
+
+function UIColourPicker:InitControls(owner, path, ele_base)
+    dbg("dev", "init controls")
+    dbg("dev", "init main xml")   
+    
+    self.control_panel = self.xml:InitFrame(path, ele_base)
+    -- self.background = self.xml:InitStatic("background", self.control_panel)
+    dbg("dev", "init titles")
+    self.title_unit_rgb = self.xml:InitTextWnd("title_unit_rgb", self.control_panel)
+    self.title_float_rgb = self.xml:InitTextWnd("title_float_rgb", self.control_panel)
+
+    dbg("dev", "init clrs")
+    for _, clr in pairs(self.clrs) do
+        dbg("dev", "init %s", clr)
+        local clr_key = first_char(clr)
+
+        self[clr] = {}
+        self[clr].title       = self.xml:InitTextWnd("title_"..clr, self.control_panel)
+
+        self[clr].input_unit  = self.xml:InitEditBox("input_"..clr.."_unit", self.control_panel)
+        self[clr].input_unit:SetText(tostring(self.default_colour[clr_key]))
+        self.parent:Register(self[clr].input_unit, "input_"..clr.."_unit")
+        self[clr].prev_input_unit = 0
+
+        self[clr].input_float = self.xml:InitEditBox("input_"..clr.."_float", self.control_panel)
+        self[clr].input_float:SetText(unit_to_float(tostring(self.default_colour[clr_key])))
+        self.parent:Register(self[clr].input_unit, "input_"..clr.."_float")
+        self[clr].prev_input_float = 0.0
+
+        self[clr].track       = self.xml:InitTrackBar("track_"..clr, self.control_panel)
+        self[clr].track:SetFValue(self.default_colour[clr_key])
+        self[clr].track:SetOptFBounds(UNIT_MIN, UNIT_MAX)
+        self[clr].track:SetStep(1)
+        self[clr].track_val = self.default_colour[clr_key]
+        self[clr].prev_track_val = self[clr].track_val
+    end
+
+    self.clr_blind_title = self.xml:InitTextWnd("clr_blind_title", self.control_panel)    
+    self.clr_blind_list = self.xml:InitComboBox("clr_blind_list", self.control_panel)
+    self.clr_blind_list:ClearList()
+    self.clr_blind_list:SetAutoDelete(true)
+    dbg("dev", "filling clr blind list")
+    local matrices_names = get_keytable(colourblind_transform_matrices)
+    for idx, name in pairs(matrices_names) do
+        self.clr_blind_list:AddItem(name, idx - 1)
+    end
+    self.clr_blind_type = self.clr_blind_list:GetTextOf(0)
+    self.clr_blind_list:SetText(self.clr_blind_type)
+    self.parent:Register(self.clr_blind_list, "clr_blind_list")
+
+    self.clr_hex_title = self.xml:InitTextWnd("clr_hex_title", self.control_panel)
+    self.clr_hex_input = self.xml:InitEditBox("clr_hex_input", self.control_panel)
+    self.prev_clr_hex_input = to_hex_str(argb2Hex(self.default_colour))
+    self.clr_hex_input:SetText(self.prev_clr_hex_input)
+    self.parent:Register(self.clr_hex_input, "clr_hex_input")
+
+    self.pick_btn = self.xml:Init3tButton("pick_btn", self.control_panel)
+    self.parent:Register(self.pick_btn, "pick_btn")
+
+    self.colour_block = self.xml:InitStatic("colour_block", self.control_panel)
+    self.prev_colour_block = get_colourblind_clr(self.default_colour, self.clr_blind_type, true)
+    self.colour_block:SetTextureColor(tbl2argb(self.prev_colour_block))
+    dbg("dev", "finished init controls")
+end
+
+function UIColourPicker:InitCallBacks()
+    dbg("dev", "init callbacks")
+    
+    for _, clr in pairs(self.clrs) do
+        dbg("dev", "init %s input unit & float cb", clr)
+        local Clr = clr:gsub("^%l", string.upper)
+        self.parent:AddCallback("input_"..clr.."_unit", ui_events.EDIT_TEXT_COMMIT, self["On"..Clr.."InputUnit"], self.parent)
+        self.parent:AddCallback("input_"..clr.."_float", ui_events.EDIT_TEXT_COMMIT, self["On"..Clr.."InputFloat"], self.parent)
+    end
+    dbg("dev", "init clr blind list cb")
+    self.parent:AddCallback("clr_blind_list", ui_events.LIST_ITEM_CLICKED, self.parent.OnSelectClrBlindType, self.parent)
+
+    dbg("dev", "init hex input cb")
+    self.parent:AddCallback("clr_hex_input", ui_events.EDIT_TEXT_COMMIT, self.parent.OnHexInput, self.parent)
+    
+    self.parent:AddCallback("pick_btn", ui_events.BUTTON_CLICKED, self.OnClickPickBtn, self.parent)
+end
+
+function UIColourPicker:Update()
+    CUIScriptWnd.Update(self)
+
+    
+    for _, clr in pairs(self.clrs) do
+        if self[clr].track:IsCursorOverWindow() then
+            dbg("dev", "cursor over track_%s", clr)
+            local cursor_pos = GetCursorPosition()
+            local track_pos = self[clr].track:GetWndPos()
+            local control_panel_pos = self.control_panel:GetWndPos()
+            local track_start = control_panel_pos.x + track_pos.x
+            local track_end = self[clr].track:GetWidth() + track_start
+            local per = 1 - ((track_end - cursor_pos.x) / (track_end - track_start))
+            local unit_val = round(clamp(UNIT_MAX * per, UNIT_MIN, UNIT_MAX))
+
+            if unit_val ~= self[clr].track_val then
+                dbg("dev", "val: %s", unit_val)
+                local float_val = unit_to_float(unit_val)
+
+                self:UpdateTrack(clr, unit_val)
+                self:UpdateInputHex(clr, unit_val)
+                self:UpdateInputUnit(clr, unit_val)
+                self:UpdateInputFloat(clr, float_val)
+            end
+        end
+    end
+    self:UpdateColourBlock()
+
+    if self.mouse_1_pressed and self.pick_btn:IsCursorOverWindow() then
+        self:OnClickPickBtn()
+    end
+end
+
+function UIColourPicker:ToggleUI()
+    self:Show()
+end
+
+function UIColourPicker:IsShown()
+    return self.control_panel:IsShown()
+end
+
+function UIColourPicker:Show(show)
+    self.control_panel:Show(show ~= nil and show or not self.control_panel:IsShown())
+    self.shown = self.control_panel:IsShown()
+    dbg("dev", "colour picker: Is Shown %s?", self:IsShown())
+end
+
+function UIColourPicker:GetInputUnit(clr)
+    dbg("dev", "Getting input unit val for %s", clr)
+    local txt = self[clr].input_unit:GetText()
+    dbg("dev", "val text: %s", txt)
+    if not txt then return end
+    local unit_val = tonumber(txt)
+    dbg("dev", "changed unit val: %s", unit_val)
+    if not within_range(unit_val, UNIT_MIN, UNIT_MAX) then
+        self[clr].input_unit:SetText(self[clr].prev_input_unit)
+        dbg("dev", "unit val is outside range (%s-%s), resetting to %s", UNIT_MIN, UNIT_MAX, self[clr].prev_input_unit)
+        return false
+    end
+    dbg("dev", "within range")
+    return true, unit_val
+end
+
+function UIColourPicker:GetInputFloat(clr)
+    dbg("dev", "Getting input unit val for %s", clr)
+    local txt = self[clr].input_float:GetText()
+    dbg("dev", "val text: %s", txt)
+    if not txt then return end
+    local float_val = tonumber(txt)
+    dbg("dev", "changed unit val: %s", float_val)
+    if not within_range(float_val, FLOAT_MIN, FLOAT_MAX) then
+        self[clr].input_float:SetText(self[clr].prev_input_float)
+        dbg("dev", "unit val is outside range (%s-%s), resetting to %s", FLOAT_MIN, FLOAT_MAX, self[clr].prev_input_float)
+        return false
+     end
+    return true, float_val
+end
+
+function UIColourPicker:GetInputHex(as_num)
+    dbg("dev", "Getting input hex, as num: %?", as_num)
+    local hex_txt = self.clr_hex_input:GetText()
+    dbg("dev", "hex text: %s", hex_txt)
+    if not hex_txt then return false end
+    local hex_str = split(hex_txt, "#")[1]
+    local hex_num = tonumber(hex_str, 16)
+    dbg("dev", "hex str: %s, hex num: %s", hex_str, hex_num)
+    if not hex_num then return false end
+
+    local argb = float2argb(hex_num, true)
+    dbg("dev", "hex as argb: %s", argb)
+    for clr, val in pairs(argb) do
+        if not within_range(val, UNIT_MIN, UNIT_MAX) then
+            dbg("dev", "%s is outside range (%s-%s)", val, UNIT_MIN, UNIT_MAX)
+            self.clr_hex_input:SetText(self.prev_clr_hex_input)
+            return false
+        end
+    end
+    dbg("dev", "hex is within range")
+    return true, as_num and hex_num or argb
+end
+
+function UIColourPicker:UpdateInputUnit(clr, new_unit_val)
+    local txt = self[clr].input_unit:GetText()
+    if not txt or not new_unit_val then return end
+    local unit_val = tonumber(txt)
+    if unit_val ~= new_unit_val then
+        dbg("dev", "updating input unit to %s", unit_val)
+        dbg("dev", "setting prev input unit to %s", txt)
+        self[clr].prev_input_unit = txt
+        self[clr].input_unit:SetText(tostring(new_unit_val))
+    end
+end
+
+function UIColourPicker:UpdateInputFloat(clr, new_float_val)
+    local txt = self[clr].input_float:GetText()
+    if not txt then return end
+    local float_val = tonumber(txt)
+    if float_val ~= new_float_val then
+        dbg("dev", "updating input float to %s", float_val)
+        dbg("dev", "setting prev float unit to %s", txt)
+        self[clr].prev_input_float = txt
+        self[clr].input_float:SetText(tostring(new_float_val))
+    end
+end
+
+function UIColourPicker:UpdateTrack(clr, unit_val)
+    local track_val = self[clr].track:GetFValue()
+    if track_val ~= unit_val then
+        dbg("dev", "setting track val to %s", unit_val)
+        dbg("dev", "setting prev track val to %s", self[clr].track_val)
+        self[clr].prev_track_val = self[clr].track_val
+        self[clr].track:SetFValue(unit_val)
+        self[clr].track_val = unit_val
+    end
+end
+
+function UIColourPicker:UpdateInputHex(clr, unit_val)
+    local input_hex_val = self.clr_hex_input:GetText()
+    local input_hex_argb = Hex2argb(input_hex_val)
+    local clr_key = first_char(clr)
+    if input_hex_argb[clr_key] ~= unit_val then
+        dbg("dev", "Setting prev hex input to: %s", input_hex_val)
+        self.prev_clr_hex_input = input_hex_val
+        local track_argb = self:GetTrackARGB({clr_key=unit_val})
+        local hex_clr = argb2Hex(track_argb)
+        local hex_str = to_hex_str(hex_clr)
+        dbg("dev", "updatin hex input to: %s", hex_str)
+        self.clr_hex_input:SetText(hex_str)
+    end
+end
+
+function UIColourPicker:UpdateColourBlock()
+    local colour_block_clr = self.colour_block:GetTextureColor()
+    local colour_block_argb = float2argb(colour_block_clr, true)
+    local track_argb = self:GetTrackARGB()
+    local clr_blind_argb = get_colourblind_clr(track_argb, self.clr_blind_type, true)
+    if compare_argb(colour_block_argb, clr_blind_argb, "or") then         
+        dbg("dev", "Setting prev colour block to: %s", colour_block_argb)
+        dbg("dev", "updating clr block to: %s", clr_blind_argb)
+        self.prev_colour_block = colour_block_argb
+        self.colour_block:SetTextureColor(tbl2argb(clr_blind_argb))
+        for clr, unit_val in pairs(clr_blind_argb) do
+            dbg("dev", "updating track, hex, float and unit for %s with %s", clr, unit_val)
+            clr = self.clr_key_to_clr[clr]
+            self:UpdateTrack(clr, unit_val)
+            self:UpdateInputHex(clr, unit_val)
+            self:UpdateInputUnit(clr, unit_val)
+            
+            local float_val = unit_to_float(unit_val)
+            self:UpdateInputFloat(clr, float_val)
+        end
+    end
+end
+
+-- Callbacks
+function UIColourPicker:OnSelectClrBlindType()
+    dbg("dev", "on select clr blind list")
+    local clr_blind_type = self.clr_blind_list:CurrentID()
+    dbg("dev", "new clr blind type: %s", clr_blind_type)
+    dbg("dev", "prev clr blind type: %s", self.clr_blind_type)
+    if not clr_blind_type then return end
+    self.clr_blind_type = clr_blind_type
+end
+
+function UIColourPicker:OnClrInputUnit(clr)
+    dbg("dev", "on input unit %s enter", clr)
+    local cond, unit_val = self:GetInputUnit(clr)
+    if not cond then return end
+
+    self:UpdateTrack(clr, unit_val)
+    self:UpdateInputHex(clr, unit_val)    
+
+    local float_val = unit_to_float(unit_val)
+    self:UpdateInputFloat(clr, float_val)
+end
+
+function UIColourPicker:OnClrInputFloat(clr)
+    dbg("dev", "on input float %s enter", clr)
+    local cond, float_val = self:GetInputFloat(clr)
+    if not cond then return end
+
+    local unit_val = float_to_unit(float_val)
+    self:UpdateTrack(clr, unit_val)
+    self:UpdateInputHex(clr, unit_val)
+    self:UpdateInputUnit(clr, unit_val)
+end
+
+function UIColourPicker:OnRedInputUnit()
+    self:OnClrInputUnit("red")
+end
+
+function UIColourPicker:OnRedInputFloat()
+    self:OnClrInputFloat("red")
+end
+
+function UIColourPicker:OnGreenInputUnit()
+    self:OnClrInputUnit("green")
+end
+
+function UIColourPicker:OnGreenInputFloat()
+    self:OnClrInputFloat("green")
+end
+
+function UIColourPicker:OnBlueInputUnit()
+    self:OnClrInputUnit("blue")
+end
+
+function UIColourPicker:OnBlueInputFloat()
+    self:OnClrInputFloat("blue")
+end
+
+function UIColourPicker:OnAlphaInputUnit()
+    self:OnClrInputUnit("alpha")
+end
+
+function UIColourPicker:OnAlphaInputFloat()
+    self:OnClrInputFloat("alpha")
+end
+
+function UIColourPicker:OnHexInput()
+    dbg("dev", "on hex input enter")
+    local cond, argb = self:GetInputHex()
+    if not cond then return end
+    
+    for clr, unit_val in pairs(argb) do
+        self:UpdateTrack(clr, unit_val)
+        self:UpdateInputHex(clr, unit_val)
+        self:UpdateInputUnit(clr, unit_val)
+        
+        local float_val = unit_to_float(unit_val)
+        self:UpdateInputFloat(clr, float_val)
+    end
+end
+
+function UIColourPicker:OnClickPickBtn()
+    dbg("dev", "on click pick btn")
+    local clr_types = self.parent.colour_types
+    local argb = self:GetARGB(clr_types)
+    dbg("dev", "types gotten: %s", clr_types)
+    dbg("dev", "setting chosen colour as %s, ", argb)
+    self.parent.chosen_colour = argb
+end
+
+-- Getters
+function UIColourPicker:GetTrackARGB(input_clrs, as_argb) --{a=255}
+    -- dbg("dev", "getting track argb, as_argb?: %s", as_argb)
+    local argb = {
+        r = self["red"].track_val,
+        g = self["green"].track_val,
+        b = self["blue"].track_val,
+        a = self["alpha"].track_val,
+    }
+    -- dbg("dev", "track argb: %s", argb)
+    if input_clrs and is_not_empty(input_clrs) then
+        for colour, value in pairs(input_clrs) do
+            if contains(argb, colour, true) then
+                -- dbg("dev", "replacing %s:%s with %s:%s", colour, argb[colour], colour, value)
+                argb[colour] = value
+            end
+        end
+    end
+
+    return as_argb and tbl2argb(argb) or argb
+end
+
+function UIColourPicker:GetARGB(args)
+    local options = {}
+    local argb = self:GetTrackARGB()
+    options.default = argb
+    if is_not_empty(args) then
+        for opt, cond in pairs(args) do
+            if cond then
+                local result
+                if opt == "decimal" then
+                    result = tonumber(argb2Hex(argb), 16)
+                elseif opt == "hex" then
+                    result = argb2Hex(argb)
+                elseif result == "float" then
+                    local float = {}
+                    for clr, val in pairs(argb) do
+                        float[clr] = unit_to_float(val)
+                    end
+                    result = float
+                elseif opt == "argb" then
+                    result = tbl2argb(argb)
+                elseif opt == "fcolor" then
+                    result = argb2fcolor(argb, FLOAT_PRECISION)
+                end
+                if result then options[opt] = result end
+            end
+        end
+    end
+    return options
+end
+
+-- Helpers
+function unit_to_float(val)
+    return round_idp(val / UNIT_MAX, FLOAT_PRECISION)
+end
+
+function float_to_unit(val)
+    return round(val * UNIT_MAX)
+end
+
+function to_hex_str(hex_clr)
+    return strformat("#%s",hex_clr)
+end

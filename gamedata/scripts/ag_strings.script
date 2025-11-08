@@ -62,8 +62,8 @@ end
 --- Decapitalise a string
 ---@author antglobes
 ---@type fun(str: string): string
-function decapitalise(str)
-    return (str:gsub("^%l", string.lower))
+function lowercase(str)
+    return (str:gsub("%a", string.lower))
 end
 
 --- Capitalise every word in a string
@@ -71,7 +71,7 @@ end
 ---@type fun(str: string): string
 function sentence_case(str)
     local sentence = ""
-     for word in string.gmatch(str, "%S+") do
+     for word in string.gmatch(str, "[^\n]%a+") do -- %S+
         sentence = sentence.." ".. capitalise(word)
      end
     return sentence
@@ -148,6 +148,8 @@ end
 ---@author antglobes
 ---@type fun(string: string, patterns: string, repl: string): string
 function replace(string, patterns, repl)
+    patterns = type(patterns) ~= "table" and {patterns} or patterns
+    repl = not repl and "" or repl
 	for _, pattern in pairs(patterns) do
 		string = string:gsub(pattern, repl)
 	end
@@ -259,4 +261,29 @@ end
 ---@type fun(str: string, pattern: string): table
 function find_suffix_num(str)
 	return find_digits(str, "(%d+)$")
+end
+
+function first_char(str)
+    return str:sub(1,1)
+end
+
+function last_char(str)
+    local str_len = #str
+    return str:sub(str_len, str_len)
+end
+
+function char_at_index(str, idx, return_idx)
+    local str_len = #str
+    local char = idx <= str_len and str:sub(idx, idx) or str
+    return return_idx and char, idx or char
+end
+
+function remove_char(str, char)
+    local tmp = ""
+    for c in str:gmatch(".") do
+        if c and c ~= char then
+            tmp = tmp .. c
+        end
+    end
+    return tmp
 end
