@@ -39,9 +39,13 @@ ini_key_to_dik = ini_file_ex("plugins\\key_to_DIK.ltx")
 local dbg_pr = nil
 
 -- Tables
-PLACEABLE_POWER_SOURCES = {PLACEABLE_DISEL_GEN, PLACEABLE_SOLAR_PANELS}
-PLACEABLE_POWER_TRANSMITERS = {PLACEABLE_DISEL_GEN, PLACEABLE_INVERTER}
-PLACEABLE_POWER = table_extend(PLACEABLE_POWER_SOURCES, PLACEABLE_POWER_TRANSMITERS, true)
+-- PLACEABLE_POWER_SOURCES = {PLACEABLE_DISEL_GEN, PLACEABLE_SOLAR_PANELS}
+-- PLACEABLE_POWER_TRANSMITERS = {PLACEABLE_DISEL_GEN, PLACEABLE_INVERTER}
+-- PLACEABLE_POWER = table_extend(PLACEABLE_POWER_SOURCES, PLACEABLE_POWER_TRANSMITERS, true)
+PLACEABLE_POWER_SOURCES = {}
+PLACEABLE_POWER_CONSUMERS = {}
+PLACEABLE_POWER_STORAGE = {}
+
 ITEM_POWER_SOURCES = {DISEL_GEN_ITEM, SOLAR_PANEL_ITEM}
 FUEL_SECTIONS = {"batteries_dead"}
 FUELED_POWER_SOURCES = {PLACEABLE_DISEL_GEN}
@@ -204,47 +208,102 @@ function get_bone_pos(obj, bone_name)
     return utils_obj.safe_bone_pos(obj, bone_name)
 end
 
+function within_range(pos_a, pos_b, radius)
+    return pos_a:distance_to(pos_b) <= radius
+end
+
+
 -- HFG Light furniture
+function is_power_source(sect)
+    return contains(PLACEABLE_POWER_SOURCES, sect)
+end
+
+function is_power_consumer(sect)
+    return contains(PLACEABLE_POWER_CONSUMERS, sect)
+end
+
+function is_power_storage(sect)
+    return contains(PLACEABLE_POWER_STORAGE, sect)
+end
+
+function is_power_obj(sect)
+    return is_power_source(sect) or is_power_consumer(sect) or is_power_storage(sect)
+end
 
 function is_light(sect)
     return ini_sys:r_string_ex(sect, "placeable_type") == "light"
 end
 
-function is_power_unit(sect)
-    return is_powerable_device(sect) or is_power_source(sect)
+function get_power_type(sect)
+    return is_power_source(sect) and "power_sources"
+        or is_power_consumer(sect) and "power_consumers"
+        or is_power_storage(sect) and "power_storage"
 end
 
-function is_power_source(sect)
-    return contains(PLACEABLE_POWER, sect)
+function get_power_data(obj, power_typ)
+    local power_obj_id = obj:id()
+    local power_obj_sect = obj:section()
+    local hf_data = hf_obj_manager.get_data(power_obj_id)
+    local data = {
+        sect = power_obj_sect,
+        pos = obj:position(),
+
+    }
+    local data_fields = {}
+    if power_typ == "power_sources" then
+        data_fields = {"power_output", "power_state", "consumers"}
+        data["power_remaining"] = 0
+        data["all_consumers_satisfied"] = false
+        
+    elseif power_typ == "power_consumers" then
+        data_fields = {"power_state", "power_consumed", "sources"}
+        data["power_satisfied"] = false
+        data["power_satisfied_typ"] = -1
+        data["power_needed"] = ini_sys:r_float_ex(power_obj_sect, "fuel_duration", 300)
+
+    elseif power_typ == "power_storage" then
+        data_fields = {"power_stored", "sources"}
+    end
+
+    for _, field in pairs(data_fields) do
+        data[field] = hf_data[field]
+    end
+    return data
 end
 
-function is_powerable_device(sect)
-    local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
-    return contains(FUEL_SECTIONS, fuel_sect)
-end
-
-function is_solar_panel(sect)
-    return sect == PLACEABLE_SOLAR_PANELS
-end
-
-function get_powerable_devices(pos)
-    local powerable_devices = {}
+function get_power_objs(pos, power_typ)
+    local power_objs = {}
     local function search(obj)
         local sect = obj:section()
-        if is_powerable_device(sect) then
-            powerable_devices[obj:id()] = obj
+        if 
+            power_typ == "consumers" and is_power_consumer(sect)
+            or power_typ == "sources" and is_power_source(sect)
+            or power_typ == "storage" and is_power_storage(sect)
+        then
+            power_objs[obj:id()] = obj
         end
     end
     level.iterate_nearest(pos, SEARCH_RADIUS, search)
-    --pr("Found powerable devices: %s", (powerable_devices))
-    return powerable_devices
+    return power_objs
+end
+
+function get_power_consumers(pos)
+    return get_power_objs(pos, "consumers")
+end
+
+function get_power_sources(pos)
+    return get_power_objs(pos, "sources")
+end
+
+function get_power_storage(pos)
+    return get_power_objs(pos, "storage")
 end
 
 function get_solar_panels(pos)
     local found_solar_panels = {}
     local function search(obj)
         local sect = obj:section()
-        if is_solar_panel(sect) then
+        if sect == PLACEABLE_SOLAR_PANELS then
             found_solar_panels[#found_solar_panels + 1] = obj
         end
     end
@@ -325,13 +384,10 @@ function on_gen_impact(bullet)
     local target = get_unknown_object({id=t_id}, "game")
 
     if not (npc and wpn and target) then
-        local found_npc = npc and true or false
-        local found_wpn = wpn and true or false
-        local found_target = target and true or false
         -- dbg("dev", "At least one game object not found. npc?:%s, wpn?:%s, target?:%s", found_npc, found_wpn, found_target)
         return
     end
-    if not contains(PLACEABLE_POWER, target:section()) then
+    if not is_power_source(target:section()) then
         -- dbg("dev", "target is not a power source")
         return 
     end
@@ -405,7 +461,7 @@ function find_power_sources(pos, radius)
     end
     
     local power_sources = {}
-    for _, ps_sect in pairs(PLACEABLE_POWER_TRANSMITERS) do
+    for _, ps_sect in pairs(PLACEABLE_POWER_SOURCES) do
         dbg("dev", "searching for %s", ps_sect)
         local found_power_sources = find_obj(ps_sect, pos, radius)
         if is_not_empty(found_power_sources) then
@@ -429,6 +485,63 @@ function dik_to_str(dik, sentence_case)
     local replacement = dik_str:find("mouse") and " " or ""
     dik_str = replace(dik_str, pattern, replacement)
     return sentence_case and capitalise(lowercase(dik_str)) or lowercase(dik_str)
+end
+
+function power_object_special_case(power_typ, sect)
+    local special_cases = {
+        power_consumer = {"laptop", "tv", "monitor", "pccase"}
+    }
+    for _, special_case in pairs(special_cases[power_typ]) do
+        if sect:find(special_case) then return true end
+    end
+    return false
+end
+
+function gather_power_objects()
+    local power_objs = {}
+    local power_consumer_types = {"tv", "lamp", "torch", "light", "radio"}
+    local power_source_types = {"generator"}
+    local power_storage_types = {"battery"}
+    ini_sys:section_for_each(function(sect)
+        if 
+            sect:find("placeable")
+            and ini_sys:r_line_ex(sect, "bounding_box_size")
+        then
+            local item_sect = ini_sys:r_string_ex(sect, "item_section")
+            local placeable_type = "none"
+            for _, s in pairs({sect, item_sect}) do
+                local found_placeable_type = ini_sys:r_string_ex(s, "placeable_type")
+                if found_placeable_type then
+                    placeable_type = found_placeable_type
+                    break
+                end
+            end
+            -- dbg("dev", "sect: %s, item sect: %s, placeable type: %s", sect, item_sect, placeable_type)
+            if contains(power_consumer_types, placeable_type) or power_object_special_case("power_consumer", sect) then
+                power_objs["power_consumers"] = power_objs["power_consumers"] or {}
+                power_objs["power_consumers"][#power_objs["power_consumers"] +1] = sect
+                local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
+                dbg("dev", "consumer| sect: %s, fuel_sect: %s", sect, fuel_sect)
+                
+            elseif contains(power_source_types, placeable_type) then
+                power_objs["power_sources"] = power_objs["power_sources"] or {}
+                power_objs["power_sources"][#power_objs["power_sources"] + 1] = sect
+            
+            elseif contains(power_storage_types, placeable_type) then
+                power_objs["power_storage"] = power_objs["power_storage"] or {}
+                power_objs["power_storage"][#power_objs["power_storage"] + 1] = sect
+            else
+                -- dbg("dev", "sect: %s, item sect: %s, placeable type: %s", sect, item_sect, placeable_type)
+            end
+        end
+        -- if ini_sys:r_line_ex(sect, "placeable_type")
+        -- placeable in sect, bounding_box_size as key
+    end)
+    dbg("dev", "found power objects:\n%s", power_objs)
+    PLACEABLE_POWER_SOURCES = contains(power_objs, "power_sources", true) and power_objs["power_sources"]
+    PLACEABLE_POWER_CONSUMERS = contains(power_objs, "power_consumers", true) and power_objs["power_consumers"]
+    PLACEABLE_POWER_STORAGE = contains(power_objs, "power_storage", true) and power_objs["power_storage"]
+    return power_objs
 end
 
 -- Monkey Patches
@@ -610,15 +723,18 @@ if  and  then
 
 -- Callbacks
 
-function on_place_powerable_device(obj_id)
+--[[
+function on_place_power_object(obj_id)
     local se_obj = alife_object(obj_id)
     local sect = se_obj:section_name()
+    if not se_obj  then return end
+    if is_power_object(sect) then return end
+
     local pos = se_obj.position or db.actor:position()
-    if se_obj and is_powerable_device(sect) then
-        dbg("info", "on place powerable device: %s", sect)
-        CreateTimeEvent("on_place_powerable_device"..se_obj.id, "init_pd"..se_obj.id, 0.4, function()        
-            local pd_wrapper = bind_hf_base.get_wrapper(se_obj.id)
-            if not pd_wrapper then return false end
+    dbg("info", "on place power object: %s", sect)
+    CreateTimeEvent("on_place_power_object"..se_obj.id, "init_po"..se_obj.id, 0.4, function()        
+        local pd_wrapper = bind_hf_base.get_wrapper(se_obj.id)
+        if not pd_wrapper then return false end
             if pd_wrapper.init_pd then return true end
             -- Connect Powerable device to nearest power source
             local power_sources = find_power_sources(pos)
@@ -686,6 +802,7 @@ function on_place_powerable_device(obj_id)
         return true
     end
 end
+]]
 
 -- MCM
 function get_config(key)
@@ -713,8 +830,9 @@ end
 
 function on_game_start()
     RegisterScriptCallback("hfg_on_option_change", on_option_change)
-    RegisterScriptCallback("hf_on_furniture_place", on_place_powerable_device)
+    -- RegisterScriptCallback("hf_on_furniture_place", on_place_power_object)
     RegisterScriptCallback("bullet_on_impact", on_gen_impact)
+    RegisterScriptCallback("on_game_load", gather_power_objects)
 end
 
 --[[
@@ -724,7 +842,7 @@ function on_place_powerable_device(obj_id)
     local sect = se_obj:section_name()
     local pos = se_obj.position or db.actor:position()
     
-    if se_obj and is_powerable_device(sect) then
+    if se_obj and is_power_consumer(sect) then
         dbg("info", "on place powerable device: %s", sect)
         for _, ps_sect in pairs(PLACEABLE_POWER_TRANSMITERS) do
             local found_power_sources = find_obj(ps_sect, pos, SEARCH_RADIUS)
