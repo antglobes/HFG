@@ -161,33 +161,44 @@ inv_grid_x = 6
 inv_grid_y = 2
 
 ; Solar Panel Parts
-[hfg_prt_sp_frame]:hfg_prt_base
+[hfg_prt_sp_top_frame]:hfg_prt_base
 visual = dynamics\hfg_prt_sp_frame.ogf
-inv_name = st_hfg_prt_sp_frame
-inv_name_short = st_hfg_prt_sp_frame
-description = st_hfg_prt_sp_frame_descr
+inv_name = st_hfg_prt_sp_top_frame
+inv_name_short = st_hfg_prt_sp_top_frame
+description = st_hfg_prt_sp_top_frame_descr
 inv_grid_x = 15
 inv_grid_y = 5
 inv_grid_width = 2
 
+[hfg_prt_sp_bottom_frame]:hfg_prt_sp_top_frame
+inv_name = st_hfg_prt_sp_bottom_frame
 
-[hfg_prt_sp_leg]:hfg_prt_base
+[hfg_prt_sp_middle_leg]:hfg_prt_base
 visual = dynamics\hfg_prt_sp_leg.ogf
-inv_name = st_hfg_prt_sp_leg
-inv_name_short = sthfg_prt_sp_leg
-description = st_hfg_prt_sp_leg_descr
+inv_name = st_hfg_prt_sp_middle_leg
+inv_name_short = st_hfg_prt_sp_middle_leg
+description = st_hfg_prt_sp_middle_leg_descr
 inv_grid_x = 13
 inv_grid_y = 5
 inv_grid_width = 2
 
-[hfg_prt_sp_panel]:hfg_prt_base
+[hfg_prt_sp_left_leg]:hfg_prt_sp_middle_leg
+inv_name = st_hfg_prt_sp_left_leg
+
+[hfg_prt_sp_right_leg]:hfg_prt_sp_middle_leg
+inv_name = st_hfg_prt_sp_right_leg
+
+[hfg_prt_sp_top_panel]:hfg_prt_base
 visual = dynamics\hfg_prt_sp_panel.ogf
-inv_name = st_hfg_prt_sp_panel
-inv_name_short = st_hfg_prt_sp_panel
-description = st_hfg_prt_sp_panel_descr
+inv_name = st_hfg_prt_sp_top_panel
+inv_name_short = st_hfg_prt_sp_top_panel
+description = st_hfg_prt_sp_top_panel_descr
 inv_grid_x = 15
 inv_grid_y = 4
 inv_grid_width = 2
+
+[hfg_prt_sp_bottom_panel]:hfg_prt_sp_top_panel
+inv_name = st_hfg_prt_sp_bottom_panel
 
 ; Solar Panel Components
 [hfg_comp_sp_power]:hfg_prt_base

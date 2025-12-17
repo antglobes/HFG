@@ -845,11 +845,14 @@
 		</text>
 	</string>
 
-	<string id="st_hfg_prt_sp_frame">
-		<text>Solar Panel Frame</text>
+	<string id="st_hfg_prt_sp_top_frame">
+		<text>Solar Panel Top Frame</text>
 	</string>
-	<string id="st_hfg_prt_sp_frame_descr">
+	<string id="st_hfg_prt_sp_top_frame_descr">
 		<text>A rusted iron wrought frame</text>
+	</string>
+	<string id="st_hfg_prt_sp_bottom_frame">
+		<text>Solar Panel Bottom Frame</text>
 	</string>
 	<string id="st_hfg_inverter_pole">
 		<text>Metal Pole</text>
@@ -857,17 +860,26 @@
 	<string id="st_hfg_inverter_pole_descr">
 		<text>A metal pole used for attaching electronics off of.</text>
 	</string>
-	<string id="st_hfg_prt_sp_leg">
-		<text>Solar Panel Metal Leg</text>
+	<string id="st_hfg_prt_sp_middle_leg">
+		<text>Solar Panel Middle Metal Leg</text>
 	</string>
-	<string id="st_hfg_prt_sp_leg_descr">
+	<string id="st_hfg_prt_sp_middle_leg_descr">
 		<text>A Rusted Steel leg, repurposed and forged from a pole fence</text>
 	</string>
-	<string id="st_hfg_prt_sp_panel">
-		<text>Solar Panel Cells</text>
+	<string id="st_hfg_prt_sp_left_leg">
+		<text>Solar Panel Left Metal Leg</text>
+	</string>
+	<string id="st_hfg_prt_sp_right_leg">
+		<text>Solar Panel Right Metal Leg</text>
+	</string>
+	<string id="st_hfg_prt_sp_top_panel">
+		<text>Top Solar Panel Cells</text>
 	</string>
 	<string id="st_hfg_prt_sp_panel_descr">
 		<text>Photovoltic Cells cased in a silcate and steel frame, likely scavanged from a larger panel</text>
+	</string>
+	<string id="st_hfg_prt_sp_bottom_panel">
+		<text>Bottom Solar Panel Cells</text>
 	</string>
 	<string id="st_hfg_inverter">
 		<text>Solar Panel Inverter</text>

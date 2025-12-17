@@ -411,6 +411,7 @@ function HUDBlueprintStatus:Reset(id)
 
     self.stick_note_title:SetText(gts("st_hfg_blueprint_status_title", get_item_name(item_sect)))
     local path, pos, size = get_obj_icon(nil, item_sect)
+    dbg("dev", "Texture info for %s, path:%s, pos:%s, size:%s", item_sect, path, pos, size)
     self.icon:InitTexture(path)
     self.icon:SetTextureRect(Frect():set(pos.x, pos.y, pos.x + size.w, pos.y + size.h))
     self:LoadStatusInfo()
