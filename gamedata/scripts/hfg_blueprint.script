@@ -24,6 +24,7 @@ dik_to_str = hfg_utils.dik_to_str
 simple_press = hfg_utils.simple_press
 double_tap = hfg_utils.double_tap
 get_anim_offset = hfg_utils.get_anim_offset
+within_range = hfg_utils.within_range
 
 -- Constants
 LOG_HEADER = "[HFG|Blueprint]"
@@ -155,7 +156,9 @@ function place_blueprint(obj_id)
         lvl_id = obj:level_vertex_id(),
         g_id = obj:game_vertex_id(),        
     }
-
+    local se_obj = alife_object(obj_id)
+    blueprint_info.placement_angle = vector():set(se_obj.angle.x, se_obj.angle.y, se_obj.angle.z)
+    dbg("dev", "placement angle: %s", blueprint_info.placement_angle)
     dbg("dev", "init binder funcs")
     local binder_func_str = ini_blueprints:r_string_ex(manual_sect, "binder_func")
     local binder_func_tbl = str_explode(binder_func_str, "%.")
@@ -258,24 +261,9 @@ actor_on_update = throttle(
                             if not next(placed_blueprints) then
                                 stop_hud()
                             end
-
-                            dbg("dev", "attempeting to binding object from blueprint")
-                            if 
-                                _G[info["binder_func"].file] 
-                                and _G[info["binder_func"].file][info["binder_func"].functor]
-                            then
-                                _G[info["binder_func"].file][info["binder_func"].functor](obj)
-                                local data = hf_obj_manager.get_data(id)
-                                if data and contains(data, "parts", true) then
-                                    for part_name, part_info in pairs(info["parts"]) do
-                                        if data["parts"][part_name].condition ~= part_info.condition then
-                                            data["parts"][part_name].condition = part_info.condition
-                                        end
-                                    end
-                                    hf_obj_manager.update_data(id, data)
-                                end
-                                dbg("dev", "Updating hf data:\n%s", data)
-                            end
+                            alife_release(obj)
+                            local se_obj = alife_create(info.hf_sect, info.hf_loc["pos"], info.hf_loc["lvl_id"], info.hf_loc["g_id"])
+                            se_obj.angle = info.placement_angle
                         end
                     else
                         info.within_range = false
@@ -453,14 +441,6 @@ function HUDBlueprintStatus:Update()
     self:UpdateStatusInfo()
     self:UpdateStickyNote()
 end -- dbg("debug", "Loading Blueprint Status UI: %s", id)
-
-function HUDBlueprintStatus:SetMovement(allow_movement)
-    self.movement_allowed = allow_movement
-end
-
-function HUDBlueprintStatus:GetMovement()
-    return self.movement_allowed
-end
 
 function HUDBlueprintStatus:LoadStatusInfo()
     if not self.id then return end
@@ -736,10 +716,6 @@ function screen_pos_valid(vec)
 	return (vec.x ~= -9999) and (vec.y ~= 0) and (vec.x <= 1024) and (vec.y <= 768)
 end
 
-function within_range(pos_a, pos_b, radius)
-    return pos_a:distance_to(pos_b) <= radius
-end
-
 function get_target_bone(target_pos, info)
     target_pos = target_pos or level.get_target_pos()
     local screen_pos = get_screen_pos(target_pos)
@@ -970,7 +946,8 @@ function place_part_func(item)
                 local inv_parts = find_inv_item(item_sect)
                 if is_not_empty(inv_parts) then
                     for _, found_part in pairs(inv_parts) do
-                        if found_part:id() == item_id then
+                        if found_part:id() == item_id and db.actor:object(item_sect) then
+                            dbg("dev", "removing sect:%s, id:%s, item id:%s", item_sect, found_part:id(), item_id)
                             alife_release(alife_object(item_id))
                         end
                     end

@@ -1,0 +1,607 @@
+
+-- Library Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+
+gts = get_translation
+
+-- External Imports
+AOE = demonized_aoe.AOE
+geo_ray = demonized_geometry_ray.geometry_ray
+
+-- Utils
+get_config = hfg_utils.get_config
+cond_to_state = hfg_utils.cond_to_state
+bone_to_part_name = hfg_utils.bone_to_part_name
+is_power_consumer = hfg_power_grid.is_power_consumer
+get_powerable_devices = hfg_utils.get_powerable_devices
+disassemble_power_source = hfg_utils.disassemble_power_source
+update_power_source_cond = hfg_power_grid.update_power_source_cond
+get_parts_tbl = hfg_utils.get_parts_tbl
+SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
+get_bone_pos = hfg_utils.get_bone_pos
+get_hf_item_name = hfg_utils.get_hf_item_name
+
+
+-- Constants
+LOG_HEADER = "[HFG|Bind Solar Panel]"
+SP_ITEM = "hfg_solar_panel"
+SP_TILT = 35 --degrees
+LUM_MAX = 1
+MALFUNC_COND = 0.4
+
+-- MCM Variables
+BROKEN_COND = 0.1
+MAX_POWER_OUTPUT = 5000
+
+-- Locals
+local dbg_pr = nil
+
+-- Globals
+placed_solar_panels = {}
+ini_weather = level_weathers.ini_weather -- unlocalised
+
+-- Tables
+AVG_KWH = { -- per month
+	[1]=3138.911290322178,
+	[2]=3698.2142857138397,
+	[3]=4404.637096773382,
+	[4]=5149.166666662503,
+	[5]=5811.491935483084,
+	[6]=6190.208333333333,
+	[7]=6059.274193548386,
+	[8]=5504.233870966935,
+	[9]=4794.583333332503,
+	[10]=4057.4596774185484,
+	[11]=3382.9166662499997,
+	[12]=2989.5161290318547,
+}
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+-- Solar Panel Binder
+
+function init(obj, was_blueprint)
+    local id = obj:id()
+    local sect = obj:section()
+    dbg("dev", "attempt binding %s", sect)
+    if contains(hfg_blueprint.placing_blueprints, id, true) then
+        dbg("dev", "cannot bind %s, as is a blueprint ", sect)
+        return
+    end
+    
+    if not hfg_obj_persistance.in_cache(id, sect) then
+        hfg_obj_persistance.init(id, sect)
+    end
+    dbg("dev", "binding %s", sect)
+    obj:bind_object(placeable_solar_panel_wrapper(obj).binder)
+end
+
+class "placeable_solar_panel_wrapper" (bind_hf_base.hf_binder_wrapper)
+function placeable_solar_panel_wrapper:__init(obj) super(obj)
+    dbg("dev", "Initalising Solar Panel")
+
+    local data = hf_obj_manager.get_data(self.object:id())
+
+    -- Object Fields
+    self.section = self.object:section()
+    self.item_section = ini_sys:r_string_ex(self.section, "item_section")
+    self.condition = (contains(data, "condition", true) and data["condition"]) or 1
+    self.parts = data["parts"] or self:InitParts()
+
+    -- Object State
+    self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
+    -- self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
+    self.powerable_device_tmr = 0
+
+    -- Powerable Devices
+    self.power_off_consumers = true
+    self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
+    self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
+    self.power_output = data["power_output"] or 0
+    self.update_pd_tmr = data["update_pd_tmr"] or 0
+
+    -- Power Input (solar)
+    self.weather_eff_tbl = get_keytable(utils_data.collect_section(ini_weather, "weather_cycles")) or {}
+    self.weather_eff_tbl.storm = 0.1
+    self.weather_eff_tbl.foggy = 0.2
+    self.weather_eff_tbl.rain = 0.4
+    self.weather_eff_tbl.cloudy = 0.6
+    self.weather_eff_tbl.partly = 0.8
+    self.weather_eff_tbl.clear = 1
+    self.weather_efficency = data["weather_efficency"] or 0
+    self.curr_weather = data["curr_weather"] or "clear"
+    self.cmonth = data["cmonth"] or 0
+    self.chour = data["chour"] or -1
+    self.avg_kwh = data["avg_kwh"] or 0
+    self.power_input_tmr = data["power_input_tmr"] or 0
+
+    -- Particles
+    self.last_cond_state = data["last_cond_state"] or ""
+    self.curr_fx = data["curr_fx"] or {}
+    self.fx_tbl = { -- rpt = repeat, slp = sleep
+        broken = {
+            [1] = {part="explosions\\expl_car_smoke_big",    duration={active=13,  pause=2, rpt=1}, bone_name="top_panel",    count=0, loop=false, active=false, tmr=0},
+            [2] = {part="explosions\\expl_car_smoke_big",    duration={active=13,  pause=2, rpt=1}, bone_name="bottom_panel", count=0, loop=false, active=false, tmr=0},
+        },
+        low = {
+            [1] = {part="explosions\\expl_car_smoke_small",  duration={active=13, pause=2},                   bone_name="top_panel",    count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="explosions\\campfire_hot_no_fire",  duration={active=1,  pause=0.5, rpt=5, slp=60},  bone_name="bottom_panel", count=0, loop=true,  active=false, tmr=0},
+            [3] = {part="anomaly2\\effects\\heat_dist_1",    duration={active=3,  pause=12,  rpt=2, slp=30},  bone_name="top_panel",    count=0, loop=true,  active=false, tmr=0},
+            [4] = {part="anomaly2\\effects\\heat_dist_1",    duration={active=3,  pause=12,  rpt=2, slp=30},  bone_name="bottom_panel", count=0, loop=true,  active=false, tmr=0},
+
+        },
+        med = {
+            [1] = {part="anomaly2\\effects\\heat_dist_1",    duration={active=8,  pause=7, rpt=2, slp=30},  bone_name="top_panel",    count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="anomaly2\\effects\\heat_dist_1",    duration={active=8,  pause=7, rpt=2, slp=30},  bone_name="bottom_panel", count=0, loop=true,  active=false, tmr=0},
+        },
+        high = {
+            [1] = {part="anomaly2\\effects\\heat_dist_1",    duration={active=13, pause=2, rpt=2, slp=30},  bone_name="top_panel",    count=0, loop=true,  active=false, tmr=0},
+            [2] = {part="anomaly2\\effects\\heat_dist_1",    duration={active=13, pause=2, rpt=2, slp=30},  bone_name="bottom_panel", count=0, loop=true,  active=false, tmr=0},
+        }   
+    }    
+
+    -- Power Output
+    self.connected_inverter = 0
+
+    self:save_data()
+    dbg("all", "finished init")
+end
+
+function placeable_solar_panel_wrapper:update(delta)
+    bind_hf_base.hf_binder_wrapper.update(self, delta)
+
+    self.tg = time_global()
+    self:load_data()
+
+    -- dbg("dev", "getting cond state")
+    local condition = self.condition
+    local cond_state = cond_to_state(round_idp(condition * 100, 2))
+
+    self:ProcessPowerOuput()
+    self:ProcessParticles(cond_state)
+end
+
+function placeable_solar_panel_wrapper:ProcessPowerOuput()
+    if self.tg > self.power_input_tmr and self.power_state ~= "broken" then
+        dbg("all", "calc solar power")
+        local curr_weather = level_weathers.get_weather_manager():get_curr_weather()
+        if self.curr_weather ~= curr_weather then
+            self.curr_weather = curr_weather
+            self.weather_efficency = self.weather_eff_tbl[self.curr_weather]
+            dbg("all", "curr weather: %s", self.curr_weather)
+            dbg("all", "weather effiency: %s", self.weather_efficency)
+        end
+
+        local Y, M, D, h, m, s, ms = 0, 0, 0, 0, 0, 0, 0
+        Y, M, D, h, m, s, ms = game.get_game_time():get(Y, M, D, h, m, s, ms)
+        local month = tonumber(tostring(M):match("0*(%d+)"))
+        local hour = tonumber(tostring(h):match("0*(%d+)")) -- 1am - 5am
+        if self.cmonth ~= month then
+            self.cmonth = month
+            self.avg_kwh = AVG_KWH[month]
+        end
+        if self.chour ~= hour then
+            self.chour = hour
+        end
+        dbg("all", "avg kwh: %s, month: %s, hour: %s", self.avg_kwh, month, hour)
+
+        local solar_panel = self.object
+        local sun_pos = level.get_sun_pos()
+        local sun_dir = weather.get_value_vector("sun_dir")
+        dbg("all", "sun pos: %s", sun_pos)
+        dbg("all", "sun dir: %s", sun_dir)
+        
+        local panel_pos = solar_panel:bone_position("top_panel")
+        local panel_dir = solar_panel:bone_direction("angle_bone"):normalize()
+        local p2s = panel_pos:sub(sun_pos):normalize()
+        local angle = vector_angle_diff_xz(panel_dir, p2s)
+        local solar_panel_luminocity = solar_panel:get_luminocity()
+        dbg("all", "original solar_panel_luminocity: %s", solar_panel_luminocity)
+        dbg("all", "panel pos: %s", panel_pos)
+        dbg("all", "panel dir: %s", panel_dir)
+        --dbg("dev", "result: %s", result)
+        angle = math.abs(angle)
+        dbg("all", "angle: %s", angle)
+        if angle > 145 then
+            local angle_diff = 180 - angle
+            local angle_per = angle_diff / SP_TILT
+            dbg("all", "angle diff: %s", angle_diff)
+            dbg("all", "angle per: %s", angle_per)
+            solar_panel_luminocity = solar_panel_luminocity * angle_per
+            dbg("all", "angle efficency by solar_panel_luminocity: %s", solar_panel_luminocity)
+        end
+
+        local sun_visible = false    
+        local dist_to_sun = sun_pos:distance_to(panel_pos)
+        dbg("all", "shooting ray")
+        dbg("all", "dist to sun: %s", dist_to_sun)
+        local ray = geo_ray({
+            ray_range = dist_to_sun,
+            flags = 1 + 2 + 4 + 8,
+            visualize = true,
+            ignore_object = solar_panel,
+        })
+        local result = ray:get(panel_pos, panel_dir)
+        if not result.result.material_name or angle <= 145 then
+            sun_visible = true
+        else       
+            solar_panel_luminocity = solar_panel_luminocity * result.result.material_vis_transparency_factor
+            dbg("all", "solar panel lum: %s, material transparency factor: %s", solar_panel_luminocity, result.result.material_vis_transparency_factor)
+        end
+        dbg("all", "hit material: %s", result.result.material_name)        
+        dbg("all", "sun visible?: %s", sun_visible)
+
+        if not sun_visible then
+            local found_lights = {}
+            level.iterate_nearest(solar_panel:position(), SEARCH_RADIUS, function(obj)
+                local sect = obj:section()
+                if is_power_consumer(sect) then found_lights[#found_lights + 1] = obj end
+            end)
+
+            if is_not_empty(found_lights) then
+                dbg("all", "found lights")
+                local total_lights = #found_lights
+                local total_light_lum = 0
+                for _, obj in pairs(found_lights) do
+                    total_light_lum = total_light_lum + obj:get_luminocity()
+                end
+                dbg("all", "solar panel lum: %s, total lights lum: %s, total lights: %s", solar_panel_luminocity, total_light_lum, total_lights)
+                solar_panel_luminocity = solar_panel_luminocity + ((total_light_lum / total_lights) * 0.2)
+            end
+        end
+        local sun_exposure = solar_panel_luminocity / LUM_MAX
+        dbg("all", "sun exposure: %s", sun_exposure)
+        dbg("all", "condition: %s", self.condition)
+        if self.condition > BROKEN_COND and self.condition < MALFUNC_COND then
+            self.avg_kwh = math.random(self.avg_kwh * (self.condition / 4), self.avg_kwh * self.condition)
+        end
+
+        local weather_effi = self.weather_efficency
+        dbg("all","weather eff: %s, avg_kwh: %s", self.weather_efficency, self.avg_kwh)
+        local power_output = self.avg_kwh  * sun_exposure * weather_effi
+        dbg("all", "power output: %s\n", power_output)
+        self.power_output = power_output or 0
+        self.power_input_tmr = time_global() + 1000
+    end
+end
+
+function placeable_solar_panel_wrapper:ProcessParticles(cond_state)
+    if self.item_section == SP_ITEM then
+        if self.power_state == "on" or (self.power_state == "broken") then
+            -- If Condition Has Changed enough for a particle update
+            if cond_state ~= self.last_cond_state then
+                dbg("dev", "cond state: %s", cond_state)
+                -- If there are particles currently playing, stop them, update curr fx
+                if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
+                    local fx = self.curr_fx[self.last_cond_state]
+                    for idx, details in pairs(fx) do
+                        if details["active"] and contains(details, "id", true) then
+                            thial_particles.remove(details["id"])
+                        end
+                    end
+                end
+                
+                self.curr_fx[cond_state] = self.fx_tbl[cond_state]
+                self.last_cond_state = cond_state
+            end
+
+            for idx, details in pairs(self.curr_fx[self.last_cond_state]) do
+                if self.tg > details["tmr"] then
+                    if not details["active"] then                    
+                        self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["active"] * 1000)
+                        self.curr_fx[self.last_cond_state][idx].active = true
+                        --pr("exhaust pos: %s", vec_to_str(self.exhaust_pos))
+                        self.curr_fx[self.last_cond_state][idx].id = thial_particles.add(details["part"], get_bone_pos(self.object, details["bone_name"]), (details["duration"]["active"]*1000))
+                        local part_obj = thial_particles.get(self.curr_fx[self.last_cond_state][idx].id)
+                        if found_within(details["bone_name"], "panel") then
+                            dbg("dev", "getting particle dir from: %s", details["bone_name"])
+                            local panel_pos = get_bone_pos(self.object, details["bone_name"])
+                            local ab_pos =  get_bone_pos(self.object, "angle_bone")
+                            local norm_dir = get_direction(ab_pos, panel_pos)
+                            dbg("dev", "panel pos: %s, angle_bone pos: %s, direction: %s", panel_pos, ab_pos, norm_dir)
+                            part_obj:set_direction(norm_dir)
+                        end
+                        dbg("info", "Playing particle: %s for %s", details["part"], details["duration"]["active"])
+                    elseif details["active"] then
+                        local remove_particle = false
+
+                        if details["duration"]["pause"] then
+                            self.curr_fx[self.last_cond_state][idx].tmr = self.tg + (details["duration"]["pause"] * 1000)
+                            self.curr_fx[self.last_cond_state][idx].active = false
+                            dbg("dev", "pausing %s for %s", details["part"], details["duration"]["pause"])
+                            if details["duration"]["rpt"] then
+                                self.curr_fx[self.last_cond_state][idx].count = self.curr_fx[self.last_cond_state][idx]["count"] + 1
+                                dbg("dev", "advancing repeat: %s", self.curr_fx[self.last_cond_state][idx].count)
+                                if self.curr_fx[self.last_cond_state][idx]["count"] >= details["duration"]["rpt"] then
+                                    if not details["loop"] then
+                                        dbg("dev", "particle finished cycle")
+                                        self.curr_fx[self.last_cond_state][idx].tmr = 0
+                                        self.curr_fx[self.last_cond_state][idx].count = 0
+                                        --self.curr_fx[self.last_cond_state][idx].active = false
+                                        self.particle_id = self.curr_fx[self.last_cond_state][idx]["id"]
+                                        self.curr_fx[self.last_cond_state][idx] = nil
+                                        remove_particle = true
+                                        if self.last_cond_state == "broken" then
+                                            self:Explode()
+                                            self.anim_due = true
+                                            self.power_state = self.last_cond_state
+                                        end
+                                    elseif details["loop"] and details["duration"]["slp"] then
+                                        dbg("dev", "particle %s reached end of loop putting to sleep for %s", details["part"], details["duration"]["slp"])
+                                        self.curr_fx[self.last_cond_state][idx].tmr = self.tg + details["duration"]["slp"]
+                                    end
+                                end
+                            end                    
+                        else
+                            dbg("info", "reseting particle")
+                            self.curr_fx[self.last_cond_state][idx].tmr = 0
+                            self.curr_fx[self.last_cond_state][idx].active = false
+                        end
+
+                        if remove_particle then
+                            dbg("info", "removing particle")
+                            thial_particles.remove(self.particle_id)
+                        end
+                    
+                    end
+                end
+                self:save_data()
+            end
+
+        elseif self.power_state == "off" then        
+            self:CleanupParticles()
+        end
+    end
+end
+
+-- Helpers
+function placeable_solar_panel_wrapper:Explode()
+    local aoe_args = {
+        position = self.object:position(),
+        aoe_sound = "anomaly\\fireball_idle",
+        aoe_hit_sound = "anomaly\\fire2",
+        lifetime = 3,
+        can_panic_npc = true,
+        draftsman_id = self.object:id()
+    }
+    aoe_args.damage = aoe_args.lifetime * 2
+    aoe_args.explosion_damage = aoe_args.damage + (aoe_args.damage / 4)
+    aoe_args.damage_period = (aoe_args.lifetime / 2) * 1000
+
+    local found_solar_panels = find_obj(self.object:section(), self.object:position(), 10)
+    for _, obj in pairs(found_solar_panels) do
+        local data = hf_obj_manager.get_data(obj:id())
+        if data.condition > BROKEN_COND then
+            update_power_source_cond(obj, data.condition, data.power_state, aoe_args.damage)
+        end
+    end
+
+    AOE(aoe_args)
+    dbg("dev", "aoe_args: %s", aoe_args)
+end
+
+
+function placeable_solar_panel_wrapper:CleanupParticles()
+    if is_not_empty(self.curr_fx) and contains(self.curr_fx, self.last_cond_state) then
+        dbg("dev", "power off removing particles")
+        local fx = self.curr_fx[self.last_cond_state]
+        for idx, details in pairs(fx) do
+            if details["active"] and contains(details, "id", true) then
+                thial_particles.remove(details["id"])
+            end
+        end
+        self:save_data()
+    end
+end
+
+function placeable_solar_panel_wrapper:InitParts()
+    local parts = {}
+    for bone_id, bone_name in pairs(self.object:list_bones()) do
+        local part_name = bone_to_part_name(bone_name)
+        if not contains(parts, part_name, true) then
+            parts[part_name] = {}
+            parts[part_name].name = part_name
+            parts[part_name].condition = 1
+            parts[part_name].bone_name = bone_name
+            parts[part_name].bone_id = bone_id
+            parts[part_name].components = get_parts_tbl(part_name)
+            dbg("all", "adding %s to parts", part_name)
+        end
+    end
+    -- dbg("dev", "parts table: %s", parts)
+    self.parts = parts
+    self:save_data()
+end
+
+function placeable_solar_panel_wrapper:pickup()
+    dbg("info", "on pickup")
+    self:load_data()
+
+    local obj_id = self.object:id()
+    local data = hf_obj_manager.get_data(obj_id)
+    -- Create Item with condition
+    if self.condition > BROKEN_COND then
+        dbg("all", "binder cond: %s", self.condition)
+        local se_obj = alife_create(self.item_section, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), AC_ID, false)
+        local item_data = utils_stpk.get_item_data(se_obj)
+        item_data.condition = self.condition
+        utils_stpk.set_item_data(item_data, se_obj)
+        alife():register(se_obj)
+
+        -- Replace gen id
+        -- replace_generator(data["tbl_id"], se_obj.id)
+        local old = {id=data["tbl_id"], sect=self.item_section}
+        local new = {id=se_obj.id, sect=self.item_section}
+        hfg_obj_persistance.replace(old, new)
+
+        data["tbl_id"] = se_obj.id
+        hf_obj_manager.update_data(se_obj.id, data)
+        hf_obj_manager.cleanup_data(obj_id)
+        alife_release(self.object)
+    else
+        hfg_obj_persistance.remove(obj_id, self.item_section)
+        hf_obj_manager.cleanup_data(obj_id)
+        disassemble_power_source(self.item_section, data["parts"], self.object)
+    end
+
+
+    -- Clean up HF-related data
+    return true
+end
+
+function placeable_solar_panel_wrapper:net_destroy()
+    dbg("dev", "on net destroy")
+    self:save_data()
+        if self.snd and contains(self.snd, "last_played", true) then
+        dbg("dev", "removing sound")
+        local id = self.snd["last_played"]
+        ag_sounds.remove(id)
+        self.snd["last_played"] = nil
+    end
+
+    self:CleanupParticles()
+
+end
+
+-- Binder Persistance
+function placeable_solar_panel_wrapper:save_data()
+    dbg("all", "save data")
+    local data = {
+        section              = self.section,
+        item_section         = self.item_section,
+        condition            = self.condition,
+        parts                = self.parts,
+        power_state          = self.power_state,
+        powerable_device_tmr = self.powerable_device_tmr,
+        power_off_consumers    = self.power_off_consumers,
+        powerable_devices    = self.powerable_devices,
+        max_power_output     = self.max_power_output,
+        power_output         = self.power_output,
+        weather_eff_tbl      = self.weather_eff_tbl,
+        weather_efficency    = self.weather_efficency,
+        curr_weather         = self.curr_weather,
+        cmonth               = self.cmonth,
+        chour                = self.chour,
+        avg_kwh              = self.avg_kwh,
+        power_input_tmr      = self.power_input_tmr,
+        last_cond_state      = self.last_cond_state,
+        curr_fx              = self.curr_fx,
+        fx_tbl               = self.fx_tbl,        
+        att_info             = self.att_info,
+        last_power_state     = self.last_power_state  
+    }
+        -- dbg("dev", "saving hf data with: %s", data)
+    local curr_data = hf_obj_manager.get_data(self.object:id())
+    if curr_data and contains(curr_data, "tbl_id", true) then
+        -- update_generator(curr_data["tbl_id"], data)
+        -- dbg("dev", "updating persistance data")
+        hfg_obj_persistance.update(curr_data["tbl_id"], self.item_section, data)
+    end
+    -- dbg("dev", "updating hf data")
+    hf_obj_manager.update_data(self.object:id(), data)
+    -- dbg("dev", "completed save")
+end
+
+function placeable_solar_panel_wrapper:load_data()
+    dbg("all", "on load")
+    local data = hf_obj_manager.get_data(self.object:id())
+    self.section              = data["section"]
+    self.item_section         = data["item_section"]
+    self.condition            = data["condition"]
+    self.parts                = data["parts"]
+    self.power_state          = data["power_state"]
+    self.powerable_device_tmr = data["powerable_device_tmr"]
+    self.power_off_consumers    = data["power_off_consumers"]
+    self.powerable_devices    = data["powerable_devices"]
+    self.max_power_output     = data["max_power_output"]
+    self.power_output         = data["power_output"]
+    self.weather_eff_tbl      = data["weather_eff_tbl"]
+    self.weather_efficency    = data["weather_efficency"]
+    self.curr_weather         = data["curr_weather"]
+    self.cmonth               = data["cmonth"]
+    self.chour                = data["chour"]
+    self.avg_kwh              = data["avg_kwh"]
+    self.power_input_tmr      = data["power_input_tmr"]
+    self.last_cond_state      = data["last_cond_state"]
+    self.curr_fx              = data["curr_fx"]
+    self.fx_tbl               = data["fx_tbl"]
+    self.att_info             = data["att_info"]
+    self.last_power_state     = data["last_power_state"]
+
+end
+
+-- callbacks
+
+function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
+    SEARCH_RADIUS = options["power_source_search_radius"]
+    BROKEN_COND = options["power_source_broken_cond"]
+    MAX_POWER_OUTPUT = options["max_power_output"]
+end
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+end
+
+
+--[[
+    if self.att_info["att"] ~= nil then
+        self.att_info["att"]:remove_attachment(self.att_info["name"])
+        self.att_info["att"] = nil
+        self.object:set_bone_visible("inverter", true, true)
+        self:save_data()
+    end
+
+
+    Attachment Fields
+    self.att_info = data["att_info"] or {}
+    if is_empty(self.att_info) then
+        self.att_info["name"] = "inverter"
+        self.att_info["visual"] = "dynamics\el_tehnika\el_control_unit_1.ogf"
+    end
+    self.att_info["att"] = self.object:add_attachment(self.att_info["name"], self.att_info["visual"])
+    self.att_info["att"]:set_parent_bone("inverter_base")
+    self.att_info["att"]:set_type(script_attachment_type.World)
+    self.att_info["att"]:play_motion("idle_close", true, 1)
+    dbg("dev", "%s bones: %s", self.att_info["name"], self.att:list_bones())
+    self.att_info["att"]:set_rotation(vector():set(90, 0, 35))
+    obj:set_bone_visible("inverter", false, true)
+    obj:set_bone_visible("inverter", false, true)
+    self.object:set_bone_visible("inverter", false, true)
+
+function placeable_solar_panel_wrapper:ProcessPowerState(cond_state)
+    -- On Power State Switch
+    if self.item_section == SP_ITEM and self.last_power_state ~= self.power_state then
+        dbg("dev", "processing power state")
+        self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
+        self.last_power_state = self.power_state
+        self:save_data()
+    end
+end
+
+]]

@@ -72,8 +72,9 @@ function init(obj)
     local data = hf_obj_manager.get_data(id)
     if data then       
         if contains(data, "tbl_id", true) then
+            -- item to world object
             local old = {id=data["tbl_id"], sect=data["item_section"]}
-            local new = {id=id, sect=data["item_section"]}
+            local new = {id=id, sect=sect}
             hfg_obj_persistance.replace(old, new)
 
         elseif contains(data, "is_world_obj", true) then
@@ -81,9 +82,8 @@ function init(obj)
             data["is_world_obj"] = false
             data["item_section"] = ini_sys:r_string_ex(sect, "item_section") or sect
             data["uses"] = data["item_section"] ~= "hfg_jerrycan_diesel_empty" and get_random_uses() or 0
-            hfg_obj_persistance.init(id, data["item_section"], data)
+            hfg_obj_persistance.init(id, sect, data)
         end
-        hf_obj_manager.update_data(id, data)
     end
     obj:bind_object(placeable_generator_item_wrapper(obj).binder)
 end
@@ -92,7 +92,8 @@ class "placeable_generator_item_wrapper" (bind_hf_base.hf_binder_wrapper)
 function placeable_generator_item_wrapper:__init(obj) super(obj)
     local data = hf_obj_manager.get_data(self.object:id())
     dbg("dev", "%s", data)
-    self.item_section = data["item_section"] or obj:section()
+    self.section = obj:section()
+    self.item_section = data["item_section"] or ini_sys:r_string_ex(self.section, "item_section", self.section)
     self.condition = data["condition"] or  1
     self.uses = data["uses"] or obj:get_remaining_uses() or 0
     self:save_data()
@@ -163,8 +164,8 @@ function placeable_generator_item_wrapper:pickup()
     
     -- Find newly created se_obj, replace existing gen item tbl id with server obj id
     if data and contains(data, "tbl_id", true) then
-        local old = {id=data["tbl_id"], sect=data["item_section"]}
-        local new = {id=se_obj.id, sect=data["item_section"]}
+        local old = {id=data["tbl_id"], sect=self.section}
+        local new = {id=se_obj.id, sect=self.item_section}
         hfg_obj_persistance.replace(old, new)
 
         data["tbl_id"] = se_obj.id
@@ -179,15 +180,23 @@ function placeable_generator_item_wrapper:pickup()
 end
 
 function placeable_generator_item_wrapper:save_data()
-    hf_obj_manager.update_data(self.object:id(), {
+    local data = {
+        section              = self.section,
         item_section         = self.item_section,
         condition            = self.condition,
-        uses                 = self.uses,
-    })
+        uses                 = self.uses,    
+    }
+    
+    local curr_data = hf_obj_manager.get_data(self.object:id())
+    if curr_data and contains(curr_data, "tbl_id", true) then
+        hfg_obj_persistance.update(curr_data["tbl_id"], self.section, data)
+    end
+    hf_obj_manager.update_data(self.object:id(), data)
 end
 
 function placeable_generator_item_wrapper:load_data()
     local data = hf_obj_manager.get_data(self.object:id())
+    self.section              = data["section"]
     self.item_section         = data["item_section"]
     self.condition            = data["condition"]
     self.uses                 = data["uses"]

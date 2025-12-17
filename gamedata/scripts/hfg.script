@@ -1,20 +1,45 @@
+-- Lib Imports
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
 
+gts = get_translation
 
--- Imports
-
-gts = hfg_utils.get_translation
-contains = hfg_utils.contains
-is_powerable_device = bind_disel_generator.is_powerable_device
+-- Script Imports
 add_functor = custom_functor_autoinject.add_functor
-split = hfg_utils.split
 
--- Variables
+-- Utils
+get_config = hfg_utils.get_config
+is_power_consumer = hfg_power_grid.is_power_consumer
 
+-- Constants
+LOG_HEADER = "[HFG|Main]"
+
+-- Globals
 update_descr = {}
 
+-- Locals
+local dbg_pr = nil
+
 -- DEBUGGING
-function pr(str, ...)
-    hfg_utils.dbg_pr("[HFG|Main]: %s", str, ...)
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
 end
 
 -- Boolean Funcs
@@ -72,12 +97,12 @@ function unpack_fuse_pack_func(obj)
     if amount_to_spawn < max_amount and max_amount - amount_to_spawn > 0 then
         broken_to_spawn = math.random(1, max_amount - amount_to_spawn)
     end
-    pr("unpacking %s", sect)
-    pr("max amount: %s", max_amount)
-    pr("amount to spawn: %s", amount_to_spawn)
-    pr("broken to spawn: %s", broken_to_spawn)
-    pr("fuse sect: %s", fuse_sect)
-    pr("broken sect: %s", broken_fuse_sect)
+    dbg("dev", "unpacking %s", sect)
+    dbg("dev", "max amount: %s", max_amount)
+    dbg("dev", "amount to spawn: %s", amount_to_spawn)
+    dbg("dev", "broken to spawn: %s", broken_to_spawn)
+    dbg("dev", "fuse sect: %s", fuse_sect)
+    dbg("dev", "broken sect: %s", broken_fuse_sect)
 
 
     for i=1, amount_to_spawn do
@@ -93,6 +118,70 @@ end
 
 add_functor("hfg_unpack_fuse_pack", unpack_fuse_pack_cond, unpack_fuse_pack_menu, nil, unpack_fuse_pack_func)
 
+-- Physics Contact with fences
+on_contact = hfg_utils.throttle(
+    function(obj, npc)
+        if not obj and not npc then return end
+        local sect = obj:section()
+        local tokens = split(sect, "_")
+        if contains(tokens, "fence") then --dist check
+            if contains(tokens, "barbed") then
+                prick_npc(obj, npc)
+            elseif contains(tokens, "metal") then
+                shock_npc(obj, npc)
+            end
+        end
+    end, 5000)
+
+function prick_npc(obj, npc)
+    local h = hit()
+    h.type = hit.strike
+    h.impluse = 0
+    h.direction = VEC_Z
+    h.drafstman = obj
+    h.power = 0.01
+
+    npc:hit(h)
+end
+
+function shock_npc(obj, npc)
+    local power = 0.1
+    local timeout = 0.4
+
+    local h = hit()
+    h.type = hit.shock
+    h.impluse = 0
+    h.direction = VEC_Z
+    h.draftsman = obj
+    h.power = power
+
+    npc:hit(h)
+    level.remove_pp_effector(667)
+    level.add_pp_effector("snd_shock.ppe", 667, true)
+    level.set_pp_effector_factor(667,h.power)
+
+    local pos = npc:position()
+    local shock_id = thial_particles.add("anomaly2\\electra_damage_02_smoke", pos:add(vector():set(0, 1.5, 0.5)), timeout * 1000)
+    local shock = thial_particles.get(shock_id)
+
+    --xr_sound.play_sound_looped(AC_ID, "anomaly\\electra_blast")
+    --xr_sound.play_sound_looped(AC_ID, "anomaly\\electra_hit")
+
+    local shock_snd = sound_object("anomaly\\electra_hit")
+    shock_snd:play_no_feedback(npc, 0, 0, obj:position(), 1.0, 1.0)
+    -- play no feedback guitar
+
+    local itm = npc:active_item()
+    if itm then npc:drop_item(itm) end
+
+    CreateTimeEvent("rph_ui", "remove_electric_effect", timeout, function()
+        printf("Health: %s", round_idp(npc.health, 2))
+        level.remove_pp_effector(667)
+        thial_particles.remove(shock_id)    
+        return true
+    end)
+end
+
 -- Monkey Patches
 
 function build_fuse_details_descr()
@@ -102,8 +191,8 @@ end
 base_obj_desc = ui_item.get_obj_desc
 function ui_item.get_obj_desc(obj)
     local sect = obj:section()
-    if is_powerable_device(sect) and is_fuse_protected(obj:id()) then
-        pr("updating %s descr to be fuse protected", sect)
+    if is_power_consumer(sect) and is_fuse_protected(obj:id()) then
+        dbg("debug", "updating %s descr to be fuse protected", sect)
         if contains(update_descr, sect, true) then
             local details = update_descr[sect]
             local descr = strformat("%s\n %s\n", details["base"], details["additional"])   
@@ -122,21 +211,27 @@ function on_drag_drop(obj_dropped, obj_target, slot_from, slot_to)
 
     local device = obj_target
     local fuse = obj_dropped 
-    
-    if is_fuse(fuse:section()) and is_powerable_device(device:section()) then 
+    dbg("debug", "dragging %s onto %s", fuse:section(), device:section())
+
+    if is_fuse(fuse:section()) and is_power_consumer(device:section()) then 
         if is_fuse_broken(fuse) then
             actor_menu.set_msg(1, gts("st_broken_fuse", fuse:section()), 3)
             return
         end
         if is_fuse_protected(device:id()) then return end
-        pr("dragging %s onto %s", fuse:section(), device:section())
         update_descr[device:section()] = {base=ui_item.get_obj_desc(device), additional=build_fuse_details_descr()}
         hf_obj_manager.update_data(device:id(), {fuse_protected=true})
-        pr("updadting %s to be fuse protected", device:section())
+        dbg("info", "updadting %s to be fuse protected", device:section())
         alife():release(alife_object(fuse:id(), true))
     end
 end
 
 function on_game_start()
     RegisterScriptCallback("ActorMenu_on_item_drag_drop", on_drag_drop)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+end
+
+function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
 end

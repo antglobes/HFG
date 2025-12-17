@@ -14,6 +14,9 @@ ag_utils.import_metatable(this, ag_tables)
 
 gts = get_translation
 
+-- Script Imports
+power_grids = hfg_power_grid.grids
+
 -- External Imports
 AOE = demonized_aoe.AOE
 geo_ray = demonized_geometry_ray.geometry_ray
@@ -28,7 +31,7 @@ get_powerable_devices = hfg_utils.get_powerable_devices
 cond_to_state = hfg_utils.cond_to_state
 bones_by_distance = hfg_utils.bones_by_distance
 disassemble_power_source = hfg_utils.disassemble_power_source
-update_power_source_cond = hfg_utils.update_power_source_cond
+update_power_source_cond = hfg_power_grid.update_power_source_cond
 SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
 
 -- Constants
@@ -109,7 +112,7 @@ end
 
 -- Diesel Generator Binder
 
-function init(obj, was_blueprint)
+function init(obj)
     local id = obj:id()
     local sect = obj:section()
     dbg("dev", "attempt binding %s", sect)
@@ -125,6 +128,7 @@ function init(obj, was_blueprint)
     hfg_obj_persistance.init(id, sect, {tbl_id=id})
     dbg("dev", "binding %s", sect)
     obj:bind_object(placeable_disel_generator_wrapper(obj).binder)
+    dbg("dev", "finish binding: %s", sect)
 end
 
 class "placeable_disel_generator_wrapper" (bind_hf_base.hf_binder_wrapper)
@@ -152,6 +156,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.anim_stage = data["anim_stage"] or 1
     self.anim_state = data["anim_state"] or ""
     self.anim_power_state = data["anim_power_state"] or ""
+    self.anim_start_time = data["anim_start_time"] or 0
 
     -- Animation snd
     self.snd = data["snd"] or {}
@@ -204,14 +209,14 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
         }
     }
 
-    -- Powerable Devices
-    self.power_off_devices = data["power_off_devices"] or true
-    self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
+    -- Power Grid
+    self.power_off_consumers = data["power_off_consumers"] or false
+    self.consumers = data["consumers"] or {} -- get_powerable_devices(self.object:position())
     self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
     self.power_output = data["power_output"] or self.max_power_output
-    self.update_pd_tmr = data["update_pd_tmr"] or 0
     self.last_power_output = data["last_power_output"] or self.power_output
     self.last_power_state = data["last_power_state"] or "off"
+    self.grid_id = data["grid_id"] or -1
 
     -- Fuel
     self.stored_fuel = data["stored_fuel"] or 0
@@ -232,7 +237,6 @@ end
 
 function placeable_disel_generator_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
-
     self.tg = time_global()
     self:load_data()
 
@@ -247,7 +251,6 @@ function placeable_disel_generator_wrapper:update(delta)
     self.ProcessPowerState(cond_state)
     self:ProcessParticles(cond_state)
     self:ProcessAnims()
-    self:ProcessPowerableDevices()
     self:ProcessFuel()
 end
 
@@ -364,158 +367,79 @@ function placeable_disel_generator_wrapper:ProcessParticles(cond_state)
 end
 
 function placeable_disel_generator_wrapper:ProcessAnims()
-    if self.item_section == GEN_ITEM then
-        if self.anim_due then
-            if not self.anim_in_progress then
-                dbg("dev", "Setting Anim Control Vars")
-                self.anim_in_progress = true
-                self.anim_power_state = self.power_state
-                self.anim_start_time = self.tg
-                self:CleanupParticles()
-                dbg("dev", "anim power state: %s", self.anim_power_state)
-            end
+    if self.anim_due then
+        if not self.anim_in_progress then
+            dbg("dev", "Setting Anim Control Vars")
+            self.anim_in_progress = true
+            self.anim_power_state = self.power_state
+            self.anim_start_time = self.tg
+            self:CleanupParticles()
+            dbg("dev", "anim power state: %s", self.anim_power_state)
+        end
 
-            -- Prevent Toggle Power being constantly pressed from interrupting an animation
-            if self.anim_in_progress and self.anim_power_state ~= self.power_state then
-                dbg("info", "Attempted to change power state during anim, using anim set power state")
-                self.power_state = self.anim_power_state
-                --pr("power state: %s", self.power_state)
-            end
+        -- Prevent Toggle Power being constantly pressed from interrupting an animation
+        if self.anim_in_progress and self.anim_power_state ~= self.power_state then
+            dbg("info", "Attempted to change power state during anim, using anim set power state")
+            self.power_state = self.anim_power_state
+            --pr("power state: %s", self.power_state)
+        end
 
-            -- End Process if Animation Time not reached
-            if self.tg < self.anim_tmr then
-                return
-            end
-            dbg("dev", "Anim Time Reached")
-            -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
-            if self.tg > self.anim_tmr and self.tg - self.anim_start_time > self.anim_tmr then
-                dbg("info", "Anim Runtime Exceed, Advancing Stage")
-                self.anim_tmr = 0
-                self.anim_stage = self.anim_stage + 1
-            end
-
-            -- Stop Animation and Reset Controllers
-            dbg("all", "Anim stage %s, total stages %s", self.anim_stage, #self.anim_tbl[self.power_state])
-            if self.anim_stage > #self.anim_tbl[self.power_state] then
-                dbg("dev", "stopping anim")
-                self.anim_due = false
-                self.anim_in_progress = false
-                self.anim_tmr = 0
-                self.anim_stage = 1
-                self.power_off_devices = contains({"off", "broken"}, self.power_state)
-                self:save_data()
-                return
-            end
-
-            dbg("dev", "Starting Anim Stage %s at %s", self.anim_stage, self.tg)
-            -- Play Animation for given duration and advance/save animation
-            local details = self.anim_tbl[self.power_state][self.anim_stage]        
-            local snd_props = sound_object.s3d + sound_object.looped
-            local last_stage = #self.anim_tbl[self.power_state]
-            if self.anim_stage < last_stage or self.anim_stage == last_stage and contains({"off", "broken"}, self.power_state) then
-                --pr("Not looping snd")
-                snd_props = sound_object.s3d
-            end
-
-            if self.snd["last_played"] ~= nil  then
-                ag_sounds.remove(self.snd["last_played"])
-                dbg("info", "Stopping last played snd. Played for %s", self.tg - self.anim_tmr)
-            end
-            if details["snd"] then
-                self.snd["last_played"] = ag_sounds.add(self.object, details["snd"], self.object:position(),  0.7, snd_props)
-                dbg("info", "playing sound %s", details["snd"])
-            end
-            dbg("dev", "Starting to play %s at %s", details["anim"], self.tg)
-
-            self.object:play_cycle(details["anim"])
-            --self:UpdateAnimData(details["anim"])
-            self.current_motion = details["anim"]
-            dbg("dev", "setting current motion to %s", details["anim"])
-            self.anim_tmr = self.tg + (details["duration"] * 1000)
-            dbg("dev", "setting next anim time to %s", self.anim_tmr)
+        -- End Process if Animation Time not reached
+        if self.tg < self.anim_tmr then
+            return
+        end
+        dbg("dev", "Anim Time Reached")
+        -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
+        if self.tg > self.anim_tmr and self.tg - self.anim_start_time > self.anim_tmr then
+            dbg("info", "Anim Runtime Exceed, Advancing Stage")
+            self.anim_tmr = 0
             self.anim_stage = self.anim_stage + 1
-            dbg("dev", "advancing anim stage to: %s", self.anim_stage)
+        end
+
+        -- Stop Animation and Reset Controllers
+        dbg("all", "Anim stage %s, total stages %s", self.anim_stage, #self.anim_tbl[self.power_state])
+        if self.anim_stage > #self.anim_tbl[self.power_state] then
+            dbg("dev", "stopping anim")
+            self.anim_due = false
+            self.anim_in_progress = false
+            self.anim_tmr = 0
+            self.anim_stage = 1
+            self.power_off_consumers = self.power_state == "off" and true or self.power_state == "broken" and true or false
+            dbg("dev", "power off consumers: %s", self.power_off_consumers)
             self:save_data()
-            dbg("all", "saved data")
-        end
-    end
-end
-
-function placeable_disel_generator_wrapper:ProcessPowerableDevices()
-    if not contains({"broken", "off"}, self.power_state) then
-        if self.tg > self.update_pd_tmr then
-            local found_powerable_devices = get_powerable_devices(self.object:position())
-            if is_not_empty(found_powerable_devices) then
-                for id, obj in pairs(found_powerable_devices) do                    
-                    if not contains(self.powerable_devices, id, true) then
-                        dbg("dev", "adding new powerable devices")
-                        dbg("dev", "current power output: %s", self.power_output)
-                        local info = self:InitPDInfo(obj)
-                        self.powerable_devices[id] = info
-                        local wrapper = bind_hf_base.get_wrapper(id)
-                        if wrapper then
-                            dbg("dev", "init %s powered status", id)
-                            wrapper.power_source_id=self.object:id()
-                        end
-                        dbg("dev", "id: %s, watts needed %s, new power output: %s", id, info.watts_needed, power_output)
-                    end
-                end
-                self:save_data()          
-            end
-            self.update_pd_tmr = self.tg + 1000
+            return
         end
 
-        if self.tg > self.powerable_device_tmr then
-            -- Check from smallest to biggest consumer if it can be powered with current power output
-            local next_update = 300
-            dbg("dev", "current power output: %s", self.power_output)
-            local power_remaining = self.power_output
-            for id, info in pairs(self.powerable_devices) do
-                power_remaining = power_remaining - info.watts_needed
-                if power_remaining >= 0 and not info.watts_satisfied then 
-                    dbg("dev", "watts satisifed for %s", info.name)
-                    info.watts_satisfied = true
-                end
-                --self:save_data()
-            end
-
-            -- Update fuel if powered otherwise switch off
-            for id, info in pairs(self.powerable_devices) do
-                local data = hf_obj_manager.get_data(id)
-                if data and info.watts_satisfied then
-                    if 
-                        contains(data, "fuel", true) 
-                        and not contains(data, "infinite_fuel", true)
-                        and data["fuel"] <= 0.1 
-                    then
-                        dbg("info", "updating fuel")
-                        hf_obj_manager.update_data(id, {fuel=1})
-                    end
-                elseif data and not info.watts_satisfied then
-                   if data["is_on"] then
-                        dbg("dev", "Watts not satisfied for %s", info.name)
-                        hf_obj_manager.update_data(id, {is_on=false})
-                        self.power_output = self.power_output + info.watts_needed
-                        local msg = gts("st_watts_unsatisfied", get_hf_item_name(self.section), info.name)
-                        actor_menu.set_msg(1, msg, 3)
-                    end
-                end
-            end                
-            
-            self.powerable_device_tmr = self.tg + next_update
-            self:save_data()
+        dbg("dev", "Starting Anim Stage %s at %s", self.anim_stage, self.tg)
+        -- Play Animation for given duration and advance/save animation
+        local details = self.anim_tbl[self.power_state][self.anim_stage]        
+        local snd_props = sound_object.s3d + sound_object.looped
+        local last_stage = #self.anim_tbl[self.power_state]
+        if self.anim_stage < last_stage or self.anim_stage == last_stage and contains({"off", "broken"}, self.power_state) then
+            --pr("Not looping snd")
+            snd_props = sound_object.s3d
         end
+
+        if self.snd["last_played"] ~= nil  then
+            ag_sounds.remove(self.snd["last_played"])
+            dbg("info", "Stopping last played snd. Played for %s", self.tg - self.anim_tmr)
+        end
+        if details["snd"] then
+            self.snd["last_played"] = ag_sounds.add(self.object, details["snd"], self.object:position(),  0.7, snd_props)
+            dbg("info", "playing sound %s", details["snd"])
+        end
+        dbg("dev", "Starting to play %s at %s", details["anim"], self.tg)
+
+        self.object:play_cycle(details["anim"])
+        --self:UpdateAnimData(details["anim"])
+        self.current_motion = details["anim"]
+        dbg("dev", "setting current motion to %s", details["anim"])
+        self.anim_tmr = self.tg + (details["duration"] * 1000)
+        dbg("dev", "setting next anim time to %s", self.anim_tmr)
+        self.anim_stage = self.anim_stage + 1
+        dbg("dev", "advancing anim stage to: %s", self.anim_stage)
         self:save_data()
-    end    
-
-    if self.power_off_devices then
-        dbg("debug", "turning off devices")
-        for id, info in pairs(self.powerable_devices) do
-            hf_obj_manager.update_data(id, {is_on=false})
-            info.watts_satisfied = false
-        end
-        self.power_off_devices = false
-        self:save_data()
+        dbg("all", "saved data")
     end
 end
 
@@ -658,6 +582,9 @@ function placeable_disel_generator_wrapper:pickup()
     self:load_data()
     local gen_id = self.object:id()
     local data = hf_obj_manager.get_data(gen_id)
+    -- Remove power source from grid
+    hfg_power_grid.remove_power_source(self.grid_id, gen_id)
+
     -- Create Item with condition
     if self.condition > BROKEN_COND then
         dbg("all", "binder cond: %s", self.condition)
@@ -682,7 +609,7 @@ function placeable_disel_generator_wrapper:pickup()
         hf_obj_manager.cleanup_data(gen_id)
         disassemble_power_source(self.item_section, data["parts"], self.object)
     end
-
+    
     -- Clean up HF-related data
     return true
 end
@@ -704,7 +631,6 @@ function placeable_disel_generator_wrapper:net_destroy()
         local id = self.snd["last_played"]
         ag_sounds.stop(id)
     end
-    empty_table(self.powerable_devices)
     self:CleanupParticles()
 end
 
@@ -724,8 +650,8 @@ function placeable_disel_generator_wrapper:save_data()
         curr_fx              = self.curr_fx,
         fx_tbl               = self.fx_tbl,
         condition            = self.condition,
-        powerable_devices    = self.powerable_devices,
-        power_off_devices    = self.power_off_devices,
+        consumers            = self.consumers,
+        power_off_consumers  = self.power_off_consumers,
         current_motion       = self.current_motion,
         anim_start_time      = self.anim_start_time,
         last_power_state     = self.last_power_state,
@@ -736,7 +662,6 @@ function placeable_disel_generator_wrapper:save_data()
         fuel_transfer        = self.fuel_transfer,
         time_til_empty       = self.time_til_empty,
         drain_rate           = self.drain_rate,
-        update_pd_tmr        = self.update_pd_tmr,
         parts                = self.parts,
         fuel_tmr             = self.fuel_tmr,
         item_section         = self.item_section,
@@ -744,17 +669,18 @@ function placeable_disel_generator_wrapper:save_data()
         placeable_type       = self.placeable_type,
         time_last            = self.time_last,
         last_power_output    = self.last_power_output,
+        grid_id              = self.grid_id,
     }
-    -- dbg("dev", "saving hf data with: %s", data)
+    --dbg("dev", "saving hf data with: %s", data)
     local curr_data = hf_obj_manager.get_data(self.object:id())
     if curr_data and contains(curr_data, "tbl_id", true) then
         -- update_generator(curr_data["tbl_id"], data)
-        -- dbg("dev", "updating persistance data")
+        --dbg("dev", "updating persistance data")
         hfg_obj_persistance.update(curr_data["tbl_id"], self.section, data)
     end
-    -- dbg("dev", "updating hf data")
+    --dbg("dev", "updating hf data")
     hf_obj_manager.update_data(self.object:id(), data)
-    -- dbg("dev", "completed save")
+    --dbg("dev", "completed save")
 end
 
 function placeable_disel_generator_wrapper:load_data()
@@ -773,8 +699,8 @@ function placeable_disel_generator_wrapper:load_data()
     self.curr_fx              = data["curr_fx"]
     self.fx_tbl               = data["fx_tbl"]
     self.condition            = data["condition"]
-    self.powerable_devices    = data["powerable_devices"]
-    self.power_off_devices    = data["power_off_devices"]
+    self.consumers            = data["consumers"]
+    self.power_off_consumers  = data["power_off_consumers"]
     self.current_motion       = data["current_motion"]
     self.anim_start_time      = data["anim_start_time"]
     self.last_power_state     = data["last_power_state"]
@@ -785,7 +711,6 @@ function placeable_disel_generator_wrapper:load_data()
     self.fuel_transfer        = data["fuel_transfer"]
     self.time_til_empty       = data["time_til_empty"]
     self.drain_rate           = data["drain_rate"]
-    self.update_pd_tmr        = data["update_pd_tmr"]
     self.parts                = data["parts"]
     self.fuel_tmr             = data["fuel_tmr"]
     self.item_section         = data["item_section"]
@@ -793,49 +718,14 @@ function placeable_disel_generator_wrapper:load_data()
     self.placeable_type       = data["placeable_type"]
     self.time_last            = data["time_last"]
     self.last_power_output    = data["last_power_output"]
+    self.grid_id              = data["grid_id"]
 
-    -- dbg("dev", "Genny data: %s\n", data)
+   -- dbg("dev", "Genny data: %s\n", data)
 end
 
 function get_time_elapsed()
    return game.get_game_time():diffSec(level.get_start_time()) 
 end
-
-
-function set_cond_on_explode(obj)
-    local explo_sect = obj:section()
-    dbg("info", "set_cond_on_explode: %s", explo_sect)
-    local found_objs = {}
-    local function search(obj)
-        local sect = obj:section()
-        if is_not_empty({string.find(sect, "disel_generator")}) then
-            dbg("dev", "found genny: %s", sect)
-            found_objs[#found_objs + 1] = obj
-        end
-    end
-
-    local radius = ini_sys:r_float_ex(explo_sect, "blast_r")
-    level.iterate_nearest(obj:position(), radius, search)
-
-    if is_empty(found_objs) then return end
-    for i=1, #found_objs do
-        local gen = table.remove(found_objs, i)
-        if gen then
-            local data = hf_obj_manager.get_data(gen:id())
-            if data["anim_in_progress"] then return end
-            local power_state = data["power_state"]
-            local cond = data["condition"] or 1
-            local hit_damage = ini_sys:r_float_ex(explo_sect, "blast_impulse") / 100
-            -- shoot a ray from obj to genny
-            -- if hit any material get material
-            -- check to see how much the material would absorb the damage
-            -- apply to cond
-            update_power_source_cond(gen, cond, power_state, hit_damage)
-        end
-    end   
-end
-
-    
 
 -- Callbacks
 function on_option_change(options)
@@ -848,9 +738,7 @@ function on_option_change(options)
 end
 
 function on_game_start()
-    -- RegisterScriptCallback("explosive_item_on_explode", set_cond_on_explode)
     RegisterScriptCallback("hfg_on_option_change", on_option_change)
-    -- RegisterScriptCallback("actor_on_update", actor_on_update)
 end
 
 --[[

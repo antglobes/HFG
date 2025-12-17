@@ -2,28 +2,51 @@
 ag_utils.import_metatable(this, ag_tables)
 ag_utils.import_metatable(this, ag_game_objects)
 ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_npc)
+
+gts = get_translation
 
 -- Script Imports
 throttle = ag_utils.throttle
 
 -- Utils
-get_config = hfg_utils.get_config
-is_power_source = hfg_utils.is_power_source
-is_power_consumer = hfg_utils.is_power_consumer
-is_power_obj = hfg_utils.is_power_obj
-get_power_type = hfg_utils.get_power_type
-get_power_data = hfg_utils.get_power_data
+get_config = hfg_mcm.get_config
 within_range = hfg_utils.within_range
-get_power_consumers = hfg_utils.get_power_consumers
-get_power_sources = hfg_utils.get_power_sources
-get_power_storage = hfg_utils.get_power_storage
+bones_by_distance = hfg_utils.bones_by_distance
+bone_to_part_name = hfg_utils.bone_to_part_name
+get_hf_item_name = hfg_utils.get_hf_item_name
 
 -- Constants
 LOG_HEADER = "[HFG|Power Grid]"
-SEARCH_RADIUS = get_config("power_source_search_radius")
+SEARCH_RADIUS = hfg_mcm.defaults["power_source_search_radius"]
+BROKEN_COND = hfg_mcm.defaults["power_source_broken_cond"]
 
 -- Globals
 grids = {}
+PLACEABLE_POWER_SOURCES = {}
+PLACEABLE_POWER_CONSUMERS = {}
+PLACEABLE_POWER_STORAGE = {}
+POWER_ITEM_SECTS = {}
+
+-- Tables
+swap_power_typ = {
+    power_sources = "power_consumers",
+    power_consumers = "power_storage",
+    power_storage = "power_sources"
+}
+binder_patches = {
+    power_consumers = {
+        pickup = function(self)
+            dbg("dev", "running pickup patch")
+            local obj = self.object
+            local id = obj:id()
+            local grid_id = hf_obj_manager.get_data(id).grid_id
+            remove_power_consumer(grid_id, id)
+        end,
+        
+    }
+}
 
 -- Locals
 local dbg_pr = nil
@@ -49,36 +72,163 @@ function dbg(level, fmt, ...)
     dbg_pr:Log(level, fmt, ...)
 end
 
-function in_grid(args)
-    if is_empty(grids) then return false end
-    local typ = args.typ
-    local level_name = args.level_name
+-- Power Objs
+function is_power_source(sect)
+    return contains(PLACEABLE_POWER_SOURCES, sect)
+end
 
-    if typ == "level" then
-        return contains(grids, level_name, true)
+function is_power_consumer(sect)
+    return contains(PLACEABLE_POWER_CONSUMERS, sect)
+end
 
-    elseif typ == "grid" then
-        local grid_id = args.grid_id
-        return contains(grids, level_name, true) 
-            and contains(grids[level_name], grid_id, true)
+function is_power_storage(sect)
+    return contains(PLACEABLE_POWER_STORAGE, sect)
+end
 
-    elseif typ == "power" then
-        local grid_id = args.grid_id
-        local power_typ = args.power_typ
-        local power_obj_id = args.power_obj_id
-        if
-            contains(grids, level_name, true)
-            and contains(grids[level_name], grid_id, true)
-            and contains(grids[level_name][grid_id], power_typ, true)
-        then
-            local power_objs = grids[level_name][grid_id][power_typ]
-            return contains(power_objs, power_obj_id, true)
-        end
+function is_power_obj(sect)
+    return is_power_source(sect) or is_power_consumer(sect) or is_power_storage(sect)
+end
+
+function is_light(sect)
+    return ini_sys:r_string_ex(sect, "placeable_type") == "light"
+end
+
+function get_power_type(sect)
+    return is_power_source(sect) and "power_sources"
+        or is_power_consumer(sect) and "power_consumers"
+        or is_power_storage(sect) and "power_storage"
+end
+
+function get_power_data(obj, power_typ)
+    local power_obj_id = obj:id()
+    local power_obj_sect = obj:section()
+    local hf_data = hf_obj_manager.get_data(power_obj_id)
+    local data = {
+        sect = power_obj_sect,
+        pos = obj:position(),
+
+    }
+    local data_fields = {}
+    if power_typ == "power_sources" then
+        data_fields = {
+            power_output = 0,
+            power_state = "off",
+            consumers = {},
+        }
+        data["power_remaining"] = 0
+        data["all_consumers_satisfied"] = false
+        
+    elseif power_typ == "power_consumers" then
+        data_fields = {
+            power_state = "off",
+            sources = {},
+        }
+        data["power_satisfied"] = false
+        data["power_satisfied_typ"] = -1
+        data["power_needed"] = ini_sys:r_float_ex(power_obj_sect, "fuel_duration", 300)
+
+    elseif power_typ == "power_storage" then
+        data_fields = {
+            power_stored = 0,
+            sources = {},
+        }
     end
 
+    for field, val in pairs(data_fields) do
+        if contains(hf_data, field, true) then
+            data[field] = hf_data[field]
+        else
+           data[field] = val
+        end
+    end
+    return data
+end
+
+function get_power_objs(pos, power_typ)
+    local power_objs = {}
+    local function search(obj)
+        local sect = obj:section()
+        if 
+            power_typ == "consumers" and is_power_consumer(sect)
+            or power_typ == "sources" and is_power_source(sect)
+            or power_typ == "storage" and is_power_storage(sect)
+        then
+            power_objs[obj:id()] = obj
+        end
+    end
+    level.iterate_nearest(pos, SEARCH_RADIUS, search)
+    return power_objs
+end
+
+function get_power_consumers(pos)
+    return get_power_objs(pos, "consumers")
+end
+
+function get_power_sources(pos)
+    return get_power_objs(pos, "sources")
+end
+
+function get_power_storage(pos)
+    return get_power_objs(pos, "storage")
+end
+
+function find_power_sources(pos, radius)
+    radius = not radius and SEARCH_RADIUS or radius
+    if not pos then
+        local targ_obj = level.get_target_obj()
+        pos = targ_obj and targ_obj:position() or db.actor:position()
+    end
+    
+    local power_sources = {}
+    for _, ps_sect in pairs(PLACEABLE_POWER_SOURCES) do
+        dbg("dev", "searching for %s", ps_sect)
+        local found_power_sources = find_obj(ps_sect, pos, radius)
+        if is_not_empty(found_power_sources) then
+            
+            for i=1, #found_power_sources do
+                -- dbg("all", "Found: %s", found_power_sources[i])
+                power_sources[#power_sources + 1] = found_power_sources[i]
+            end
+        end
+    end
+    dbg("dev", "found power sources?: %s", is_not_empty(power_sources) and "yes" or "no")
+    return power_sources
+end
+
+function update_power_source_cond(gen, cond, power_state, hit_damage)
+    if power_state ~= "broken" then
+        local anim_due = false
+        local loss_cond = cond - hit_damage
+        cond = loss_cond > 0 and loss_cond or MIN_COND
+
+        dbg("info", "updating cond: %s", cond)
+        if cond > BROKEN_COND then
+            hf_obj_manager.update_data(gen:id(), {condition=cond}) 
+        else
+            if power_state == "on" then
+                anim_due = true
+            end
+            hf_obj_manager.update_data(gen:id(), {
+                condition=cond,
+                last_power_state=power_state,
+                power_state="broken",
+                anim_due=anim_due
+            }) 
+        end
+    end
+end
+
+function power_object_special_case(power_typ, sect)
+    local special_cases = {
+        power_consumer = {"laptop", "tv", "monitor", "pccase"}
+    }
+    for _, special_case in pairs(special_cases[power_typ]) do
+        if sect:find(special_case) then return true end
+    end
     return false
 end
 
+-- Power Grid
 function init_grid(obj)
     local obj_id = obj:id()
     local obj_sect = obj:section()
@@ -97,36 +247,22 @@ function init_grid(obj)
     end
 
     local num_level_grids = size_table(level_grids)
-    local obj_pos = obj:position()
     local power_typ = get_power_type(obj_sect)
     local power_data = get_power_data(obj, power_typ)
-    dbg("dev", "number of grids on level: %s", num_level_grids)
     dbg("dev", "id: %s, sect: %s, power typ: %s", obj_id, obj_sect, power_typ)
-    
             
     if is_not_empty(level_grids) then
         dbg("dev", "existing grid for level: %s", level_grids)
-        -- Add to closest existing grid
-        
-        -- Collect distances for each grid id
-        dbg("dev", "Getting closest grid id")
-        local closest_grid_id = num_level_grids
-        local closest_grid_dist
-        for grid_id, grid_data in pairs(level_grids) do
-            for id, data in pairs(grid_data[power_typ]) do
-                local dist = obj_pos:distance_to(data["pos"])
-                dbg("dev", "dist: %s", dist)
-                if not closest_grid_dist or dist < closest_grid_dist then
-                    closest_grid_dist = dist
-                    closest_grid_id = grid_id
-                end
-            end
-        end
-        
-        dbg("dev", "closest grid dist: %s, closest grid id: %s", closest_grid_dist, closest_grid_id)
-        
-        if closest_grid_dist and closest_grid_dist < SEARCH_RADIUS then        
-            -- Get nearest grid
+        -- Get nearest grid
+        local closest_grid_info = get_closest_grid(obj)
+        if 
+            is_not_empty(closest_grid_info)
+            and contains(closest_grid_info, "dist", true) 
+            and closest_grid_info["dist"] < SEARCH_RADIUS
+            and contains(closest_grid_info, "id", true)
+        then        
+            -- Add to closest existing grid
+            local closest_grid_id = closest_grid_info["id"]
             local closest_grid = level_grids[closest_grid_id]
             dbg("dev", "closest grid data: %s", closest_grid)
             closest_grid[power_typ] = contains(closest_grid, power_typ, true) and closest_grid[power_typ] or {}
@@ -138,6 +274,8 @@ function init_grid(obj)
             return
         end
     end
+
+    patch_obj_binder(obj, power_typ)
     
     dbg("dev", "Adding new power grid")
     local grid_id = num_level_grids + 1
@@ -153,9 +291,19 @@ function init_grid(obj)
 end
 
 function delay_init_grid(obj_id)
+    
     local se_obj = alife_object(obj_id)
+    local id = se_obj.id
     local sect = se_obj:section_name()
     if not se_obj  then return end
+    if 
+        contains(hfg_blueprint.placing_blueprints, id, true)
+        or contains(hfg_blueprint.placed_blueprints, id, true)
+        or contains(hfg_blueprint.removed_attachments, id, true)
+    then
+        dbg("dev", "cannot init grid %s, as is a blueprint ", sect)
+        return
+    end
     if not is_power_obj(sect) then return end
     dbg("info", "on delay init grid: %s|:%s", sect, obj_id)
     CreateTimeEvent("hf_power_grid"..se_obj.id, "delay_init_grid"..se_obj.id, 0.4, function()
@@ -164,6 +312,110 @@ function delay_init_grid(obj_id)
         init_grid(obj)
         return true
     end)
+end
+
+function get_closest_grid(obj)
+    dbg("dev", "Getting closest grid id")
+    local closest_grid = {}
+    local level_grids = {}
+    local level_name = level.name()
+    local obj_pos = get_unknown_pos(obj)
+    local obj_sect = get_unknown_sect(obj)
+    local power_typ = get_power_type(obj_sect)
+    
+    -- Collect distances for each grid id
+    for grid_id, grid_data in pairs(grids) do
+        if grid_data["lvl_name"] == level_name then
+            level_grids[grid_id] = grid_data
+        end
+    end
+
+    local num_level_grids = size_table(level_grids)
+    -- dbg("dev", "number of grids on level: %s", num_level_grids)
+    local closest_grid_id = num_level_grids
+    local closest_grid_dist
+    for grid_id, grid_data in pairs(level_grids) do
+        local power_objs = contains(grid_data, power_typ, true) and grid_data[power_typ] or {}
+        if is_empty(power_objs) then
+            for _, found_power_typ in pairs(get_keytable(swap_power_typ)) do
+                if 
+                    found_power_typ ~= power_typ
+                    and contains(grid_data, found_power_typ, true)
+                    and is_not_empty(grid_data, found_power_typ)
+                then
+                    power_objs = grid_data[found_power_typ]
+                    -- dbg("dev", "power_typ: %s not found in grid %s for %s, using %s", power_typ, grid_id, level_name, found_power_typ)
+                end
+            end
+        end
+        dbg("dev", "obj pos: %s", obj_pos)
+        for id, data in pairs(power_objs) do
+            local dist = obj_pos:distance_to(data["pos"])
+            dbg("dev", "dist: %s, power obj pos: %s", dist, data["pos"])
+            if not closest_grid_dist or dist < closest_grid_dist then
+                closest_grid_dist = dist
+                closest_grid_id = grid_id
+            end
+        end
+    end
+    closest_grid["id"] = closest_grid_id
+    closest_grid["dist"] = closest_grid_dist
+    
+    -- dbg("dev", "closest grid dist: %s, closest grid id: %s", closest_grid_dist, closest_grid_id)
+    return closest_grid
+end
+
+function get_closest_power_source(grid_id, pos, power_states)
+    local closest_grid = contains(grids, grid_id, true) and grids[grid_id] or {}
+    local closest_power_source = {}
+    if 
+        not closest_grid
+        or not contains(closest_grid, "power_sources", true) 
+        or is_empty(closest_grid["power_sources"]) 
+    then 
+        return closest_power_source
+    end
+    local closest_dist
+    local closest_source_id
+
+    for ps_id, ps_data in pairs(closest_grid["power_sources"]) do
+        local source_pos = ps_data["pos"]
+        local dist = pos:distance_to(source_pos)
+        if 
+            not closest_dist 
+            or (dist < closest_dist and contains(power_states, ps_data["power_state"]))
+        then
+            closest_dist = dist
+            closest_source_id = ps_id
+        end
+    end
+
+    closest_power_source["id"] = closest_source_id
+    closest_power_source["dist"] = closest_dist
+    return closest_power_source
+end
+
+function remove_power_source(grid_id, ps_id)
+    remove_power_obj_from_grid(grid_id, ps_id, "power_sources")
+end
+
+function remove_power_consumer(grid_id, pc_id)
+    remove_power_obj_from_grid(grid_id, pc_id, "power_consumers")
+end
+
+function remove_power_storage(grid_id, pst_id)
+    remove_power_obj_from_grid(grid_id, pst_id, "power_storage")
+end
+
+function remove_power_obj_from_grid(grid_id, power_obj_id, power_typ)
+    if 
+        contains(grids, grid_id, true)
+        and is_not_empty(grids[grid_id][power_typ])
+        and contains(grids[grid_id][power_typ], power_obj_id, true)
+    then
+        grids[grid_id][power_typ][power_obj_id] = nil
+        dbg("dev", "removing %s of type %s from grid %s", power_obj_id, power_typ, grid_id)
+    end
 end
 
 update_grids = throttle(
@@ -175,83 +427,127 @@ update_grids = throttle(
         local level_name = level.name()
         for grid_id, grid_data in pairs(grids) do
             if grid_data["lvl_name"] == level_name then
+                
+                local has_sources = contains(grid_data, "power_sources", true) and is_not_empty(grid_data["power_sources"]) or false
+                local has_consumers = contains(grid_data, "power_sources", true) and is_not_empty(grid_data["power_consumers"]) or false
+                local has_storage = contains(grid_data, "power_sources", true) and is_not_empty(grid_data["power_storage"]) or false
+                if not has_sources and not has_consumers and not has_storage then
+                    grids[grid_id] = nil
+                    return
+                end
 
                 local power_data = contains(grid_data, "power_data", true) and grid_data["power_data"] or {}
                 local total_power_output = contains(power_data, "total_power_output") and power_data["total_power_output"] or 0
-                if contains(grid, "power_sources", true) and is_not_empty(grid["power_sources"]) then
+                if contains(grid_data, "power_sources", true) and is_not_empty(grid_data["power_sources"]) then
                     for id, data in pairs(grid_data["power_sources"]) do
                         local hf_data = hf_obj_manager.get_data(id)
 
                         -- Disable power output if broken or off
                         data["power_state"] = hf_data["power_state"]
-                        if contains({"off", "broken"}, data["power_state"]) then
-                            data["power_output"] = 0
-                        end
-
-                        -- Update nearby power consumers
-                        data["consumers"] = contains(data, "consumers", true) and data["consumers"] or {}
-                        local found_consumers = get_power_consumers(data["pos"])
-                        if is_not_empty(found_consumers) then
-                            for pc_id, consumer in pairs(found_consumers) do
-                                if not contains(data["consumers"], pc_id) then
-                                    data["consumers"][#data["consumers"] + 1] = pc_id
-                                end
-                            end
-                        end
+                        data["power_output"] = hf_data["power_output"]
 
                         -- Check that power source can satisfy it's consumers
                         local num_satisfied = 0
-                        local power_remaining = data["power_output"]
-                        if is_not_empty(data["consumers"]) and contains(grid_data, "power_consumers", true) then
-                            for _, pc_id in pairs(data["consumers"]) do
-                                local pc_data = grid_data["power_consumers"][pc_id]
-                                local power_satisfied = pc_data["power_satisfied"]
-                                if not power_satisfied then
-                                    local power_needed = pc_data["power_needed"]
-                                    power_remaining = power_remaining - power_needed
-                                    if power_remaining >= 0 then
-                                        power_satisfied = true
-                                        grid_data["power_consumers"][pc_id].power_satisfied = power_satisfied
-                                        grid_data["power_consumers"][pc_id].power_satisfied_typ = 0
-                                    else
-                                        grid_data["power_consumers"][pc_id].power_satisfied_typ = 0
+                        local power_remaining = contains(data, "power_remaining", true) and data["power_remaining"] or 0 -- amount of power that can be drawn by new consumers
+
+                        -- Reset power remaining based on init/power turned off
+                        if data["power_state"] == "on" and power_remaining == 0 then
+                            power_remaining = contains(data, "last_power_remaining", true) and data["last_power_remaining"] or hf_data["max_power_output"]
+                        elseif data["power_state"] == "off" and power_remaining > 0 then
+                            data["last_power_remaining"] = power_remaining
+                            power_remaining = 0
+                        end
+
+                        -- Determine which consumers can be satisfied by their source
+                        if power_remaining > 0 and is_not_empty(data["consumers"]) and contains(grid_data, "power_consumers", true) then
+                            for idx, pc_id in pairs(data["consumers"]) do
+                                if 
+                                    contains(grid_data["power_consumers"], pc_id, true) 
+                                    and grid_data["power_consumers"][pc_id]["power_state"] == "on"
+                                then
+                                    local pc_data = grid_data["power_consumers"][pc_id]
+                                    local power_satisfied = pc_data["power_satisfied"]
+                                    if not power_satisfied then
+                                        local power_needed = pc_data["power_needed"]
+                                        power_remaining = power_remaining - power_needed
+                                        if power_remaining >= 0 then
+                                            power_satisfied = true
+                                            grid_data["power_consumers"][pc_id].power_satisfied = power_satisfied
+                                            grid_data["power_consumers"][pc_id].power_satisfied_typ = 2
+                                            --grid_data["power_consumers"][pc_id].sources[#grid_data["power_consumers"][pc_id].sources] = id -- amount of power drawn
+                                            --dbg("dev", "updated power sources: %s", grid_data["power_consumers"][pc_id].sources)
+                                        else
+                                            grid_data["power_consumers"][pc_id].power_satisfied_typ = 0
+                                            local cond, idx = contains(grid_data["power_consumers"][pc_id].sources, id, nil, nil, true)
+                                            if cond then grid_data["power_consumers"][pc_id].sources[idx] = nil end
+                                            power_remaining = power_remaining + power_needed
+                                            power_satisfied = false
+                                        end
                                     end
+                                    num_satisfied = power_satisfied and num_satisfied + 1 or num_satisfied
                                 end
-                                num_satisfied = power_satisfied and num_satisfied + 1 or num_satisfied
                             end
-                            data["power_remaining"] = power_remaining
-                            data["all_consumers_satisfied"] = is_not_empty(data["consumers"]) and size_table(data["consumers"]) == num_satisfied or 0
-                            total_power_output = total_power_output + data["power_output"]
+                            data["all_consumers_satisfied"] = size_table(data["consumers"]) == num_satisfied
+                            hf_obj_manager.update_data(id, {consumers=data["consumers"]})
+                            --dbg("dev", "updating consumers for power source %s to: %s", id, data["consumers"])
+                        end
+                        total_power_output = total_power_output + data["power_output"]
+                        data["power_remaining"] = power_remaining
+
+                        data["power_off_consumers"] = (
+                            (hf_data["power_off_consumers"] and true)
+                            or (power_remaining == 0 and true)
+                            or false
+                        )
+
+                        -- Turn off consummers if trigger by power source
+                        if data["power_off_consumers"] and contains(data, "consumers", true) and is_not_empty(data["consumers"]) then
+                            dbg("debug", "turning off consumers: %s", data["power_off_consumers"])
+                            for _, pc_id in pairs(data["consumers"]) do
+                                local pc_hf_data = hf_obj_manager.get_data(pc_id)
+                                if pc_hf_data["is_on"] then
+                                    hf_obj_manager.update_data(pc_id, {is_on=false})
+                                end
+                            end
+
+                            data["power_off_consumers"] = false
+                            hf_data["power_off_consumers"] = data["power_off_consumers"]
+                            hf_obj_manager.update_data(id, {power_off_consumers=hf_data["power_off_consumers"]})
                         end
                     end
                     -- Total power output based on sum of power output from all power sources
                     power_data["total_power_output"] = total_power_output
                 end
-
                 
-                local total_power_demand = contains(power_data, "total_power_demand") and power_data["total_power_demand"] or 0
+                power_data["total_power_demand"] = contains(power_data, "total_power_demand") and power_data["total_power_demand"] or 0
+                local total_power_demand =  power_data["total_power_demand"]
                 if contains(grid_data, "power_consumers", true) and is_not_empty(grid_data["power_consumers"]) then
-                    for id, data in pairs(grid_data["power_consumers"]) do
+                    for id, data in pairs(grid_data["power_consumers"]) do --TODO Check all possible sources for power, adjust which ones to draw from and their remaning power
                         local hf_data = hf_obj_manager.get_data(id)
                         
-                        data["power_state"] = hf_data["power_state"]
+                        data["power_state"] = hf_data["condition"] <= BROKEN_COND and "broken" or hf_data["is_on"] and "on" or "off"
                         local power_satisfied = data["power_satisfied"]
                         local power_needed = data["power_needed"]
                         
+                        -- Turn off consumer if not satisfied
                         if not power_satisfied then                        
-                            if data["power_state"] == "on" then                            
+                            if data["power_state"] == "on" or data["power_state"] == "" then
                                 data["power_state"] = "off"
                             end
 
-                            -- Check if extent of power not satisfied being partial:0 or full:1 or init:-1
+                            -- Check if extent of power not satisfied being partial:0 or full:1 or init:-1 or satisfied:2
                             local power_satisfied_typ = data["power_satisfied_typ"]
                             if power_satisfied_typ == 0 then
-                                if is_not_empty(grid_data["power_sources"]) then
+                                if contains(grid_data, "power_sources", true) and is_not_empty(grid_data["power_sources"]) then
                                     for ps_id, ps_data in pairs(grid_data["power_sources"]) do
-                                        if not contains(data["sources"], ps_id) and ps_data["power_remaining"] - power_needed >= 0 then
+                                        data["sources"] = contains(data, "sources", true) and data["sources"] or {}
+                                        local power_remaining = ps_data["power_remaining"] - power_needed
+                                        if not contains(data["sources"], ps_id) and power_remaining >= 0 then
                                             data["sources"][#data["sources"] + 1] = ps_id
                                             data["power_satisfied"] = true
                                             data["power_satisfied_typ"] = -1
+                                            grid_data["power_sources"][ps_id].power_remaining = power_remaining
+                                            grid_data["power_sources"][ps_id].consumers[#grid_data["power_sources"][ps_id].consumers + 1] = id
                                         end
                                     end
                                 end
@@ -260,23 +556,43 @@ update_grids = throttle(
                                     data["power_satisfied_typ"] = 1
                                 end
 
-                            elseif power_satisfied_typ == 1 then
+                            elseif power_satisfied_typ == 1 then -- not implemented until batteries are
                                 if is_not_empty(grid_data["power_storage"]) then
                                     for pst_id, pst_data in pairs(grid_data["power_storage"]) do
-                                        if pst_data["power_stored"] > 0 and pst_data["power_stored"] - power_needed > 0 then
+                                        if pst_data["power_stored"] > 0 and pst_data["power_stored"] - power_needed >= 0 then
                                             data["power_satisfied"] = true
-                                            data["power_satisfied_typ"] = -1
+                                            data["power_satisfied_typ"] = 2
                                             data["sources"][#data["sources"] + 1] = pst_id
+                                            pst_data["consumers"][#pst_data["consumers"] + 1] = id
                                         end
                                     end
+                                end
+
+                                if not data["power_satisfied"] then
+                                    data["power_satisfied_typ"] = -1
+                                end
+                            -- Add consumer to closest power source, if active, if has enough power
+                            elseif power_satisfied_typ == -1 then
+                                local closest_ps_info = get_closest_power_source(grid_id, data["pos"], {"on"})
+                                if is_not_empty(closest_ps_info) and closest_ps_info["id"] then
+                                    local closest_source_id = closest_ps_info["id"]
+                                    local power_needed = data["power_needed"]
+                                    local power_remaining = grid_data["power_sources"][closest_source_id].power_remaining
+                                    if power_remaining - power_needed >= 0 then
+                                        data["power_satisfied"] = true
+                                        data["power_satisfied_typ"] = 2
+                                        data["sources"][#data["sources"] + 1] = closest_source_id
+                                        grid_data["power_sources"][closest_source_id].consumers[#grid_data["power_sources"][closest_source_id].consumers + 1] = id
+                                    end
+                                end
+                                
+                                if not data["power_satisfied"] then
+                                    data["power_satisfied_typ"] = 0
                                 end
                             end
 
                         elseif power_satisfied then
-                            if contains({"off", "broken", data["power_state"]}) then
-                                data["power_state"] = "on"
-                            
-                            elseif data["power_state"] == "on" then
+                            if data["power_state"] == "on" then
                                 if 
                                     contains(hf_data, "fuel", true) 
                                     and not contains(hf_data, "infinite_fuel", true)
@@ -287,12 +603,14 @@ update_grids = throttle(
                                 -- Update consumer here
                             end
                         end                   
-
-                        total_power_demand = total_power_demand + data["power_needed"]
+                        
+                        -- if consumer is on and satisfied power is drawn from the source
+                        total_power_demand = (power_satisfied and data["power_state"] == "on") and total_power_demand + data["power_needed"] or total_power_demand
                     end
-                    -- total power demand based on sum of power consumed from all power consumers
-                    power_data["total_power_demand"] = total_power_demand
                 end
+                 -- total power demand based on sum of power consumed from all power consumers
+                power_data["total_power_demand"] = total_power_demand
+
                 -- total power stored based on sum of power stored from all power storage
                 local total_power_stored = contains(power_data, "total_power_stored") and power_data["total_power_stored"] or 0
                 if contains(grid, "power_storage", true) and is_not_empty(grid_data["power_storage"]) then
@@ -300,134 +618,354 @@ update_grids = throttle(
                         total_power_stored = total_power_stored + data["power_stored"]
                     end
                 end
-
+                power_data["total_power_stored"] = total_power_stored
                 grid_data["power_data"] = power_data
+                -- dbg("dev", "lvl name: %s, grid id: %s, data: %s", level_name, grid_id, grid_data)
             end
         end
-        -- dbg("dev", "grid data for %s: %s", level_name, grids[level_name])
-    end, 1000)
+    end, 10)
+
+
+function patch_obj_binder(obj, power_typ)
+    if not contains(binder_patches, power_typ, true) then return end
+    local obj_id = obj:id()
+    local wrapper = bind_hf_base.get_wrapper(obj_id)
+    for targ_func, patch_func in pairs(binder_patches[power_typ]) do
+        local base_func = wrapper[targ_func]
+        wrapper[targ_func] = function(self, ...)
+            patch_func(self, ...)
+            base_func(self, ...)
+        end
+    end
+end
+
+
+-- Monkey Patches
+base_disassembly_item = item_parts.disassembly_item
+function item_parts.disassembly_item(obj, obj_d)
+    local sect = obj:section()
+    if is_empty(POWER_ITEM_SECTS) or not contains(POWER_ITEM_SECTS, sect) then --TODO ITEM_POWER_SOURCES
+        dbg("info", "not diassembleing %s", sect)
+        base_disassembly_item(obj, obj_d)
+        return
+    end
+
+    local data = hf_obj_manager.get_data(obj:id())
+    local parts = data["parts"]
+    if is_empty(parts) then
+        dbg("info", "damaged parts is empty")
+        base_disassembly_item(obj, obj_d)
+        return
+    end
+
+    local delay = actor_effects.is_animations_on() and 3 or 0
+    CreateTimeEvent("hfg_time_event","delay_disassembly", delay, disassemble_power_source, sect, parts, obj, obj_d)
+end
+
+function disassemble_power_source(sect, power_source_parts, obj, obj_d)
+    if is_empty(power_source_parts) then return true end
+    dbg("debug", "diassembling: %s", sect)
+    -- Degrade disassemble tool + Sound Effects
+    local degr_val = obj_d and GetItemList("disassemble")[obj_d:section()] or 0
+    if obj_d then utils_item.degrade( obj_d , degr_val ) end
+    utils_item.discharge( obj )
+    game_statistics.increment_statistic("items_disassembled")
+    actor_effects.play_item_fx("disassemble_metal_fast")
+
+    -- Part Text
+    local given_parts = false
+    local parts_created = {}
+
+    -- Give parts
+    for part_name, part_info in pairs(power_source_parts) do
+        if IsItem("part", part_name) and utils_item.is_degradable(nil, part_name) then
+            local part_cond = part_info.condition
+            if part_cond > PART_FUNC_COND then
+                dbg("info", "creating  part %s with %s cond", part_name, part_cond)
+                local se_obj = alife_create(part_name, db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                local item_data = utils_stpk.get_item_data(se_obj)
+                item_data.condition = item_parts.get_suitable_part_con(part_name, part_cond)
+                utils_stpk.set_item_data(item_data,se_obj)
+                alife():register(se_obj)
+                given_parts = true
+                parts_created[#parts_created + 1] = part_name
+            else
+                local components = part_info.components
+                if (game_achievements.has_achievement("recycler")) and (math.random(1,100) <= 33) then
+                    table.insert(components, components[math.random(#components)])
+                end
+                dbg("info", "%s is broken and will be scrapped", part_name)
+                for idx, comp_name in pairs(components) do
+                    if IsItem("part", comp_name) then
+                        local se_obj = alife_create(comp_name, db.actor:position(),  db.actor:level_vertex_id(),  db.actor:game_vertex_id(),  db.actor:id(), false)
+                        local item_data = utils_stpk.get_item_data(se_obj)
+                        local comp_cond = math.random(1 / #components, 1)
+                        dbg("dev", "creating component %s with cond %s", comp_name, comp_cond)
+                        item_data.condition = item_parts.get_suitable_part_con(part_name, comp_cond)
+                        utils_stpk.set_item_data(item_data,se_obj)
+                        alife():register(se_obj)
+
+                        if obj_d then utils_item.degrade( obj_d , degr_val ) end
+                        game_statistics.increment_statistic("items_disassembled")
+                        actor_effects.play_item_fx("disassemble_metal_fast")
+                        given_parts = true
+                        parts_created[#parts_created + 1] = comp_name
+                    end
+                end
+            end
+        end
+    end
+    local name = ui_item.get_sec_name(sect)      
+    local parts_text = "\\n"
+    if is_empty(parts_created) then
+        parts_text = gts("st_hfg_no_gen_parts")
+    else
+        parts_text = parts_text .. item_parts.create_disassemble_list(parts_created) .. "\\n"
+    end
+    actor_menu.set_item_news(given_parts and "success" or "fail", "weapon_ammo", "st_dis_text_11", name, gts("st_dis_text_9"), parts_text)
+    return true
+end
+
+base_toggle_light = ui_furniture_light.toggle_light
+function ui_furniture_light.toggle_light(obj_id)
+    dbg("info", "on toggle light")
+    local power_sources = {}
+    local se_obj = alife_object(obj_id)
+    if not se_obj then dbg("dev", "not object") return end
+    if is_empty(grids) then dbg("dev", "grid empty") return end
+    
+    local id = se_obj.id
+    local sect = se_obj:section_name()
+    local power_typ = get_power_type(sect)
+
+    -- Get closest Grid
+    local closest_grid_info = get_closest_grid(se_obj)
+    if 
+        is_not_empty(closest_grid_info)
+        and contains(closest_grid_info, "dist", true) 
+        and closest_grid_info["dist"] < SEARCH_RADIUS
+        and contains(closest_grid_info, "id", true)
+    then
+        local closest_grid_id = closest_grid_info["id"]
+        local closest_grid = grids[closest_grid_id]
+        local light_name = get_hf_item_name(sect)
+
+        dbg("dev", "checking %s is in power type: %s for grid %s", id, power_typ, closest_grid_id)
+        -- Check power consumer is on closest grid
+        if 
+            contains(closest_grid, power_typ, true) 
+            and contains(closest_grid[power_typ], id, true) 
+            and contains(closest_grid, "power_sources", true)
+            and is_not_empty(closest_grid["power_sources"])
+        then
+            local pc_data = closest_grid[power_typ][id]
+            dbg("dev", "power consumer data: %s", pc_data)
+
+            -- consumer starts off with power unsatisfied and no sources
+            -- check that there are power sources on the same grid X
+            -- if consumer has no sources add the closest one that can add power ~
+            -- iterate through consumer sources 
+            -- if consumer is satisfied and all sources are on, turn on/off
+            -- if consumer is not satisfied and at least one source is off, turn off
+
+            local power_satisfied = pc_data["power_satisfied"]
+            local all_sources_on = true
+            for idx, ps_id in pairs(pc_data["sources"]) do
+                local ps_power_state = closest_grid["power_sources"][ps_id]["power_state"]
+                dbg("dev", "power source: %s, power state: %s", ps_id, ps_power_state)
+                if ps_power_state ~= "on" then
+                    all_sources_on = false
+                end
+            end
+
+            dbg("dev", "power satisfied: %s, all sources on: %s", power_satisfied, all_sources_on)
+            if power_satisfied and all_sources_on then
+                base_toggle_light(id)
+                dbg("dev", "toggling light")
+            
+            elseif not power_satisfied or (power_satisfied and not all_sources_on) then
+                local is_on = hf_obj_manager.get_data(id).is_on
+                if is_on then
+                    base_toggle_light(id)
+                end
+                dbg("dev", "not enough power for: %s", id)
+                local msg = gts("st_requires_power_short", light_name)
+                actor_menu.set_msg(1, msg, 3)
+            end 
+            return   
+        else
+            dbg("dev", "grid needs power source(s): %s", id)
+           local msg = gts("st_needs_connecting", light_name)
+           actor_menu.set_msg(1, msg, 3)
+           return
+        end
+    end
+
+   base_toggle_light(id)
+end
 
 -- Callbacks
+
+function on_power_source_impact(bullet)
+    dbg("dev", "on gen impact")
+    local bullet_pos = bullet.position
+    local sect = bullet.section
+    local wpn_id = bullet.weapon_id
+    local p_id = bullet.parent_id
+    local t_id = bullet.target_id
+    local bullet_info = {
+        pos=bullet_pos,
+        sect=sect,
+        wpn_id=wpn_id,
+        parent_id=p_id,
+        target_id=t_id,
+    }
+    local npc = get_unknown_object({id=p_id}, "game")
+    local wpn = get_unknown_object({id=wpn_id}, "game")
+    local target = get_unknown_object({id=t_id}, "game")
+
+    if not (npc and wpn and target) then
+        -- dbg("dev", "At least one game object not found. npc?:%s, wpn?:%s, target?:%s", found_npc, found_wpn, found_target)
+        return
+    end
+    if not is_power_source(target:section()) then
+        -- dbg("dev", "target is not a power source")
+        return 
+    end
+    local data = hf_obj_manager.get_data(target:id())
+    if contains(data, "anim_in_progress", true) and data["anim_in_progress"] then
+        dbg("dev", "Cannot process as animation in progress")
+        return
+    end
+    if not contains(data, "parts", true) then
+        dbg("dev", "no parts found")    
+        return
+    end
+-- Get Closest Bone to Bullet Impact Pos that isnt at lowest condition possible
+    local parts = data["parts"]
+    local closest_bone
+    local closest_part
+    local closest_bones = bones_by_distance(target, bullet_pos)
+    for idx, bone_info in pairs(closest_bones) do
+        for part_name, part_info in pairs(parts) do
+            if 
+                bone_to_part_name(bone_info.bone_name, data["placeable_type"]) == part_name 
+                and part_info.condition > BROKEN_COND
+            then
+                closest_bone = closest_bones[idx].bone_name
+                closest_part = bone_to_part_name(closest_bone, data["placeable_type"])
+                closest_bones[idx] = nil
+                break
+            end
+        end
+    end
+
+    if not closest_bone or not closest_part then return end -- cause gen to break down (drop parts)
+    dbg("debug", "%s hit gen at %s and %s is the closest", sect, bullet_pos, closest_part)
+
+    local max_damage = 1
+    -- Calculate hit damage and apply it to bone
+    --dbg("info", "updating damaged parts %s", parts)
+    for part_name, part_info in pairs(parts) do
+        local part_cond = part_info.condition
+        if part_name == closest_part then
+            if part_cond > BROKEN_COND then
+                dbg("info", "part found")
+                dbg("dev", "part name: %s, part cond: %s", part_name, part_cond)
+                local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1]
+                local new_part_cond = part_cond - (hit_damage * part_info.dam_multi)
+                dbg("dev", "new part cond: %s, hit damage: %s", new_part_cond, hit_damage)
+                parts[part_name].condition = clamp(new_part_cond, 0, 1)
+            end
+        end
+    end
+   
+    dbg("info", "Calculating Total/Average Part Cond")
+    local total_part_cond = 0
+    local num_of_parts = 0
+    for part_name, part_info in pairs(parts) do
+        total_part_cond = total_part_cond + part_info.condition
+        num_of_parts = num_of_parts + 1
+    end   
+    local avg_part_cond = (total_part_cond / num_of_parts )
+    dbg("dev", "avg part cond: %s, total part cond: %s, gen cond: %s", avg_part_cond, total_part_cond, data["condition"])
+    data["parts"] = parts
+    update_power_source_cond(target, avg_part_cond, data["power_state"],  0)
+    hf_obj_manager.update_data(target:id(), data)
+end
+
+
+function gather_power_objects()
+    local power_objs = {}
+    local power_consumer_types = {"tv", "lamp", "torch", "light", "radio"}
+    local power_source_types = {"generator"}
+    local power_storage_types = {"battery"}
+    local power_item_sects = {}
+    ini_sys:section_for_each(function(sect)
+        if 
+            sect:find("placeable")
+            and ini_sys:r_line_ex(sect, "bounding_box_size")
+        then
+            local item_sect = ini_sys:r_string_ex(sect, "item_section")
+            local placeable_type = "none"
+            for _, s in pairs({sect, item_sect}) do
+                local found_placeable_type = ini_sys:r_string_ex(s, "placeable_type")
+                if found_placeable_type then
+                    placeable_type = found_placeable_type
+                    break
+                end
+            end -- get item sect and placeable sect in one table
+            -- dbg("dev", "sect: %s, item sect: %s, placeable type: %s", sect, item_sect, placeable_type)
+            if contains(power_consumer_types, placeable_type) or power_object_special_case("power_consumer", sect) then
+                power_objs["power_consumers"] = power_objs["power_consumers"] or {}
+                power_objs["power_consumers"][#power_objs["power_consumers"] +1] = sect
+                local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
+                dbg("dev", "consumer| sect: %s, fuel_sect: %s", sect, fuel_sect)
+                power_item_sects["power_consumers"] = power_item_sects["power_consumers"] or {}
+                power_item_sects["power_consumers"][#power_item_sects["power_consumers"] + 1] = item_sect
+                
+            elseif contains(power_source_types, placeable_type) then
+                power_objs["power_sources"] = power_objs["power_sources"] or {}
+                power_objs["power_sources"][#power_objs["power_sources"] + 1] = sect
+
+                power_item_sects["power_sources"] = power_item_sects["power_sources"] or {}
+                power_item_sects["power_sources"][#power_item_sects["power_sources"] + 1] = item_sect
+            
+            elseif contains(power_storage_types, placeable_type) then
+                power_objs["power_storage"] = power_objs["power_storage"] or {}
+                power_objs["power_storage"][#power_objs["power_storage"] + 1] = sect
+
+                power_item_sects["power_storage"] = power_item_sects["power_storage"] or {}
+                power_item_sects["power_storage"][#power_item_sects["power_storage"] + 1] = item_sect
+            else
+                -- dbg("dev", "sect: %s, item sect: %s, placeable type: %s", sect, item_sect, placeable_type)
+            end
+        end
+        -- if ini_sys:r_line_ex(sect, "placeable_type")
+        -- placeable in sect, bounding_box_size as key
+    end)
+    dbg("dev", "found power objects:\n%s", power_objs)
+    PLACEABLE_POWER_SOURCES = contains(power_objs, "power_sources", true) and power_objs["power_sources"] or {}
+    PLACEABLE_POWER_CONSUMERS = contains(power_objs, "power_consumers", true) and power_objs["power_consumers"] or {}
+    PLACEABLE_POWER_STORAGE = contains(power_objs, "power_storage", true) and power_objs["power_storage"] or {}
+    POWER_ITEM_SECTS =  is_not_empty(power_item_sects) and power_item_sects or {}
+    return power_objs
+end
 
 function on_option_change(options)
     setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
     dbg("debug", "Received options")
     SEARCH_RADIUS = options["power_source_search_radius"]
+    BROKEN_COND = options["power_source_broken_cond"]
 end
 
 function on_game_start()
     RegisterScriptCallback("hfg_on_option_change", on_option_change)
     RegisterScriptCallback("hf_on_furniture_place", delay_init_grid)
     RegisterScriptCallback("actor_on_update", update_grids)
+    RegisterScriptCallback("bullet_on_impact", on_power_source_impact)
+    RegisterScriptCallback("on_game_load", gather_power_objects)
+
 end
 
-
---[[
-grids[level_name][grid_id][power_typ][data][power_obj_id]
-grids = {
-    [level_name] = {
-        [1] = {
-            power_sources = {
-                [1907] = {
-                    id = 1907,
-                    sect = "placeable_disel_generator",
-                    power_output = 5000,
-                    power_state = 1,
-                    pos = [12, 4, 583],
-                    consumers = {2579, 2199, 2948},
-                }
-            },
-            power_storage = {
-                [1] = {
-                    id = 2359
-                    sect = "placeable_makeshift_battery",
-                    pos = [23, 4, 323],
-                    power_stored = 500,
-                    sources = {1907},
-                }
-            }
-            power_consumers = {
-                [1] = {
-                    id = 2579,
-                    sect = "placeable_light5",
-                    pos = [212, 4, 73],
-                    power_state = 1,
-                    power_needed = 300,
-                    sources = {1907},
-                },
-                [2] = {
-                    id = 2948,
-                    sect = "placeable_tv_box",
-                    pos = [112, 4, 233],
-                    power_state = 1,
-                    power_needed = 600,
-                    sources = {1907},
-                },
-                [3] = {
-                    id = 2199,
-                    sect = "placeable_light2",
-                    pos = [132, 4, 263],
-                    power_state = 1,
-                    power_needed = 300,
-                    sources = {1907},
-                }
-            },
-            power_data = {
-                total_power_output = 5000,
-                total_power_demand = 1200,
-                total_power_stored = 500,
-            }
-        }
-    }
-}
-
-second revision
-grids = {
-    lvl_name = "l05_bar",
-    grid_id = 1,
-    power_sources = {
-        [1907] = {
-            id = 1907,
-            sect = "placeable_disel_generator",
-            power_output = 5000,
-            power_state = 1,
-            pos = [12, 4, 583],
-            consumers = {2579, 2199, 2948},
-        }
-    },
-    power_consumers = {
-        [2579] = {
-            id = 2579,
-            sect = "placeable_light5",
-            pos = [212, 4, 73],
-            power_state = 1,
-            power_needed = 300,
-            sources = {1907},
-        },
-        [2948] = {
-            id = 2948,
-            sect = "placeable_tv_box",
-            pos = [112, 4, 233],
-            power_state = 1,
-            power_needed = 600,
-            sources = {1907},
-        },
-        [2199] = {
-            id = 2199,
-            sect = "placeable_light2",
-            pos = [132, 4, 263],
-            power_state = 1,
-            power_needed = 300,
-            sources = {1907},
-        }
-    },
-    power_data = {
-        total_power_output = 5000,
-        total_power_demand = 1200,
-        total_power_stored = 500,
-    }
-}
-
-
-]]
 

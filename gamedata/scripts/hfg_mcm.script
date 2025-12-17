@@ -23,7 +23,7 @@ defaults = {
 }
 LOG_HEADER = "[HFG|MCM]"
 
-hfg_version = "0.13.0"
+hfg_version = "0.13.12"
 hfg_authors = "antglobes"
 hfg_last_update = "08-11-25"
 setup_init = false

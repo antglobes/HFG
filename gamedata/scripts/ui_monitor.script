@@ -1,0 +1,160 @@
+-- Lib Imports
+ag_utils.import_metatable(this, ag_game_objects)
+
+-- Utils
+get_config = hfg_utils.get_config
+
+-- Constants
+LOG_HEADER = "[HFG|Monitor UI]"
+
+-- Variables
+controller_ui = nil
+monitor_ui = nil
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function get_UI()
+    if not monitor_ui then
+        dbg("info", "getting monitor ui instance")
+        monitor_ui = UIMonitor()
+    end
+    return monitor_ui
+end
+
+class "UIMonitor" (CUIScriptWnd)
+function UIMonitor:__init() super()
+    dbg("debug", "on init ui")
+    self:Show(true)
+    self:Enable(true)
+
+    dbg("info", "xml args")
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_monitor.xml")
+    self.xml:InitWindow("monitor", 0, self)
+
+    dbg("info", "init monitor ui")
+    self.xml:InitWindow("monitor:screen", 0, self)
+    self.bg = self.xml:InitStatic("monitor:screen:background", self)
+    self.prog_bar = self.xml:InitStatic("monitor:screen:progress_bar", self)
+end
+
+function UIMonitor:__finalize()
+    monitor_ui = nil
+end
+-- 
+
+function start_ui(obj_id)
+    dbg("debug", "Showing monitor ui")
+    if not controller_ui then
+        controller_ui = UIMonitorController()
+    end
+
+    if controller_ui then
+        --controller_ui:ShowDialog(true)
+        controller_ui:Reset(obj_id)
+    end
+    Register_UI("UIMonitor")
+    RegisterScriptCallback("on_before_key_press", on_key_press)
+end
+
+class "UIMonitorController" (CUIScriptWnd)
+function UIMonitorController:__init() super()
+    dbg("info", "init controller")
+end
+
+function UIMonitorController:__finalize()
+    controller_ui = nil
+end
+
+function UIMonitorController:Reset(obj_id)
+    dbg("info", "reseting controller")
+    self.monitor = get_unknown_object({id=obj_id}, "game")
+    self.ogf_file = [[dynamics\im_hud.ogf]]
+    self:SetupAttachment()
+    level.disable_input()
+end
+
+function UIMonitorController:SetupAttachment()
+    dbg("info", "Setting up attachment")
+    self.att = db.actor:add_attachment("monitor_att", self.ogf_file)
+    self.att:set_type(script_attachment_type.CamAttached)
+    self.att:set_origin(self.att:get_center())
+    self.att:set_rotation(0, 0, 0)
+    self.att:set_position(0, 0, 0.65)
+    self.att:set_shader(2, "pda_overlay", "prop\\prop_komp", true) --pda_overlay
+    self.att:set_ui("ui_monitor.get_UI")
+    self.att:set_ui_bone("cover")
+    self.att:set_ui_position(0.000001, 0, 0)
+    self.att:set_ui_rotation(90, -9.5, 0)
+    dbg("dev", "finished setup")
+end
+
+function UIMonitorController:Close()
+    dbg("debug", "on close")
+    dbg("info", "diabling 3d ui")
+    self.att:set_ui("")
+    dbg("info", "removing attachment")
+    db.actor:remove_attachment("monitor_att")
+    self.init = false
+    Unregister_UI("UIMonitor")
+    UnregisterScriptCallback("on_before_key_press", on_key_press)
+    level.enable_input()
+end
+
+function UIMonitorController:OnKeyboard(key, keyboard_action)
+    local res = CUIScriptWnd.OnKeyboard(self, key, keyboard_action)
+    if res == false then
+        self:AllowMovement(false)
+        dbg("info", "key: %s", key)
+        local bind = dik_to_bind(key)
+        if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
+            local shift = key_state(42) == 1
+
+            if 
+                key == DIK_keys.DIK_Y or key == DIK_keys.DIK_E
+                or bind == key_bindings.kQUIT or bind == key_bindings.kUSE then
+                dbg("dev", "quit??=")
+                self:Close()
+
+            end
+        end
+    end
+    return res
+end
+
+function on_key_press(dik, bind, dis, flags)
+    if controller_ui then
+        controller_ui:OnKeyboard(dik, ui_events.WINDOW_KEY_PRESSED)
+    end
+end
+
+
+function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
+end
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+end

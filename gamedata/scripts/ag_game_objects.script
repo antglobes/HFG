@@ -251,7 +251,8 @@ end
 
 function get_obj_type(obj)
     local obj_type = ""
-    if not obj or obj.parent_id == nil then return obj_type end
+    -- if not obj or obj.parent_id == nil then return obj_type end
+    if not obj then return end
     if type(obj.id) == "number" then
         obj_type = "server"
     elseif type(obj.id) == "function" then
@@ -327,11 +328,18 @@ function get_item_weight(sect)
 end
 
 function get_unknown_sect(obj, typ)
+    typ = not typ and get_obj_type(obj) or typ
 	return typ == "game" and obj:section() or obj:section_name()
 end
 
 function get_unknown_id(obj, typ)
+    typ = not typ and get_obj_type(obj) or typ
 	return typ == "game" and obj:id() or obj.id
+end
+
+function get_unknown_pos(obj, typ)
+    typ = not typ and get_obj_type(obj) or typ
+    return typ == "game" and obj:position() or obj.position
 end
 
 ---From config, get the string rep of an item's name using section 

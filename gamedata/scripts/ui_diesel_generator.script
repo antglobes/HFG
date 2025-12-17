@@ -15,6 +15,9 @@ ag_utils.import_metatable(this, ag_tables)
 gts = get_translation
 
 -- Script Imports
+power_grids = hfg_power_grid.grids
+
+-- External Imports
 gray = demonized_geometry_ray.geometry_ray
 
 -- Utils
@@ -34,12 +37,13 @@ YELLOW_CLR = {255, 255, 242, 18}
 GREEN_CLR  = {255, 64, 253, 40}
 LOG_HEADER = "[HFG|Gen UI]"
 
--- Variables
+-- Globals
 GUI = nil
+ini_repair = ini_file_ex("items\\items\\items_repair.ltx")
+
+-- Locals
 local clr_cache = {}
 local dbg_pr = nil
-local mouse_cache = {}
-ini_repair = ini_file_ex("items\\items\\items_repair.ltx")
 
 -- Tables
 SWAP_POWER_STATE = {
@@ -130,7 +134,7 @@ function build_gen_info(data)
     local power_output = (data["power_state"] ~= "on" and 0) or data["power_output"]
     local power_cond = power_output/MAX_POWER_OUTPUT
 
-    local connected_devices = size_table(data["powerable_devices"]) or 0
+    local connected_devices = size_table(data["consumers"]) or 0
 
     local cond_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Condition: "         .. strformat("%s", get_condition_clr(cond))       .. strformat("%s%", round_dp(cond*100, 2))
     local fuel_str   = UI_GRAY_1 .. gts("st_bullet_point") .. " Fuel Stored: "       .. strformat("%s", get_condition_clr(fuel_cond))  .. strformat("%sL", round_dp(stored_fuel, 2))
@@ -333,10 +337,6 @@ function UIDieselGenerator:OnKeyboard(dik, keyboard_action)
 	return res
 end
 
-function UIDieselGenerator:Pickup()
-
-end
-
 function UIDieselGenerator:SetPowerStateText()
     local data = hf_obj_manager.get_data(self.gen_id)
     local power_state = data["power_state"]
@@ -388,7 +388,7 @@ end
 function UIDieselGenerator:ShowDevices()
     dbg("debug", "on show devices")
     local data = hf_obj_manager.get_data(self.gen_id)
-    if size_table(data["powerable_devices"]) == 0 then return end
+    if size_table(data["consumers"]) == 0 then return end
     dbg("dev", "show devices hud?: %s", self.show_devices)
     self:ToggleMarkerHud("show_devices")
 end
@@ -718,7 +718,7 @@ end
 
 function UIPowerableDevices:Update()
     CUIScriptWnd.Update(self)
-    self.powerable_devices = hf_obj_manager.get_data(self.gen_id).powerable_devices
+    self.consumers = hf_obj_manager.get_data(self.gen_id).consumers
 
     self:UpdateObjects()
     self:UpdateMarkers()
@@ -733,19 +733,20 @@ function UIPowerableDevices:UpdateObjects()
 
     self.show_device = main_hud_shown()
 
-    for id, sect in pairs(self.powerable_devices) do
+    for id, sect in pairs(self.consumers) do
         local obj = get_unknown_object({id=id}, "game")
         if obj then
+            local obj_id = obj:id()
             if self:ValidateDevice(obj) then
-                if not contains(self.devices, obj:id(), true) then
+                if not contains(self.devices, obj_id, true) then
                     self.devices[id] = obj:section()
                 end
             else
-                if contains(self.devices, obj:id(), true) then
+                if contains(self.devices, obj_id, true) then
                     self.devices[id] = nil
                 end
-                if contains(self.markers, obj:id(), true) then
-                    self.markers[obj:id()]:Show(false)
+                if contains(self.markers, obj_id, true) then
+                    self.markers[obj_id]:Show(false)
                     self.markers[id] = nil
                 end
             end
@@ -807,27 +808,18 @@ function UIPowerableDevices:ValidateDevice(obj)
         return false
     end
 
-    local found_gens = find_obj("placeable_disel_generator", actor_pos, SEARCH_RADIUS)
-    local found_gen = is_not_empty(found_gens) and get_nearest(found_gens) or false
-
-    if not found_gen then
-        return false
-    end
-
-    if found_gen:id() ~= self.gen_id then
-        return false
-    end
+    local gen_pos = power_grids[genny_data["grid_id"]]["power_sources"][obj:id()]["pos"]
     
-
-    local dist_to_gen = distance_between(db.actor, found_gen)
-    local gen_radius = (SEARCH_RADIUS / math.pi * 2)
+    local dist_to_gen = actor_pos:distance_to(gen_pos)
+    local gen_radius = SEARCH_RADIUS
     if dist_to_gen >= gen_radius then
         dbg("error", "dist to gen: %s, gen radius: %s", dist_to_gen, gen_radius)
         return false
     end
 
+    local obj_pos = obj:position()
     local ray = gray({
-        ray_range = distance_between(db.actor, obj),
+        ray_range = actor_pos:distance_to(obj_pos),
         flags =  2 + 8,
     })
     local y_boost = 1.6
@@ -838,14 +830,12 @@ function UIPowerableDevices:ValidateDevice(obj)
         end
     end
     local raised_actor_pos = vector():set(actor_pos.x, actor_pos.y + y_boost, actor_pos.z)
-    local obj_pos = obj:position()
     local dir = get_direction(actor_pos, obj_pos)
     local result = ray:get(raised_actor_pos, dir)
     if result.result.material_name then
         dbg("error", "%s obstructing view", result.result.material_name)
         return false
     end
-   
     
     return true
 end
@@ -895,19 +885,9 @@ function on_option_change(options)
     BROKEN_COND = options["power_source_broken_cond"]
 end
 
-function cache_mouse(x, y, disabled, flags)
-    mouse_cache = {
-        x = x,
-        y = y,
-        disabled = disabled,
-        override = flags.ret_value
-    }
-end
-
 function on_game_start()
 	RegisterScriptCallback("GUI_on_show",on_ui)
 	RegisterScriptCallback("GUI_on_hide",on_ui)
     RegisterScriptCallback("actor_on_net_destroy", remove_all_marker_huds)
     RegisterScriptCallback("hfg_on_option_change", on_option_change)
-    RegisterScriptCallback("on_before_mouse_move", cache_mouse)
 end

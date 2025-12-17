@@ -1,0 +1,460 @@
+-- Library Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+gts = get_translation
+
+-- Utils
+get_config = hfg_utils.get_config
+cond_to_state = hfg_utils.cond_to_state
+sort_obj_by_closest_pos = hfg_utils.sort_obj_by_closest_pos
+get_powerable_devices = hfg_utils.get_powerable_devices
+get_solar_panels = hfg_utils.get_solar_panels
+SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
+get_hf_item_name = hfg_utils.get_hf_item_name
+
+-- Constants
+LOG_HEADER = "[HFG|Bind Inverter]"
+BROKEN_COND = 0.1
+
+-- Locals
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function toggle_power(obj_id)
+    local data = hf_obj_manager.get_data(obj_id)
+    local se_obj = alife_object(obj_id)
+
+    local in_progress = data["anim_in_progress"]
+    if in_progress then dbg("info", "anim in progress, cant switch power state") return end
+
+    local ps_sect = se_obj:section_name()
+    local power_state = data["power_state"]
+    if power_state then
+        local gen_name = get_hf_item_name(ps_sect)
+        if power_state == "broken" then 
+            actor_menu.set_msg(1, gts("st_generator_broken", gen_name), 3)
+            return 
+        end
+
+        local obj = get_unknown_object({id=obj_id}, "game")
+        if obj then
+            dbg("info", "Switching interact tip to %s", power_state)
+            obj:set_tip_text(gts("st_power_state_" .. power_state, gen_name))
+        end
+
+        dbg("debug", "Attempting to switch power from %s to %s", power_state, SWAP_POWER_STATE[power_state])
+        hf_obj_manager.update_data(obj_id, {power_state=SWAP_POWER_STATE[power_state], last_power_state=power_state, anim_due=true})
+        return true
+    end
+
+end
+
+-- Inverter Binder
+
+function init(obj)
+    local id = obj:id()
+    local sect = obj:section()
+    dbg("dev", "attempt binding %s", sect)
+    if contains(hfg_blueprint.placing_blueprints, id, true) then
+        dbg("dev", "cannot bind %s, as is a blueprint ", sect)
+        return
+    end
+    
+    if not hfg_obj_persistance.in_cache(id, sect) then
+        hfg_obj_persistance.init(id, sect)
+    end
+    dbg("dev", "binding %s", sect)
+    obj:bind_object(placeable_inverter_wrapper(obj).binder)
+end
+
+class "placeable_inverter_wrapper" (bind_hf_base.hf_binder_wrapper)
+function placeable_inverter_wrapper:__init(obj) super(obj)
+    dbg("dev", "Intialiasing inverter")
+
+    local data = hf_obj_manager.get_data(self.object:id())
+
+    -- Object Fields
+    self.section = self.object:section()
+    self.item_section = ini_sys:r_string_ex(self.section, "item_section")
+    self.condition = (contains(data, "condition", true) and data["condition"]) or 1
+
+    -- Object State
+    self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
+    -- self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
+    self.powerable_device_tmr = 0
+
+    -- Powerable Devices
+    self.power_off_consumers = true
+    self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
+    self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
+    self.power_output = data["power_output"] or 0
+    self.power_demand = data["power_demand"] or 0
+
+    -- Solar Panel Connections
+    self.transmit_power = data["transmit_power"] or false
+    self.transmit_power_tmr = data["transmit_power_tmr"] or 0
+    self.connected_solar_panels = data["connected_solar_panels"] or {}
+    self.update_po_tmr = data["update_po_tmr"] or 0
+
+    -- Animation State
+    self.anim_due = data["anim_due"] or false
+    self.anim_in_progress = data["anim_in_progress"] or false
+    self.anim_stage = data["anim_stage"] or 1
+    self.anim_state = data["anim_state"] or ""
+    self.anim_power_state = data["anim_power_state"] or ""
+    self.current_motion = data["current_motion"] or ""
+
+    -- Animation snd
+    self.snd = data["snd"] or {}
+    self.snd["last_played"] = contains(data["snd"], "last_played", true) and data["snd"]["last_played"] or nil
+
+    -- Animation Time
+    self.anim_tmr = data["anim_tmr"] or 0
+
+    -- Animation tbl
+    self.anim_tbl = data["anim_tbl"] or {
+        on = {
+            [1] = {anim="idle_close",   duration=0.6, snd="device\\metal_small_close_start"},
+            [2] = {anim="idle_open_on", duration=0.6, snd="device\\power_switch"},
+            [3] = {anim="idle_close", duration=0,    snd="ambient\\transformer_hum1"}
+        },
+        off = {
+            [1] = {anim="idle_open_on",  duration=0.6, snd="ambient\\transformer_hum1"},
+            [2] = {anim="idle_open_off",        duration=0.6, snd="device\\power_switch"},
+            [3] = {anim="idle_close",    duration=0,   snd="ambient\\transformer_hum2"},
+        }
+    }
+
+
+    self:save_data()
+    dbg("all", "finished init")
+
+end
+
+function placeable_inverter_wrapper:update(delta)
+    bind_hf_base.hf_binder_wrapper.update(self, delta)
+
+    self.tg = time_global()
+    self:load_data()
+
+    local condition = self.condition
+    local cond_state = cond_to_state(round_idp(condition * 100, 2))
+
+    self:ProcessAnims()
+    self:ProcessPowerInput()
+    self:ProcessPowerOutput()
+end
+
+function placeable_inverter_wrapper:ProcessPowerInput()
+    if self.power_state == "on" then
+        local pos = self.object:position()
+
+        if self.tg > self.update_po_tmr then
+            empty_table(self.connected_solar_panels)
+            local solar_panels = get_solar_panels(pos)
+            if is_not_empty(solar_panels) then
+                for _, obj in pairs(solar_panels) do
+                    local id = obj:id()
+                    local data = hf_obj_manager.get_data(id)
+                    if 
+                        not contains(self.connected_solar_panels, id, true)
+                        and data and contains(data, "connected_inverter", true)
+                        and data["connected_inverter"] == -1
+                    then
+                        self.connected_solar_panels[id] = obj
+                        data["connected_inverter"] = self.object:id()
+                        hf_obj_manager.update_data(id, data)
+                    end
+                end
+                self.transmit_power = is_not_empty(self.connected_solar_panels)
+            end
+            self.update_po_tmr = self.tg + 1000
+            self:save_data()
+        end
+
+        if self.tg > self.transmit_power_tmr then
+            for _, obj in spairs(self.connected_solar_panels, function(t, a, b) return sort_obj_by_closest_pos(t, a, b, pos) end) do
+                local id = obj:id()
+                local data = hf_obj_manager.get_data(id)
+                if 
+                    data and contains(data, "power_output", true)
+                    and data["power_output"] > 0
+                    and self.power_output <= self.max_power_output
+                then
+                    self.power_output = self.power_output + data["power_output"]
+                end
+            end
+
+            if self.power_output > self.max_power_output then
+                self:Explode()
+            end
+            self.transmit_power_tmr = self.tg + 1000
+            self:save_data()
+        end
+    end
+end
+
+function placeable_inverter_wrapper:ProcessPowerOutput()
+    if self.power_state == "on" and  self.transmit_power then
+        -- Search and Connect Powerable Devices, if not belonging to an inverter or generator
+        if self.tg > self.update_pd_tmr then
+            empty_table(self.powerable_devices)
+            local powerable_devices = get_powerable_devices(self.object:position())
+            if is_not_empty(powerable_devices) then
+                for id, sect in pairs(powerable_devices) do
+                    if not contains(self.powerable_devices, id, true) then
+                        self.powerable_devices[id] = sect
+                    end
+                end
+            end
+            self.update_pd_tmr = self.tg + 1000
+            self:save_data()
+        end
+
+        -- Keep Connected Powerable Devices Fueled
+        if self.tg > self.powerable_device_tmr then
+            dbg("info", "updating fuel")
+            for id, sect in pairs(self.powerable_devices) do
+                local data = hf_obj_manager.get_data(id)
+                if 
+                    data 
+                    and data["is_on"]
+                    and contains(data, "fuel", true) 
+                    and not contains(data, "infinite_fuel", true)
+                    and data["fuel"] < 0.95 
+                then
+                    hf_obj_manager.update_data(id, {fuel=1})
+                end
+            end
+            self.powerable_device_tmr = self.tg + (3600 * 1000)
+            self:save_data()
+        end
+
+    elseif self.power_state == "off" then
+        if self.power_off_consumers then
+            dbg("debug", "turning off devices")
+            for id, sect in pairs(self.powerable_devices) do
+                hf_obj_manager.update_data(id, {is_on=false})
+            end
+            self.power_off_consumers = false
+            self:save_data()
+        end
+    end
+end
+
+function placeable_inverter_wrapper:ProcessAnims()
+    if self.anim_due then
+        if not self.anim_in_progress then
+            dbg("dev", "Setting Anim Control Vars")
+            self.anim_in_progress = true
+            self.anim_power_state = self.power_state
+            self.anim_start_time = self.tg
+            --self:CleanupParticles()
+            dbg("dev", "anim power state: %s", self.anim_power_state)
+        end
+
+        -- Prevent Toggle Power being constantly pressed from interrupting an animation
+        if self.anim_in_progress and self.anim_power_state ~= self.power_state then
+            dbg("info", "Attempted to change power state during anim, using anim set power state")
+            self.power_state = self.anim_power_state
+            --pr("power state: %s", self.power_state)
+        end
+
+        -- End Process if Animation Time not reached
+        if self.tg < self.anim_tmr then
+            return
+        end
+        dbg("dev", "Anim Time Reached")
+        -- If Anim Gets stuck and/or has exceed it's animation time whilst a cond changes reset it/ move to next stage
+        if self.tg > self.anim_tmr and self.tg - self.anim_start_time > self.anim_tmr then
+            dbg("info", "Anim Runtime Exceed, Advancing Stage")
+            self.anim_tmr = 0
+            self.anim_stage = self.anim_stage + 1
+        end
+
+        -- Stop Animation and Reset Controllers
+        dbg("all", "Anim stage %s, total stages %s", self.anim_stage, #self.anim_tbl[self.power_state])
+        if self.anim_stage > #self.anim_tbl[self.power_state] then
+            dbg("dev", "stopping anim")
+            self.anim_due = false
+            self.anim_in_progress = false
+            self.anim_tmr = 0
+            self.anim_stage = 1
+            self.power_off_consumers = contains({"off", "broken"}, self.power_state)
+            self:save_data()
+            return
+        end
+
+        dbg("dev", "Starting Anim Stage %s at %s", self.anim_stage, self.tg)
+        -- Play Animation for given duration and advance/save animation
+        local details = self.anim_tbl[self.power_state][self.anim_stage]        
+        local snd_props = sound_object.s3d + sound_object.looped
+        local last_stage = #self.anim_tbl[self.power_state]
+        if self.anim_stage < last_stage or self.anim_stage == last_stage and contains({"off", "broken"}, self.power_state) then
+            --pr("Not looping snd")
+            snd_props = sound_object.s3d
+        end
+
+        if self.snd["last_played"] ~= nil  then
+            ag_sounds.remove(self.snd["last_played"])
+            dbg("info", "Stopping last played snd. Played for %s", self.tg - self.anim_tmr)
+        end
+        if contains(details, "snd", true) and details["snd"] ~= "" then
+            self.snd["last_played"] = ag_sounds.add(self.object, details["snd"], self.object:position(),  0.7, snd_props)
+            dbg("info", "playing sound %s", details["snd"])
+        end
+        dbg("dev", "Starting to play %s at %s", details["anim"], self.tg)
+
+        self.object:play_cycle(details["anim"], true)
+        --self:UpdateAnimData(details["anim"])
+        self.current_motion = details["anim"]
+        dbg("dev", "setting current motion to %s", details["anim"])
+        self.anim_tmr = self.tg + (details["duration"] * 1000)
+        dbg("dev", "setting next anim time to %s", self.anim_tmr)
+        self.anim_stage = self.anim_stage + 1
+        dbg("dev", "advancing anim stage to: %s", self.anim_stage)
+        self:save_data()
+        dbg("all", "saved data")
+    end
+end
+
+
+function placeable_inverter_wrapper:pickup()
+    dbg("info", "on pickup")
+    self:load_data()
+
+    local obj_id = self.object:id()
+    local data = hf_obj_manager.get_data(obj_id)
+    -- Create Item with condition
+    if self.condition > BROKEN_COND then
+        dbg("all", "binder cond: %s", self.condition)
+        local se_obj = alife_create(self.item_section, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), AC_ID, false)
+        local item_data = utils_stpk.get_item_data(se_obj)
+        item_data.condition = self.condition
+        utils_stpk.set_item_data(item_data, se_obj)
+        alife():register(se_obj)
+
+        -- Replace gen id
+        -- replace_generator(data["tbl_id"], se_obj.id)
+        local old = {id=data["tbl_id"], sect=self.item_section}
+        local new = {id=se_obj.id, sect=self.item_section}
+        hfg_obj_persistance.replace(old, new)
+
+        data["tbl_id"] = se_obj.id
+        hf_obj_manager.update_data(se_obj.id, data)
+        hf_obj_manager.cleanup_data(obj_id)
+        alife_release(self.object)
+    else
+        hfg_obj_persistance.remove(obj_id, self.item_section)
+        hf_obj_manager.cleanup_data(obj_id)
+        disassemble_power_source(self.item_section, data["parts"], self.object)
+    end
+
+
+    -- Clean up HF-related data
+    return true
+end
+
+function placeable_inverter_wrapper:net_destroy()
+    dbg("dev", "on net destroy")
+    self:save_data()
+end
+
+function placeable_inverter_wrapper:save_data()
+    dbg("all", "save data")
+    local data = {
+    section                = self.section,
+    item_section           = self.item_section,
+    condition              = self.condition,
+    parts                  = self.parts,
+    power_state            = self.power_state,
+    powerable_device_tmr   = self.powerable_device_tmr,
+    power_off_consumers      = self.power_off_consumers,
+    powerable_devices      = self.powerable_devices,
+    max_power_output       = self.max_power_output,
+    power_output           = self.power_output,
+    transmit_power         = self.transmit_power,
+    transmit_power_tmr     = self.transmit_power_tmr,
+    max_power_output     = self.transmit_power_tmr,
+    connected_solar_panels = self.connected_solar_panels,
+    update_po_tmr          = self.update_po_tmr,
+    anim_due               = self.anim_due,
+    anim_in_progress       = self.anim_in_progress,
+    anim_stage             = self.anim_stage,
+    anim_state             = self.anim_state,
+    anim_power_state       = self.anim_power_state,
+    current_motion         = self.current_motion,
+    }
+        -- dbg("dev", "saving hf data with: %s", data)
+    local curr_data = hf_obj_manager.get_data(self.object:id())
+    if curr_data and contains(curr_data, "tbl_id", true) then
+        -- update_generator(curr_data["tbl_id"], data)
+        -- dbg("dev", "updating persistance data")
+        hfg_obj_persistance.update(curr_data["tbl_id"], self.item_section, data)
+    end
+    -- dbg("dev", "updating hf data")
+    hf_obj_manager.update_data(self.object:id(), data)
+    -- dbg("dev", "completed save")
+end
+
+function placeable_inverter_wrapper:load_data()
+    dbg("all", "on load")
+    local data = hf_obj_manager.get_data(self.object:id())
+    self.section                = data["section"]
+    self.item_section           = data["item_section"]
+    self.condition              = data["condition"]
+    self.parts                  = data["parts"]
+    self.power_state            = data["power_state"]
+    self.powerable_device_tmr   = data["powerable_device_tmr"]
+    self.power_off_consumers      = data["power_off_consumers"]
+    self.powerable_devices      = data["powerable_devices"]
+    self.max_power_output       = data["max_power_output"]
+    self.power_output           = data["power_output"]
+    self.transmit_power         = data["transmit_power"] 
+    self.transmit_power_tmr     = data["transmit_power_tmr"]
+    self.max_power_output     = data["transmit_power_tmr"]
+    self.connected_solar_panels = data["connected_solar_panels"]
+    self.update_po_tmr          = data["update_po_tmr"] 
+    self.anim_due               = data["anim_due"] 
+    self.anim_in_progress       = data["anim_in_progress"] 
+    self.anim_stage             = data["anim_stage"]
+    self.anim_state             = data["anim_state"] 
+    self.anim_power_state       = data["anim_power_state"] 
+    self.current_motion         = data["current_motion"]
+end
+
+
+-- Callbacks
+
+function on_option_change(options)
+    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    dbg("debug", "Received options")
+end
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+end
