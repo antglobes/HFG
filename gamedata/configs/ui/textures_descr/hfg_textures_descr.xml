@@ -59,6 +59,14 @@
         <texture id="ui_hfg_prt_sp_frame"      x="750"    y="250" width="100"    height="50" />
         <texture id="ui_hfg_prt_sp_leg"        x="650"    y="250" width="100"    height="50" />
         <texture id="ui_hfg_prt_sp_panel"      x="750"    y="200" width="100"    height="50" />
+
+        <texture id="ui_hfg_prt_sp_top_frame"    x="750"    y="250" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_bottom_frame" x="750"    y="250" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_left_leg"     x="650"    y="250" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_middle_leg"   x="650"    y="250" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_right_leg"    x="650"    y="250" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_top_panel"    x="750"    y="200" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_bottom_panel" x="750"    y="200" width="100"    height="50" />
     </file>
 
     <file name="ui\ui_color_picker">

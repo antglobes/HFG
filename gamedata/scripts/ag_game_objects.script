@@ -491,14 +491,14 @@ end
 function get_obj_icon(obj, sec)
     local sect = obj and obj:section() or sec
     local path = utils_xml.get_icons_texture(sect)
-    
-    local x = ini_sys:r_string_ex(sect, "inv_grid_x")
-    local y = ini_sys:r_string_ex(sect, "inv_grid_y")
-    local w = ini_sys:r_string_ex(sect, "inv_grid_width") or 50
-    local h = ini_sys:r_string_ex(sect, "inv_grid_height") or 50
+    local grid_size = 50
+    local x = ini_sys:r_string_ex(sect, "inv_grid_x") or 0
+    local y = ini_sys:r_string_ex(sect, "inv_grid_y") or 0
+    local w = ini_sys:r_string_ex(sect, "inv_grid_width") or grid_size
+    local h = ini_sys:r_string_ex(sect, "inv_grid_height") or grid_size
 
-    local pos = {x=x, y=y}
-    local size = {w=w * 50, h=h * 50}
+    local pos = {x=x * grid_size, y=y * grid_size}
+    local size = {w=w * grid_size, h=h * grid_size}
 
     return path, pos, size
 end
