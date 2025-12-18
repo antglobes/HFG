@@ -109,12 +109,12 @@ function bone_to_part_name(bone_name, kind)
         end
     elseif kind == "solar_panel" then
         part_name = "hfg_prt_sp_"
-        if contains({"bottom_frame", "top_frame"}, bone_name) then
-            part_name = part_name .. "frame"
-        elseif contains({"left_leg", "middle_leg", "right_leg"}, bone_name) then
-            part_name = part_name .. "leg"
-        elseif contains({"top_panel", "bottom_panel"}, bone_name) then
-            part_name = part_name .. "panel"
+        if contains({"bottom_frame_left", "bottom_frame_right"}, bone_name) then
+            part_name = part_name .. "bottom_frame"
+        elseif contains({"top_frame_left", "top_frame_right"}, bone_name) then
+            part_name = part_name .. "top_frame"
+        else
+            part_name = part_name .. bone_name
         end
     end
     return part_name
