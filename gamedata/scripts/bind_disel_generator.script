@@ -479,7 +479,7 @@ function placeable_disel_generator_wrapper:ProcessFuel()
         local time_diff = time_curr - self.time_last
         local time_frac = (time_diff/1)
         local tte = self.time_til_empty - time_frac
-        self.time_til_empty = tte >= 0 and tte or 0
+        self.time_til_empty = tte > 0 and tte or 0
         dbg("all", "stored fuel: %s", self.stored_fuel)
         dbg("all", "using %s fuel per ms", drain_rate_sec)
         dbg("all", "current time:%s, time diff:%s, time frac:%s", time_curr, time_diff, time_frac)
@@ -511,17 +511,6 @@ function placeable_disel_generator_wrapper:InitParts()
     -- dbg("dev", "parts table: %s", parts)
     self.parts = parts
     self:save_data()
-end
-
-function placeable_disel_generator_wrapper:InitPDInfo(device)
-    local info = {}
-    local typ = get_obj_type(device)
-    local id = get_unknown_id(device, typ)
-    local sect = get_unknown_sect(device, typ)
-    info.name = sect
-    info.watts_needed = ini_sys:r_string_ex(sect, "fuel_duration") or 300
-    info.watts_satisfied = false
-    return info
 end
 
 function placeable_disel_generator_wrapper:Explode()
@@ -566,15 +555,6 @@ function placeable_disel_generator_wrapper:CleanupParticles()
         end
         self:save_data()
     end
-end
-
-function placeable_disel_generator_wrapper:GetInfo()
-    return {
-        condition         = self.condition,
-        stored_fuel       = self.stored_fuel,
-        time_til_empty    = self.time_til_empty,
-        power_output      = self.power_output,
-    }
 end
 
 function placeable_disel_generator_wrapper:pickup()
@@ -724,7 +704,7 @@ function placeable_disel_generator_wrapper:load_data()
 end
 
 function get_time_elapsed()
-   return game.get_game_time():diffSec(level.get_start_time()) 
+   return game.get_game_time():diffSec(level.get_start_time()) / level.get_time_factor()
 end
 
 -- Callbacks
