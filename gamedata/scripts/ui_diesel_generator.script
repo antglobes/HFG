@@ -411,6 +411,7 @@ function UIDieselGenerator:RepairBtn()
     local part_cond = part_info["condition"]
     local item_name = gts(ini_sys:r_string_ex(part_name, "inv_name"))
     dbg("info", "attempting to repair %s", item_name)
+    dbg("dev", "part name: %s, part info:%s", part_name, part_info)
 
      if part_cond >= 0.95  then
         actor_menu.set_msg(1, gts("st_part_perfect", item_name), 3)
@@ -420,22 +421,26 @@ function UIDieselGenerator:RepairBtn()
 
     if not part_info["repairable"] then
         actor_menu.set_msg(1, gts("st_part_unrepairable", item_name), 3)
+        dbg("info", "part unrepairable")
         return
     end
 
     local found_repair_kits = {}
     local found_support_items = {}
-    local repair_type = ini_sys:r_string_ex(item_name, "repair_type")
+    local repair_type = ini_sys:r_string_ex(part_name, "repair_type")
     dbg("dev", "finding repair kits")
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
-        if ini_repair:section_exist(sect) and contains(parse_list(ini_repair, sect, "repair_only"), repair_type) then
-            found_repair_kits[#found_repair_kits + 1].obj = obj
-            found_repair_kits[#found_repair_kits + 1].sect = sect
-            found_repair_kits[#found_repair_kits + 1].uses = obj:get_remaining_uses()
-            found_repair_kits[#found_repair_kits + 1].add = ini_sys:r_float_ex(sect, "repair_add_condition") or 0
-            found_repair_kits[#found_repair_kits + 1].bonus = ini_sys:r_float_ex(sect, "repair_part_bonus") or 0
-            found_support_items = parse_list(ini_repair, sect, "repair_parts_sections")
+        local accepted_repair_types = parse_list(ini_sys, sect, "repair_only")
+        if ini_sys:line_exist(sect, "repair_tool") and contains(accepted_repair_types, repair_type) then
+            found_repair_kits[size_table(found_repair_kits) + 1] = {
+                object = obj,
+                sect = sect,
+                uses = obj:get_remaining_uses(),
+                add = ini_sys:r_float_ex(sect, "repair_add_condition") or 0,
+                bonus = ini_sys:r_float_ex(sect, "repair_part_bonus") or 0,
+            }
+            found_support_items = parse_list(ini_sys, sect, "repair_parts_sections")
         end
     end)
 
@@ -448,9 +453,11 @@ function UIDieselGenerator:RepairBtn()
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
         if contains(found_support_items, sect) then
-            found_support_items[#found_support_items + 1].obj = obj
-            found_support_items[#found_support_items + 1].sect = sect
-            found_support_items[#found_support_items + 1].bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus") or 0
+            found_support_items[size_table(found_support_items) + 1] = {
+                object = obj,
+                sect = sect,
+                bonus = ini_sys:r_string_ex(obj:section(), "repair_part_bonus") or 0,
+            }
         end
     end)
 
@@ -491,7 +498,7 @@ function UIDieselGenerator:RepairBtn()
     dbg("dev", "part_cond:%s", part_cond)
     local support_item_cond = 0
     if best_support_item then 
-        support_item_cond = best_support_item.obj:condition() or best_support_item.bonus
+        support_item_cond = best_support_item.object:condition() or best_support_item.bonus
     else
         support_item_cond = worst_repair_kit.bonus
     end
@@ -507,15 +514,15 @@ function UIDieselGenerator:RepairBtn()
     hf_obj_manager.update_data(self.gen_id, data)
 
     if best_support_item then
-        utils_item.discharge(best_support_item.obj)
+        utils_item.discharge(best_support_item.object)
         dbg("dev", "discharging use from: %s", best_support_item.sect)
     end
 
-    if IsItem("multiuse", nil, worst_repair_kit.obj) then
-		utils_item.discharge( worst_repair_kit.obj) 
+    if IsItem("multiuse", nil, worst_repair_kit.object) then
+		utils_item.discharge( worst_repair_kit.object) 
         dbg("dev", "discharging use from: %s", worst_repair_kit.sect)
 	else
-		utils_item.degrade( worst_repair_kit.obj, 0.2)
+		utils_item.degrade( worst_repair_kit.object, 0.2)
         dbg("dev", "degrading %s by 0.2", worst_repair_kit.sect)
 	end
 	
@@ -537,13 +544,14 @@ function UIDieselGenerator:ReplaceBtn()
 
     if part_cond >= 0.95  then
         actor_menu.set_msg(1, gts("st_part_perfect", item_name), 3)
+        dbg("dev", "part perfect")
         return
     end
 
     local replacements = {}
     itr_inv(db.actor, function(_, obj)
         local sect = obj:section()
-        if sect == item_name then
+        if sect == part_name then
             replacements[obj:id()] = obj:condition() or 1
         end
     end)
@@ -564,6 +572,7 @@ function UIDieselGenerator:ReplaceBtn()
 
     if highest_cond <= part_cond then
         actor_menu.set_msg(1, gts("st_highest_part", item_name), 3)
+        dbg("dev", "higher part")
         return
     end
 
