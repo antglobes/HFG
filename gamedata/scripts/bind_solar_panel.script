@@ -25,7 +25,8 @@ get_parts_tbl = hfg_utils.get_parts_tbl
 SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
 get_bone_pos = hfg_utils.get_bone_pos
 get_hf_item_name = hfg_utils.get_hf_item_name
-
+get_time_elapsed = hfg_utils.get_time_elapsed
+get_month_days = hfg_utils.get_month_days
 
 -- Constants
 LOG_HEADER = "[HFG|Bind Solar Panel]"
@@ -33,6 +34,11 @@ SP_ITEM = "hfg_solar_panel"
 SP_TILT = 35 --degrees
 LUM_MAX = 1
 MALFUNC_COND = 0.4
+PANEL_COUNT = 2
+SP_WATTS = 650
+HR_SEC = 3.6 * math.pow(10, 3)
+HR_MS = 3.6 * math.pow(10, 6)
+DAY_MS = 8.64 * math.pow(10, 7)
 
 -- MCM Variables
 BROKEN_COND = 0.1
@@ -44,9 +50,11 @@ local dbg_pr = nil
 -- Globals
 placed_solar_panels = {}
 ini_weather = level_weathers.ini_weather -- unlocalised
+gid = 0
+
 
 -- Tables
-AVG_KWH = { -- per month
+AVG_KWH = { -- per month (calculated based on localised weather data for 2016 chernobyl area)
 	[1]=3138.911290322178,
 	[2]=3698.2142857138397,
 	[3]=4404.637096773382,
@@ -60,7 +68,61 @@ AVG_KWH = { -- per month
 	[11]=3382.9166662499997,
 	[12]=2989.5161290318547,
 }
-
+AVG_LIGHT_HRS = {
+    [1]  = {["start"]=8, ["end"]=16},
+    [2]  = {["start"]=7, ["end"]=17},
+    [3]  = {["start"]=6, ["end"]=18},
+    [4]  = {["start"]=5, ["end"]=20},
+    [5]  = {["start"]=5, ["end"]=20},
+    [6]  = {["start"]=5, ["end"]=21},
+    [7]  = {["start"]=5, ["end"]=21},
+    [8]  = {["start"]=6, ["end"]=20},
+    [9]  = {["start"]=6, ["end"]=19},
+    [10] = {["start"]=7, ["end"]=17},
+    [11] = {["start"]=7, ["end"]=16},
+    [12] = {["start"]=8, ["end"]=16}, 
+} 
+MAT_DEG_FAC = { -- materials that will dirty, rust, scratch
+    ["asphalt"]            = 0.1,
+    ["bricks"]             = 0.2,
+    ["bush"]               = 0.3,
+    ["bush_sux"]           = 0.35,
+    ["cloth"]              = 0.01,
+    ["concrete"]           = 0.1,
+    ["death"]              = 0.2,
+    ["dirt"]               = 0.3,
+    ["earth"]              = 0.3,
+    ["earth_death"]        = 0.5,
+    ["earth_slide"]        = 0.3,
+    ["fake_ladders"]       = 0.2,
+    ["fake_ladders_woods"] = 0.2,
+    ["fake_slide"]         = 0.2,
+    ["flooring_tile"]      = 0.1,
+    ["glass"]              = 0.1,
+    ["grass"]              = 0.2,
+    ["gravel"]             = 0.4,
+    ["metal"]              = 0.1,
+    ["metall_pipe"]        = 0.1,
+    ["metal_plate"]        = 0.1,
+    ["sand"]               = 0.4,
+    ["setka_rabica"]       = 0.6,
+    ["shifer"]             = 0.1,
+    ["stucco"]             = 0.1,
+    ["tin"]                = 0.1,
+    ["tree_trunk"]         = 0.1,
+    ["water"]              = 0.7,
+    ["water_radition"]     = 0.9,
+    ["wood"]               = 0.1,
+    ["wooden_board"]       = 0.1,
+}
+WEATHER_DEG_FAC = {
+    clear = 0,
+    partly = 0,
+    cloudy = 0,
+    rain = 1.5,
+    storm = 2,
+    foggy = 1.2,
+}
 -- DEBUGGING
 function setup_log(level, header, enabled)
     if not dbg_pr then
@@ -88,14 +150,25 @@ function init(obj, was_blueprint)
     local id = obj:id()
     local sect = obj:section()
     dbg("dev", "attempt binding %s", sect)
-    if contains(hfg_blueprint.placing_blueprints, id, true) then
+    if
+        contains(hfg_blueprint.placing_blueprints, id, true)
+        or contains(hfg_blueprint.placed_blueprints, id, true)
+        or contains(hfg_blueprint.removed_attachments, id, true)
+    then
         dbg("dev", "cannot bind %s, as is a blueprint ", sect)
         return
     end
-    
-    if not hfg_obj_persistance.in_cache(id, sect) then
-        hfg_obj_persistance.init(id, sect)
+
+    -- Set Object to be avoided by ai
+    local se_obj = alife_object(id)
+    local obj_data = utils_stpk.get_physic_data(se_obj)
+    if obj_data then
+        obj_data.visual_flags = 1
+        utils_stpk.set_physic_data(obj_data, se_obj)
     end
+
+    -- Object - Item Persistance
+    hfg_obj_persistance.init(id, sect, {tbl=id})
     dbg("dev", "binding %s", sect)
     obj:bind_object(placeable_solar_panel_wrapper(obj).binder)
 end
@@ -110,6 +183,7 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     self.section = self.object:section()
     self.item_section = ini_sys:r_string_ex(self.section, "item_section")
     self.condition = (contains(data, "condition", true) and data["condition"]) or 1
+    self.placeable_type = ini_sys:r_string_ex(self.item_section, "placeable_type")
     self.parts = data["parts"] or self:InitParts()
 
     -- Object State
@@ -117,14 +191,15 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     -- self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
     self.powerable_device_tmr = 0
 
-    -- Powerable Devices
-    self.power_off_consumers = true
-    self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
-    self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
+    -- Powera Grid
+    self.power_off_consumers = data["power_off_consumers"] or false
+    self.consumers = data["consumers"] or {} -- get_powerable_devices(self.object:position())
     self.power_output = data["power_output"] or 0
-    self.update_pd_tmr = data["update_pd_tmr"] or 0
-
-    -- Power Input (solar)
+    self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
+    self.grid_id = data["grid_id"] or -1
+    
+    -- Power Input (solar) replacement for fuel
+    self.curr_weather = data["curr_weather"] or level_weathers.get_weather_manager():get_curr_weather()
     self.weather_eff_tbl = get_keytable(utils_data.collect_section(ini_weather, "weather_cycles")) or {}
     self.weather_eff_tbl.storm = 0.1
     self.weather_eff_tbl.foggy = 0.2
@@ -132,12 +207,33 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     self.weather_eff_tbl.cloudy = 0.6
     self.weather_eff_tbl.partly = 0.8
     self.weather_eff_tbl.clear = 1
-    self.weather_efficency = data["weather_efficency"] or 0
-    self.curr_weather = data["curr_weather"] or "clear"
-    self.cmonth = data["cmonth"] or 0
-    self.chour = data["chour"] or -1
-    self.avg_kwh = data["avg_kwh"] or 0
+    self.weather_efficency = data["weather_efficency"] or self.weather_eff_tbl[self.curr_weather]
+    local Y, M, D, h, m, s, ms = 0, 0, 0, 0, 0, 0, 0
+    Y, M, D, h, m, s, ms = game.get_game_time():get(Y, M, D, h, m, s, ms)
+    local month = tonumber(tostring(M):match("0*(%d+)"))
+    local hour = tonumber(tostring(h):match("0*(%d+)"))
+    self.cmonth = data["cmonth"] or month
+    self.chour = data["chour"] or hour
+    self.update_min_tmr = data["update_min_tmr"] or 0
+    self.update_hr_tmr = data["update_hr_tmr"] or 0
+    -- self.time_last = data["time_last"] or 0
+    -- self.avg_kwh = data["avg_kwh"] or 0
     self.power_input_tmr = data["power_input_tmr"] or 0
+
+    -- Degradtion Factor
+    self.degradation_factor = data["degradation_factor"] or 0
+    self.emission_active = data["emission_active"] or false
+    self.df_mult = data["df_mult"] or 0
+    self.update_deg_fac_tmr = data["update_deg_fac_tmr"] or 0
+
+    -- Orientaion (Power Effiencieny)
+    self.panel_tilt = data["panel_tilt"] or 0
+    self.surface_tilt = data["surface_tilt"] or 0
+    self.tilt_deviation = data["tilt_deviation"] or 0
+    self.azimuth_deviation = data["azimuth_deviation"] or 0
+    self.solar_panel_eff = data["solar_panel_eff"] or 0
+    self.avg_light_hrs = data["avg_light_hrs"] or 0
+    self.daily_power_output = data["daily_power_output"] or 0
 
     -- Particles
     self.last_cond_state = data["last_cond_state"] or ""
@@ -167,6 +263,8 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     -- Power Output
     self.connected_inverter = 0
 
+    self:SetupDegradationArgs()
+    self:SetupEfficencyArgs()
     self:save_data()
     dbg("all", "finished init")
 end
@@ -181,111 +279,235 @@ function placeable_solar_panel_wrapper:update(delta)
     local condition = self.condition
     local cond_state = cond_to_state(round_idp(condition * 100, 2))
 
+    self:ProcessTime()
+    self:ProcessWeather()
+    self:ProcessDegredationFactor()
     self:ProcessPowerOuput()
     self:ProcessParticles(cond_state)
 end
 
-function placeable_solar_panel_wrapper:ProcessPowerOuput()
-    if self.tg > self.power_input_tmr and self.power_state ~= "broken" then
-        dbg("all", "calc solar power")
-        local curr_weather = level_weathers.get_weather_manager():get_curr_weather()
-        if self.curr_weather ~= curr_weather then
-            self.curr_weather = curr_weather
-            self.weather_efficency = self.weather_eff_tbl[self.curr_weather]
-            dbg("all", "curr weather: %s", self.curr_weather)
-            dbg("all", "weather effiency: %s", self.weather_efficency)
+function placeable_solar_panel_wrapper:SetupDegradationArgs()
+    dbg("dev", "setup deg factor args")
+    local ray = geo_ray({
+        ray_range = 5,
+        flags = 1 + 2,
+        visualize = true,
+        ignore_object = self.object
+    })
+    local result = ray:get(device().cam_pos, device().cam_dir)
+    local material_name = result.result.material_name
+    if material_name then
+        dbg("dev", "material name: %s", material_name)
+        local exclude_materials = {"default", "occ", "fake"}
+        local s, e = material_name:find("\\")
+        local material = material_name:sub(e + 1, #material_name)
+        dbg("dev", "surface underneath solar panel: %s", material)
+        if not contains(exclude_materials, material) and contains(MAT_DEG_FAC, material, true) then
+            self.degradation_factor = MAT_DEG_FAC[material] + math.random(0, 0.5)
         end
+        dbg("dev", "base deg factor: %s", self.degradation_factor)
+    end
+end
 
-        local Y, M, D, h, m, s, ms = 0, 0, 0, 0, 0, 0, 0
-        Y, M, D, h, m, s, ms = game.get_game_time():get(Y, M, D, h, m, s, ms)
-        local month = tonumber(tostring(M):match("0*(%d+)"))
-        local hour = tonumber(tostring(h):match("0*(%d+)")) -- 1am - 5am
-        if self.cmonth ~= month then
-            self.cmonth = month
-            self.avg_kwh = AVG_KWH[month]
-        end
-        if self.chour ~= hour then
-            self.chour = hour
-        end
-        dbg("all", "avg kwh: %s, month: %s, hour: %s", self.avg_kwh, month, hour)
+function placeable_solar_panel_wrapper:SetupEfficencyArgs()
+    dbg("dev", "setup solar panel eff args")
+    -- Solar Panel Tilt
+    local solar_panel = self.object
+    local top_panel = solar_panel:bone_position("top_panel")
+    local bottom_panel = solar_panel:bone_position("bottom_panel")
+    local panel_to_ground_dir = vec_sub(top_panel, bottom_panel):normalize()
+    local ray = geo_ray({
+        ray_range = top_panel:distance_to(bottom_panel),
+        flags = 2,
+        visualize = true,
+        ignore_object = solar_panel
+    })
+    local result = ray:get(bottom_panel, panel_to_ground_dir)
+    local ground = result.position
+    local sp_center = solar_panel:bone_position("link")
+    local ground_to_center_dir = vec_sub(ground, sp_center):normalize()
+    local ground_to_panel_dir = vec_sub(ground, top_panel):normalize()
+    self.panel_tilt = vector():set(ground_to_center_dir):dotproduct(ground_to_panel_dir)
 
-        local solar_panel = self.object
-        local sun_pos = level.get_sun_pos()
-        local sun_dir = weather.get_value_vector("sun_dir")
-        dbg("all", "sun pos: %s", sun_pos)
-        dbg("all", "sun dir: %s", sun_dir)
+    -- Surface Orientation
+    local pos = device().cam_pos
+    local dir = device().cam_dir
+    local xfm = matrix():setHPB(dir:getH(),dir:getP(),0):translate_over(pos)
+    
+    local k = {}
+    k[1] = vector():set(1,0,0):mul(-0.04)
+    k[2] = vector():set(1,0,0):mul(0.04)
+    k[3] = vector():set(0,1,0):mul(-0.04)
+    k[4] = vector():set(0,1,0):mul(0.04)
+    local t = {}
+    local dist_max = 10 --vector():set(pos):distance_to(level.get_target_pos())
+    for i=1,4 do
+        local tmp = vector()
+        xfm:transform_tiny(tmp, k[i])
+        local ray = ray_pick(tmp, dir, dist_max, 2,db.actor)
+        local num = ray:query() and ray:get_distance() or dist_max
+        t[i] = vector():mad(tmp,dir,num)
+    end
+    if (t[1] and t[2] and t[3] and t[4]) then
+        local horz = vector():sub(t[2],t[1])
+        local vert = vector():sub(t[4],t[3])
+        local norm_vec = vector_cross(horz, vert):invert():normalize()
+        local y_vec = vector():set(VEC_Y)
+        self.surface_tilt = vector():set(norm_vec):dotproduct(y_vec)
+    end
+    -- 0 is flat, 90 vertical
+    self.tilt_deviation = 1 - (todegrees(self.surface_tilt) / todegrees(self.panel_tilt))
+    dbg("dev", "panel tilt: %s, surface tilt: %s", todegrees(self.panel_tilt), todegrees(self.surface_tilt))
+    dbg("dev", "tilt deviation: %s", self.tilt_deviation)
+
+    -- Cardinal Direction (NSEW)
+    local south = 180
+    local sp_dir = solar_panel:direction()
+    local heading = math.deg(sp_dir:getH())
+    dbg("dev", "raw heading: %s", heading)
+    heading = heading < 0 and 360 + heading or heading
+    heading = clamp(math.floor(heading), 0, 359)
+    heading = heading > 180 and heading - 180 or heading
+    self.azimuth_deviation = 1 - (heading / south)
+    dbg("dev", "heading: %s, azimuth deviation: %s%", heading, self.azimuth_deviation)
+
+    self.solar_panel_eff =  self.weather_efficency * ((self.tilt_deviation * 0.5) + (self.azimuth_deviation * 0.5))
+    self.avg_light_hrs = AVG_LIGHT_HRS[self.cmonth]["end"] - AVG_LIGHT_HRS[self.cmonth]["start"]
+    self.daily_power_output = (SP_WATTS * PANEL_COUNT * self.avg_light_hrs)
+    dbg("dev", "solar panel eff: %s, daily power output: %s", self.solar_panel_eff, self.daily_power_output)
+end
+
+function placeable_solar_panel_wrapper:ProcessTime()
+    local Y, M, D, h, m, s, ms = 0, 0, 0, 0, 0, 0, 0
+    Y, M, D, h, m, s, ms = game.get_game_time():get(Y, M, D, h, m, s, ms)
+    local month = tonumber(tostring(M):match("0*(%d+)"))
+    local hour = tonumber(tostring(h):match("0*(%d+)")) -- 1am - 5am
+    local tg = time_global()
+
+    if tg >= self.update_min_tmr and self.cmonth ~= month then
+        dbg("dev", "Changing current month from: %s to %s", self.cmonth, month)
+        self.cmonth = month
+        local year = tonumber(tostring(Y):match("0*(%d+)"))
+        local days = tonumber(tostring(D):match("0*(%d+)"))
+        local mintues = tonumber(tostring(m):match("0*(%d+)"))
+        local seconds = tonumber(tostring(s):match("0*(%d+)"))
+        local days_in_mth = get_month_days(month, year)
+        local days_to_ms = (days_in_mth - days) * DAY_MS
+        local mintues_to_ms = (60 - mintues) * math.pow(60, 3)
+        local seconds_to_ms = (60 - seconds) * 1000
+        local next_update = (DAY_MS * days_in_mth) - (days_to_ms + mintues_to_ms + seconds_to_ms)
+        self.update_min_tmr = tg + (next_update / level.get_time_factor())
+    end
+    if tg >= self.update_hr_tmr and self.chour ~= hour then
+        dbg("dev", "Changing current hour from: %s to %s", self.chour, hour)
+        self.chour = hour
+        local mintues = tonumber(tostring(m):match("0*(%d+)"))
+        local seconds = tonumber(tostring(s):match("0*(%d+)"))
+        local mintues_to_ms = (60 - mintues) * math.pow(60, 3)
+        local seconds_to_ms = 60 - (seconds * 1000)
+        local next_update = HR_MS - (mintues_to_ms + seconds_to_ms)
+        self.update_hr_tmr = tg + (next_update / level.get_time_factor())
+    end
+end
+
+function placeable_solar_panel_wrapper:ProcessWeather()
+    local curr_weather = level_weathers.get_weather_manager():get_curr_weather()
+    if self.curr_weather ~= curr_weather then
+        self.curr_weather = curr_weather
+        self.weather_efficency = self.weather_eff_tbl[self.curr_weather]
+        self.degradation_factor = self.degradation_factor + WEATHER_DEG_FAC[self.curr_weather]
+        dbg("all", "curr weather: %s", self.curr_weather)
+        dbg("all", "weather effiency: %s", self.weather_efficency)
+        dbg("all", "degradation_factor w/ weather: %s", self.degradation_factor)
+    end
+end
+
+function placeable_solar_panel_wrapper:ProcessDegredationFactor()
+    local tg = time_global()
+    if tg > self.update_deg_fac_tmr then
+        local emission_active = surge_manager and surge_manager.is_loaded() and surge_manager.is_started()
+        local psi_storm_active = psi_storm_manager and psi_storm_manager.is_loaded() and psi_storm_manager.is_started()
+        if not self.emission_active and (emission_active or psi_storm_active) then
+            self.emission_active = true
+            self.df_mult = psi_storm_active and 0.15 or 0.1
+            self.degradation_factor = self.degradation_factor + (self.degradation_factor * self.df_mult)
+            dbg("dev", "start emission active: %s, df mult: %s, degradation_factor: %s", self.emission_active, self.df_mult, self.degradation_factor)
+        end
         
-        local panel_pos = solar_panel:bone_position("top_panel")
-        local panel_dir = solar_panel:bone_direction("angle_bone"):normalize()
-        local p2s = panel_pos:sub(sun_pos):normalize()
-        local angle = vector_angle_diff_xz(panel_dir, p2s)
-        local solar_panel_luminocity = solar_panel:get_luminocity()
-        dbg("all", "original solar_panel_luminocity: %s", solar_panel_luminocity)
-        dbg("all", "panel pos: %s", panel_pos)
-        dbg("all", "panel dir: %s", panel_dir)
-        --dbg("dev", "result: %s", result)
-        angle = math.abs(angle)
-        dbg("all", "angle: %s", angle)
-        if angle > 145 then
-            local angle_diff = 180 - angle
-            local angle_per = angle_diff / SP_TILT
-            dbg("all", "angle diff: %s", angle_diff)
-            dbg("all", "angle per: %s", angle_per)
-            solar_panel_luminocity = solar_panel_luminocity * angle_per
-            dbg("all", "angle efficency by solar_panel_luminocity: %s", solar_panel_luminocity)
+        if self.emission_active and (surge_manager.is_finished() or psi_storm_manager.is_finished()) then
+            self.emission_active = false
+            self.degradation_factor = self.degradation_factor - (self.degradation_factor * self.df_mult)
+            dbg("dev", "end emission active: %s, degradation_factor: %s", self.emission_active, self.degradation_factor)
         end
 
-        local sun_visible = false    
-        local dist_to_sun = sun_pos:distance_to(panel_pos)
-        dbg("all", "shooting ray")
-        dbg("all", "dist to sun: %s", dist_to_sun)
-        local ray = geo_ray({
-            ray_range = dist_to_sun,
-            flags = 1 + 2 + 4 + 8,
-            visualize = true,
-            ignore_object = solar_panel,
-        })
-        local result = ray:get(panel_pos, panel_dir)
-        if not result.result.material_name or angle <= 145 then
-            sun_visible = true
-        else       
-            solar_panel_luminocity = solar_panel_luminocity * result.result.material_vis_transparency_factor
-            dbg("all", "solar panel lum: %s, material transparency factor: %s", solar_panel_luminocity, result.result.material_vis_transparency_factor)
-        end
-        dbg("all", "hit material: %s", result.result.material_name)        
-        dbg("all", "sun visible?: %s", sun_visible)
+        dbg("dev", "current condition: %s", self.condition)
+        self.condition = self.condition * (1 - self.degradation_factor)
+        dbg("dev", "new condition: %s", self.condition)
+        self.update_deg_fac_tmr = tg + 1000
+    end
+end
 
-        if not sun_visible then
-            local found_lights = {}
-            level.iterate_nearest(solar_panel:position(), SEARCH_RADIUS, function(obj)
-                local sect = obj:section()
-                if is_power_consumer(sect) then found_lights[#found_lights + 1] = obj end
-            end)
+function placeable_solar_panel_wrapper:ProcessPowerOuput()
+    local tg = time_global()
+    if tg > self.power_input_tmr and self.power_state ~= "broken" then
+        dbg("all", "process power output")
 
-            if is_not_empty(found_lights) then
-                dbg("all", "found lights")
-                local total_lights = #found_lights
-                local total_light_lum = 0
-                for _, obj in pairs(found_lights) do
-                    total_light_lum = total_light_lum + obj:get_luminocity()
-                end
-                dbg("all", "solar panel lum: %s, total lights lum: %s, total lights: %s", solar_panel_luminocity, total_light_lum, total_lights)
-                solar_panel_luminocity = solar_panel_luminocity + ((total_light_lum / total_lights) * 0.2)
+        local sun_brightness = level.get_sun_intensity()
+        local solar_panel_lum = self.object:get_luminocity() --self.object:get_luminocity_hemi()
+        local recieved_light = (sun_brightness / 3) - (solar_panel_lum / 3)
+        dbg("dev", "sun_brightness: %s, solar_panel_lum: %s, recieved_light: %s", sun_brightness, solar_panel_lum, recieved_light)
+
+        -- Check for statics and objects blocking solar panel
+        local sun_pos = level.get_sun_pos()
+        local angle_bone_pos = self.object:bone_position("angle_bone")
+        local panel_to_sun_dir = vec_sub(sun_pos, angle_bone_pos):normalize()
+        local link_bone_pos = self.object:bone_position("link")
+        local sp_to_angle_bone_dir = vec_sub(angle_bone_pos, link_bone_pos):normalize()
+        local angle = todegrees(vector():set(sp_to_angle_bone_dir):dotproduct(panel_to_sun_dir))
+        dbg("dev", "angle: %s", angle)
+
+        local sun_visible = (self.chour >= 4 or self.chour <= 20) and true 
+            or (angle <= 45 and angle > 0) and true
+            or false
+        if sun_visible then
+            local debugging_enabled = dbg_pr:GetLevel() >= dbg_pr.log_levels["DEBUG"]
+            -- Preview Ray
+            if debugging_enabled then
+                local panel_out_ray = geo_ray({
+                    ray_range = 5,
+                    flags = 1 + 2,
+                    visualize = debugging_enabled,
+                    ignore_object = self.object
+                })
+                panel_out_ray:get(angle_bone_pos, sp_to_angle_bone_dir)
+            end
+
+            local to_sun_ray = geo_ray({
+                ray_range = angle_bone_pos:distance_to(sun_pos),
+                flags = 1 + 2,
+                visualize = debugging_enabled,
+                ignore_object = self.object
+            })
+            local result = to_sun_ray:get(angle_bone_pos, panel_to_sun_dir)
+            local in_contact = result.in_contact
+            local material_name = result.result.material_name
+            local vis_trans_factor = result.result.material_vis_transparency_factor
+            dbg("dev", "in contact: %s, material name: %s, vis trans factor: %s", in_contact, material_name, vis_trans_factor)
+            if in_contact and material_name and vis_trans_factor then
+                recieved_light = recieved_light * vis_trans_factor
+                dbg("dev", "reducing recieved light to: %s", recieved_light)
             end
         end
-        local sun_exposure = solar_panel_luminocity / LUM_MAX
-        dbg("all", "sun exposure: %s", sun_exposure)
-        dbg("all", "condition: %s", self.condition)
-        if self.condition > BROKEN_COND and self.condition < MALFUNC_COND then
-            self.avg_kwh = math.random(self.avg_kwh * (self.condition / 4), self.avg_kwh * self.condition)
-        end
 
-        local weather_effi = self.weather_efficency
-        dbg("all","weather eff: %s, avg_kwh: %s", self.weather_efficency, self.avg_kwh)
-        local power_output = self.avg_kwh  * sun_exposure * weather_effi
-        dbg("all", "power output: %s\n", power_output)
-        self.power_output = power_output or 0
-        self.power_input_tmr = time_global() + 1000
+        -- Solar Panel Efficiency accounting for how much light is recevied by sp
+        local expected_power_output = (self.daily_power_output / self.avg_light_hrs) * self.solar_panel_eff
+        local actual_power_output = expected_power_output * recieved_light
+        dbg("dev", "expected power output: %s", expected_power_output)
+        dbg("dev", "actual power output: %s", actual_power_output)
+        actual_power_output = clamp(actual_power_output, 0, sun_visible and expected_power_output or expected_power_output / 2)
+        self.power_output = level_weathers.bLevelUnderground and 0 or actual_power_output
+        self.power_input_tmr = time_global() + (1 * 1000)
+        self:save_data()
     end
 end
 
@@ -443,6 +665,7 @@ function placeable_solar_panel_wrapper:pickup()
 
     local obj_id = self.object:id()
     local data = hf_obj_manager.get_data(obj_id)
+    hfg_power_grid.remove_power_source(self.grid_id, obj_id)
     -- Create Item with condition
     if self.condition > BROKEN_COND then
         dbg("all", "binder cond: %s", self.condition)
@@ -454,7 +677,7 @@ function placeable_solar_panel_wrapper:pickup()
 
         -- Replace gen id
         -- replace_generator(data["tbl_id"], se_obj.id)
-        local old = {id=data["tbl_id"], sect=self.item_section}
+        local old = {id=data["tbl_id"], sect=self.section}
         local new = {id=se_obj.id, sect=self.item_section}
         hfg_obj_persistance.replace(old, new)
 
@@ -489,25 +712,40 @@ end
 
 -- Binder Persistance
 function placeable_solar_panel_wrapper:save_data()
-    dbg("all", "save data")
+    -- dbg("all", "save data")
     local data = {
         section              = self.section,
         item_section         = self.item_section,
         condition            = self.condition,
+        placeable_type       = self.placeable_type,
         parts                = self.parts,
         power_state          = self.power_state,
         powerable_device_tmr = self.powerable_device_tmr,
-        power_off_consumers    = self.power_off_consumers,
+        power_off_consumers  = self.power_off_consumers,
         powerable_devices    = self.powerable_devices,
         max_power_output     = self.max_power_output,
         power_output         = self.power_output,
+        grid_id              = self.grid_id,
         weather_eff_tbl      = self.weather_eff_tbl,
         weather_efficency    = self.weather_efficency,
         curr_weather         = self.curr_weather,
         cmonth               = self.cmonth,
         chour                = self.chour,
-        avg_kwh              = self.avg_kwh,
+        -- avg_kwh              = self.avg_kwh,
+        -- time_last            = self.time_last,
         power_input_tmr      = self.power_input_tmr,
+        degradation_factor   = self.degradation_factor,
+        emission_active      = self.emission_active,
+        df_mult              = self.df_mult,
+        update_deg_fac_tmr   = self.update_deg_fac_tmr,
+
+        panel_tilt           = self.panel_tilt,
+        surface_tilt         = self.surface_tilt,
+        tilt_deviation       = self.tilt_deviation,
+        azimuth_deviation    = self.azimuth_deviation,
+        solar_panel_eff      = self.solar_panel_eff,
+        avg_light_hrs        = self.avg_light_hrs,
+        daily_power_output   = self.daily_power_output,
         last_cond_state      = self.last_cond_state,
         curr_fx              = self.curr_fx,
         fx_tbl               = self.fx_tbl,        
@@ -519,7 +757,7 @@ function placeable_solar_panel_wrapper:save_data()
     if curr_data and contains(curr_data, "tbl_id", true) then
         -- update_generator(curr_data["tbl_id"], data)
         -- dbg("dev", "updating persistance data")
-        hfg_obj_persistance.update(curr_data["tbl_id"], self.item_section, data)
+        hfg_obj_persistance.update(curr_data["tbl_id"], self.section, data)
     end
     -- dbg("dev", "updating hf data")
     hf_obj_manager.update_data(self.object:id(), data)
@@ -527,7 +765,7 @@ function placeable_solar_panel_wrapper:save_data()
 end
 
 function placeable_solar_panel_wrapper:load_data()
-    dbg("all", "on load")
+    -- dbg("all", "on load")
     local data = hf_obj_manager.get_data(self.object:id())
     self.section              = data["section"]
     self.item_section         = data["item_section"]
@@ -535,7 +773,7 @@ function placeable_solar_panel_wrapper:load_data()
     self.parts                = data["parts"]
     self.power_state          = data["power_state"]
     self.powerable_device_tmr = data["powerable_device_tmr"]
-    self.power_off_consumers    = data["power_off_consumers"]
+    self.power_off_consumers   = data["power_off_consumers"]
     self.powerable_devices    = data["powerable_devices"]
     self.max_power_output     = data["max_power_output"]
     self.power_output         = data["power_output"]
@@ -544,14 +782,32 @@ function placeable_solar_panel_wrapper:load_data()
     self.curr_weather         = data["curr_weather"]
     self.cmonth               = data["cmonth"]
     self.chour                = data["chour"]
-    self.avg_kwh              = data["avg_kwh"]
+    -- self.avg_kwh              = data["avg_kwh"]
+    -- self.time_last            = data["time_last"]
     self.power_input_tmr      = data["power_input_tmr"]
+    self.degradation_factor   = data["degradation_factor"]
+    self.emission_active      = data["emission_active"]
+    self.df_mult              = data["df_mult"]
+    self.update_deg_fac_tmr   = data["update_deg_fac_tmr"]
+    self.power_input_tmr      = data["power_input_tmr"]
+    self.panel_tilt           = data["panel_tilt"]
+    self.surface_tilt         = data["surface_tilt"]
+    self.tilt_deviation       = data["tilt_deviation"]
+    self.azimuth_deviation    = data["azimuth_deviation"]
+    self.solar_panel_eff      = data["solar_panel_eff"]
+    self.avg_light_hrs        = data["avg_light_hrs"]
+    self.daily_power_output   = data["daily_power_output"]
+
     self.last_cond_state      = data["last_cond_state"]
     self.curr_fx              = data["curr_fx"]
     self.fx_tbl               = data["fx_tbl"]
     self.att_info             = data["att_info"]
     self.last_power_state     = data["last_power_state"]
 
+end
+
+function todegrees(x)
+    return math.deg(math.abs(math.acos(x)))
 end
 
 -- callbacks
@@ -603,5 +859,128 @@ function placeable_solar_panel_wrapper:ProcessPowerState(cond_state)
         self:save_data()
     end
 end
+
+local found_lights = {}
+            level.iterate_nearest(solar_panel:position(), SEARCH_RADIUS, function(obj)
+                local sect = obj:section()
+                if is_power_consumer(sect) then found_lights[#found_lights + 1] = obj end
+            end)
+
+            if is_not_empty(found_lights) then
+                dbg("all", "found lights")
+                local total_lights = #found_lights
+                local total_light_lum = 0
+                for _, obj in pairs(found_lights) do
+                    total_light_lum = total_light_lum + obj:get_luminocity()
+                end
+                dbg("all", "solar panel lum: %s, total lights lum: %s, total lights: %s", solar_panel_luminocity, total_light_lum, total_lights)
+                solar_panel_luminocity = solar_panel_luminocity + ((total_light_lum / total_lights) * 0.2)
+            end
+                    -- elevation
+        local a = norm_vec.x * y_vec.z + norm_vec.y * y_vec.y + norm_vec.z * y_vec.y
+        local b = math.sqrt((math.pow(norm_vec.x, 2) + math.pow(norm_vec.y, 2) + math.pow(norm_vec.z, 2)) * (math.pow(y_vec.x, 2) + math.pow(y_vec.y, 2) + math.pow(y_vec.z, 2)))
+        local elevation = 90 - math.acos(a / b)
+
+        dbg("dev", "a: %s, b: %s, elevation: %s, degrees: %s", a, b, elevation, math.deg(math.abs(elevation)))
+--
+
+        local solar_panel = self.object
+        local sun_pos = level.get_sun_pos()
+        local sun_dir = weather.get_value_vector("sun_dir")
+        dbg("all", "sun pos: %s", sun_pos)
+        dbg("all", "sun dir: %s", sun_dir)
+        
+        local panel_pos = solar_panel:bone_position("top_panel")
+        local panel_dir = solar_panel:bone_direction("angle_bone"):normalize()
+        local p2s = panel_pos:sub(sun_pos):normalize()
+        local angle = vector_angle_diff_xz(p2s, panel_dir)
+        local sun_brightness = level.get_sun_intensity()
+        local solar_panel_luminocity = solar_panel:get_luminocity_hemi() + sun_brightness
+        dbg("all", "original solar_panel_luminocity: %s", solar_panel_luminocity)
+        dbg("all", "panel pos: %s", panel_pos)
+        dbg("all", "panel dir: %s", panel_dir)
+        --dbg("dev", "result: %s", result)
+        dbg("all", "panel to sun angle: %s", angle)
+        if angle > 0 and angle < 200 then
+            local angle_diff = 180 - angle
+            local angle_per = angle_diff / SP_TILT
+            dbg("all", "angle diff: %s", angle_diff)
+            dbg("all", "angle per: %s", angle_per)
+            solar_panel_luminocity = solar_panel_luminocity * angle_per
+            dbg("all", "angle efficency by solar_panel_luminocity: %s", solar_panel_luminocity)
+        end
+
+        local sun_visible = sun_brightness > 0.1    
+        local dist_to_sun = sun_pos:distance_to(panel_pos)
+        dbg("all", "dist to sun: %s", dist_to_sun)
+        if not sun_visible then
+            dbg("all", "shooting ray")
+            local ray = geo_ray({
+                ray_range = dist_to_sun,
+                flags = 1 + 2,
+                visualize = true,
+                ignore_object = solar_panel,
+            })
+            local result = ray:get(panel_pos, panel_dir)
+            if not result.in_contact and not result.result.material_name then
+                sun_visible = false
+            elseif result.result.material_name and result.result.material_vis_transparency_factor then
+                solar_panel_luminocity = solar_panel_luminocity * result.result.material_vis_transparency_factor
+                sun_visible = solar_panel_luminocity <= 0
+                dbg("all", "hit material: %s", result.result.material_name)        
+                dbg("all", "solar panel lum: %s, material transparency factor: %s", solar_panel_luminocity, result.result.material_vis_transparency_factor)
+            end
+        end
+        dbg("all", "sun visible?: %s", sun_visible)
+        
+        if is_not_empty(self.consumers) then
+            local total_consumer_lum = 0
+            local total_num_lights = 0
+            for _, pc_id in pairs(self.consumers) do
+                local obj = get_unknown_object({id=pc_id}, "game")
+                local pc_hf_data = hf_obj_manager.get_data(pc_id)
+                if 
+                    obj 
+                    and is_light(obj:section()) 
+                    and pc_hf_data 
+                    and contains(pc_hf_data, "power_state", true) 
+                    and pc_hf_data["power_state"] == "on" 
+                then
+                    total_consumer_lum = total_consumer_lum + obj:get_luminocity_hemi()
+                    total_num_lights = total_num_lights + 1
+                end
+            end
+            if total_num_lights > 0 then
+                solar_panel_luminocity = solar_panel_luminocity + ((total_consumer_lum / total_num_lights) * 0.2)
+            end
+        end
+        local sun_exposure = (solar_panel_luminocity / LUM_MAX) + sun_brightness
+        dbg("all", "sun exposure: %s", sun_exposure)
+        dbg("all", "condition: %s", self.condition)
+        if self.condition > BROKEN_COND and self.condition < MALFUNC_COND then
+            self.avg_kwh = math.random(self.avg_kwh * (self.condition / 4), self.avg_kwh * self.condition)
+        end
+
+        self.weather_efficency = self.weather_eff_tbl[self.curr_weather]
+        dbg("all","weather eff: %s", self.weather_efficency)
+        local end_hour = AVG_LIGHT_HRS[self.cmonth]["end"]
+        local start_hour = AVG_LIGHT_HRS[self.cmonth]["start"] 
+        local peak_hour = (end_hour + start_hour ) / 2
+        local min = (self.chour > end_hour and start_hour) or (self.chour > peak_hour and peak_hour) or start_hour
+        local max = (self.chour > end_hour and end_hour) or (self.chour > peak_hour and end_hour) or peak_hour
+        dbg("dev", "start hour: %s, end hour: %s, peak hour: %s, min: %s, max: %s", start_hour, end_hour, peak_hour, min, max)
+        local norm_light_hr = self.chour > start_hour and self.chour < end_hour and normalize(self.chour, min, max) or 1 - normalize(self.chour, min, max)
+        dbg("dev", "norm light hr: %s", norm_light_hr)
+        local avg_kwh = (min > 0 and max > 0) and self.avg_kwh * norm_light_hr or 0
+        dbg("dev", "avg kwh: %s", avg_kwh)
+        local power_output = avg_kwh  * (sun_exposure *  self.weather_efficency)            
+        dbg("all", "power output: %s\n", power_output)
+
+            local pitch = math.deg(sp_dir:getP())
+    dbg("dev", "raw pitch:%s", pitch)
+    pitch = pitch < 0 and 360 + pitch or pitch
+    pitch = clamp(math.floor(pitch), 0, 359)
+    pitch = pitch > 180 and pitch - 180 or pitch
+    dbg("dev", "pitch: %s", pitch)    
 
 ]]
