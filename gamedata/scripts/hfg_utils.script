@@ -20,7 +20,6 @@ throttle = ag_utils.throttle
 
 -- Constants
 LOG_HEADER = "[HFG|Utils]"
-PART_FUNC_COND = 0.4
 PLACEABLE_DISEL_GEN = "placeable_disel_generator"
 PLACEABLE_SOLAR_PANELS = "placeable_solar_panel"
 PLACEABLE_INVERTER = "placable_inverter"
@@ -225,6 +224,33 @@ function dik_to_str(dik, sentence_case)
     local replacement = dik_str:find("mouse") and " " or ""
     dik_str = replace(dik_str, pattern, replacement)
     return sentence_case and capitalise(lowercase(dik_str)) or lowercase(dik_str)
+end
+
+function get_time_elapsed()
+   return game.get_game_time():diffSec(level.get_start_time()) / level.get_time_factor()
+end
+
+local month_days = { 
+    [1] = 31,
+    [2] = 28,
+    [3] = 31,
+    [4] = 30,
+    [5] = 31,
+    [6] = 30,
+    [7] = 31,
+    [8] = 31,
+    [9] = 30,
+    [10] = 31,
+    [11] = 30,
+    [12] = 31,
+ }
+function is_leap_year(yr)
+    return math.fmod(yr, 4) == 0 and 
+        (math.fmod(yr, 100) ~= 0 or math.fmod(yr, 400) == 0)
+end
+
+function get_month_days(mth, yr)
+    return mth ~= 2 and month_days[mth] or is_leap_year(yr) and 29
 end
 
 -- MCM
