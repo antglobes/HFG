@@ -190,6 +190,26 @@
 		<text>%s doesn't have enough watts to power %s</text>
 	</string>
 
+	<string id="st_part_perfect">
+		<text>%s is greater than %s and doesnt need repairing</text>
+	</string>
+
+	<string id="st_part_unrepairable">
+		<text>%s is unrepairable</text>
+	</string>
+
+	<string id="st_replacement_missing">
+		<text>%s is missing a replacement</text>
+	</string>
+
+	<string id="st_repair_kit_missing">
+		<text>Missing repair kit for %s </text>
+	</string>
+
+	<string id="st_highest_part">
+		<text>%s has a higher condition than it's replacment</text>
+	</string>
+
     <string id="st_bullet_point">
 		<text>�</text>
     </string>
