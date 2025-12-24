@@ -202,6 +202,7 @@ actor_on_update = throttle(
         for id, info in pairs(placed_blueprints) do
             local obj = get_unknown_object({id=id}, "game")
             if obj and obj:section() == info.hf_sect then
+                local obj_sect = obj:section()
                 local obj_pos = obj:position()
                 if is_on_screen(obj_pos) then
                     if not info.att then
@@ -261,9 +262,23 @@ actor_on_update = throttle(
                             if not next(placed_blueprints) then
                                 stop_hud()
                             end
+                            local data = hf_obj_manager.get_data(id)
+                            if data and contains(data, "parts", true) then
+                                for part_name, part_info in pairs(info["parts"]) do
+                                    if data["parts"][part_name].condition ~= part_info.condition then
+                                        data["parts"][part_name].condition = part_info.condition
+                                    end
+                                end
+                                hf_obj_manager.update_data(id, data)
+                            end
+                            
                             alife_release(obj)
                             local se_obj = alife_create(info.hf_sect, info.hf_loc["pos"], info.hf_loc["lvl_id"], info.hf_loc["g_id"])
                             se_obj.angle = info.placement_angle
+                            local old = {id=data["tbl_id"], sect=info.hf_sect}
+                            local new = {id=se_obj.id, sect=info.hf_sect}
+                            hfg_obj_persistance.replace(old, new)
+                            hfg_power_grid.delay_init_grid(se_obj.id)
                         end
                     else
                         info.within_range = false
@@ -786,7 +801,7 @@ function get_closest_blueprint(pos)
     pos = not pos and db.actor:position() or pos
     local closest_blueprint_id
     local closest_dist
-    dbg("dev", "getting closest blueprint")
+    --dbg("dev", "getting closest blueprint")
     for id, info in pairs(placed_blueprints) do
         local obj = get_unknown_object({id=id}, "game")
         if obj then
@@ -796,7 +811,7 @@ function get_closest_blueprint(pos)
                 if not closest_blueprint_id or closest_dist > dist then
                     closest_blueprint_id = id
                     closest_dist = dist
-                    dbg("dev", "id: %s, dist: %s", closest_blueprint_id, closest_dist)
+                    --dbg("dev", "id: %s, dist: %s", closest_blueprint_id, closest_dist)
                 end
             end
         end
@@ -897,10 +912,9 @@ function place_part_func(item)
     dbg("dev", "attempting to place: %s", sect)
 
     local id = get_closest_blueprint()
-    dbg("dev", "closest blueprint id: %s", id)
-    if not id then return end
+    if not id then dbg("dev", "no blueprint found nearby") return end
     local info = placed_blueprints[id]
-    if not info then return end
+    if not info then dbg("dev", "no info for blueprint") return end
     --dbg("dev", "blueprint_info: %s", info)
     local submesh_to_bone = group_duplicates(info.att_bone_to_submesh)
     --dbg("dev", "getting submesh to bone tbl: %s", submesh_to_bone)
@@ -953,11 +967,12 @@ function place_part_func(item)
                         end
                     end
                 end
+                utils_obj.play_sound(snd_place_part)
             end
         end
         dbg("dev", "num of placed submeshes: %s, num of bone to submesh: %s", size_table(info.att_placed_submeshes), size_table(info.att_bone_to_submesh))
         placed_blueprints[id] = info
-        utils_obj.play_sound(snd_place_part)
+        
     end
 end
 
@@ -994,12 +1009,13 @@ function place_all_parts_cond(obj)
     dbg("dev", "removed %s from %s", sect, item_parts)
     dbg("dev", "looking for parts in inventory")
     for _, part_name in pairs(item_parts) do
-        local inv_parts = find_inv_item(part_name)
-        if is_not_empty(inv_parts) then
-            return true
+        if not db.actor:object(part_name) then
+            dbg("dev", "couldnt find: %s in inventory", part_name)
+            return false
         end
     end
-    return false
+    dbg("dev", "found all parts in inv")
+    return true
 end
 
 function place_all_parts_menu(obj)
@@ -1007,6 +1023,7 @@ function place_all_parts_menu(obj)
 end
 
 function place_all_parts_func(obj)
+    dbg("dev", "place all parts func")
     local id = get_closest_blueprint()
     if not id then dbg("dev", "No Blueprint Found nearby") return end
     local blueprint_info = placed_blueprints[id]   

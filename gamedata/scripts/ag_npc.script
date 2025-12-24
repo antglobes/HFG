@@ -227,7 +227,7 @@ end
 ---@param func function
 ---@param ... any
 function itr_inv(npc, func, ...)
-    npc = npc ~= nil and db.actor or npc
+    npc = not npc and db.actor or npc
 	local args = {...}
 	npc:iterate_inventory(
 		function(owner, obj)
