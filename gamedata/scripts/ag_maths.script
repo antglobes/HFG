@@ -15,6 +15,9 @@ NEG_Y = vector():set(0, -1,  0)
 ---Vector set in negative Z
 NEG_Z = vector():set(0,  0, -1)
 
+PI_SQR = math.pi * 2.0
+PI_D180 = math.pi / 180.0
+
 -- Boolean Functions
 
 ---Check if a variable's type is a number
@@ -131,7 +134,43 @@ function vector_angle_diff_xz(v1,v2)
     local k1 = math.deg(math.atan2(v1.x,v1.z))
     local k2 = math.deg(math.atan2(v2.x,v2.z))
     local r = k1 - k2
+    return r
+end
+
+--@author Ghentong
+function _vector_angle_diff_xz(v1,v2)
+    local k1 = math.deg(math.atan2(v1.x,v1.z))
+    local k2 = math.deg(math.atan2(v2.x,v2.z))
+    local r = k1 - k2
     return ((r < -180) and (r + 360)) or ((r > 180) and (r - 360)) or r
+end
+
+--@lucy.fer
+function angle_normalize(a)
+
+	if (a >= -math.pi and a <= math.pi) then return a end
+	
+	local div = a / PI_SQR
+	local rnd = ((div > 0) and math.floor(div) or math.ceil(div))
+	local frac = div - rnd
+	if (frac < 0) then frac = frac + 1.0 end
+	frac = frac * PI_SQR
+	
+	if (frac > math.pi) then frac = frac - PI_SQR end
+	return frac
+
+end
+
+--@lucy.fer
+function angle_difference(a, b)
+	local diff = angle_normalize(a) - angle_normalize(b)
+	if (diff > math.pi) then
+		diff = diff - PI_SQR
+	elseif (diff < -math.pi) then
+		diff = diff + PI_SQR
+	end
+
+	return diff
 end
 
 ---From a starting point create a regular cuboid
