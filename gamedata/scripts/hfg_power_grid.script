@@ -21,6 +21,7 @@ get_hf_item_name = hfg_utils.get_hf_item_name
 LOG_HEADER = "[HFG|Power Grid]"
 SEARCH_RADIUS = hfg_mcm.defaults["power_source_search_radius"]
 BROKEN_COND = hfg_mcm.defaults["power_source_broken_cond"]
+PART_FUNC_COND = 0.4
 
 -- Globals
 grids = {}
@@ -295,6 +296,8 @@ function delay_init_grid(obj_id)
     local se_obj = alife_object(obj_id)
     local id = se_obj.id
     local sect = se_obj:section_name()
+    local power_typ = get_power_type(sect)
+    local level_name = level.name()
     if not se_obj  then return end
     if 
         contains(hfg_blueprint.placing_blueprints, id, true)
@@ -305,6 +308,14 @@ function delay_init_grid(obj_id)
         return
     end
     if not is_power_obj(sect) then return end
+    local closest_grid_info = get_closest_grid(se_obj)
+    if 
+        closest_grid_info 
+        and is_power_object_in_grid(closest_grid_info["id"], level_name, power_typ, obj_id)
+    then
+        dbg("dev", "%s is already in closest grid")
+        return
+    end
     dbg("info", "on delay init grid: %s|:%s", sect, obj_id)
     CreateTimeEvent("hf_power_grid"..se_obj.id, "delay_init_grid"..se_obj.id, 0.4, function()
         local obj = get_unknown_object({id=se_obj.id}, "game")
@@ -313,6 +324,36 @@ function delay_init_grid(obj_id)
         return true
     end)
 end
+
+function is_grid_on_level(grid_id, level_name)
+    local level_grids = get_level_grids(level_name)
+    return is_not_empty(level_grids) 
+        and contains(level_grids, grid_id, true) 
+        and level_grids[grid_id]["lvl_name"] == level_name 
+        or false
+end
+
+function is_power_object_in_grid(grid_id, level_name, power_typ, obj_id)
+    local level_grids = grid_id and grids[grid_id] or get_level_grids(level_name)
+    dbg("dev", "level grids: %s", level_grids)
+    for id, data in pairs(level_grids) do
+        if type(data) == "table" and contains(data, power_typ, true) then
+            return contains(data[power_typ], obj_id, true)
+        end
+    end
+end
+
+
+function get_level_grids(level_name)
+    local level_grids = {}
+    for id, data in pairs(grids) do
+        if data["lvl_name"] == level_name then
+            level_grids[id] = data
+        end
+    end
+    return level_grids
+end
+
 
 function get_closest_grid(obj)
     dbg("dev", "Getting closest grid id")
@@ -415,6 +456,10 @@ function remove_power_obj_from_grid(grid_id, power_obj_id, power_typ)
     then
         grids[grid_id][power_typ][power_obj_id] = nil
         dbg("dev", "removing %s of type %s from grid %s", power_obj_id, power_typ, grid_id)
+        if size_table(grids[grid_id][power_typ]) == 0 then
+            grids[grid_id][power_typ] = nil
+            dbg("dev", "removing %s from %s as is empty", power_typ, grid_id)
+        end
     end
 end
 
@@ -679,6 +724,7 @@ function disassemble_power_source(sect, power_source_parts, obj, obj_d)
     -- Give parts
     for part_name, part_info in pairs(power_source_parts) do
         if IsItem("part", part_name) and utils_item.is_degradable(nil, part_name) then
+            dbg("dev", "part info for %s: %s", part_name, part_info)
             local part_cond = part_info.condition
             if part_cond > PART_FUNC_COND then
                 dbg("info", "creating  part %s with %s cond", part_name, part_cond)
@@ -807,7 +853,6 @@ end
 -- Callbacks
 
 function on_power_source_impact(bullet)
-    dbg("dev", "on gen impact")
     local bullet_pos = bullet.position
     local sect = bullet.section
     local wpn_id = bullet.weapon_id
@@ -841,6 +886,7 @@ function on_power_source_impact(bullet)
         dbg("dev", "no parts found")    
         return
     end
+    dbg("dev", "on power source impact")
 -- Get Closest Bone to Bullet Impact Pos that isnt at lowest condition possible
     local parts = data["parts"]
     local closest_bone
@@ -869,7 +915,8 @@ function on_power_source_impact(bullet)
     for part_name, part_info in pairs(parts) do
         local part_cond = part_info.condition
         if part_name == closest_part then
-            if part_cond > BROKEN_COND then
+            dbg("dev", "part cond: %s, broken cond: %s", part_cond, BROKEN_COND)
+            if part_cond >= BROKEN_COND then
                 dbg("info", "part found")
                 dbg("dev", "part name: %s, part cond: %s", part_name, part_cond)
                 local hit_damage = parse_list(ini_sys, wpn:section(), "hit_power")[1]
@@ -917,12 +964,15 @@ function gather_power_objects()
             end -- get item sect and placeable sect in one table
             -- dbg("dev", "sect: %s, item sect: %s, placeable type: %s", sect, item_sect, placeable_type)
             if contains(power_consumer_types, placeable_type) or power_object_special_case("power_consumer", sect) then
-                power_objs["power_consumers"] = power_objs["power_consumers"] or {}
-                power_objs["power_consumers"][#power_objs["power_consumers"] +1] = sect
                 local fuel_sect = ini_sys:r_string_ex(sect, "fuel_section")
-                dbg("dev", "consumer| sect: %s, fuel_sect: %s", sect, fuel_sect)
-                power_item_sects["power_consumers"] = power_item_sects["power_consumers"] or {}
-                power_item_sects["power_consumers"][#power_item_sects["power_consumers"] + 1] = item_sect
+                if not fuel_sect or fuel_sect and fuel_sect == "batteries_dead" then
+                    dbg("dev", "consumer| sect: %s, fuel_sect: %s", sect, fuel_sect)
+                    power_objs["power_consumers"] = power_objs["power_consumers"] or {}
+                    power_objs["power_consumers"][#power_objs["power_consumers"] +1] = sect
+                    
+                    power_item_sects["power_consumers"] = power_item_sects["power_consumers"] or {}
+                    power_item_sects["power_consumers"][#power_item_sects["power_consumers"] + 1] = item_sect
+                end
                 
             elseif contains(power_source_types, placeable_type) then
                 power_objs["power_sources"] = power_objs["power_sources"] or {}
@@ -945,6 +995,7 @@ function gather_power_objects()
         -- placeable in sect, bounding_box_size as key
     end)
     dbg("dev", "found power objects:\n%s", power_objs)
+    dbg("dev", "found power item sections:\n%s", power_item_sects)
     PLACEABLE_POWER_SOURCES = contains(power_objs, "power_sources", true) and power_objs["power_sources"] or {}
     PLACEABLE_POWER_CONSUMERS = contains(power_objs, "power_consumers", true) and power_objs["power_consumers"] or {}
     PLACEABLE_POWER_STORAGE = contains(power_objs, "power_storage", true) and power_objs["power_storage"] or {}

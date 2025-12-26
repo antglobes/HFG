@@ -54,20 +54,6 @@ gid = 0
 
 
 -- Tables
-AVG_KWH = { -- per month (calculated based on localised weather data for 2016 chernobyl area)
-	[1]=3138.911290322178,
-	[2]=3698.2142857138397,
-	[3]=4404.637096773382,
-	[4]=5149.166666662503,
-	[5]=5811.491935483084,
-	[6]=6190.208333333333,
-	[7]=6059.274193548386,
-	[8]=5504.233870966935,
-	[9]=4794.583333332503,
-	[10]=4057.4596774185484,
-	[11]=3382.9166662499997,
-	[12]=2989.5161290318547,
-}
 AVG_LIGHT_HRS = {
     [1]  = {["start"]=8, ["end"]=16},
     [2]  = {["start"]=7, ["end"]=17},
@@ -225,6 +211,7 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     self.emission_active = data["emission_active"] or false
     self.df_mult = data["df_mult"] or 0
     self.update_deg_fac_tmr = data["update_deg_fac_tmr"] or 0
+    self.update_cond_tmr = data["update_cond_tmr"] or 0
 
     -- Orientaion (Power Effiencieny)
     self.panel_tilt = data["panel_tilt"] or 0
@@ -303,7 +290,7 @@ function placeable_solar_panel_wrapper:SetupDegradationArgs()
         local material = material_name:sub(e + 1, #material_name)
         dbg("dev", "surface underneath solar panel: %s", material)
         if not contains(exclude_materials, material) and contains(MAT_DEG_FAC, material, true) then
-            self.degradation_factor = MAT_DEG_FAC[material] + math.random(0, 0.5)
+            self.degradation_factor = MAT_DEG_FAC[material]
         end
         dbg("dev", "base deg factor: %s", self.degradation_factor)
     end
@@ -440,10 +427,14 @@ function placeable_solar_panel_wrapper:ProcessDegredationFactor()
             dbg("dev", "end emission active: %s, degradation_factor: %s", self.emission_active, self.degradation_factor)
         end
 
+        self.update_deg_fac_tmr = tg + 1000
+    end
+
+    if tg > self.update_cond_tmr then
         dbg("dev", "current condition: %s", self.condition)
         self.condition = self.condition * (1 - self.degradation_factor)
         dbg("dev", "new condition: %s", self.condition)
-        self.update_deg_fac_tmr = tg + 1000
+        self.update_cond_tmr = tg + (10 * 1000)
     end
 end
 
@@ -665,6 +656,7 @@ function placeable_solar_panel_wrapper:pickup()
 
     local obj_id = self.object:id()
     local data = hf_obj_manager.get_data(obj_id)
+    dbg("dev", "attempting to remove %s on gridL %s", obj_id, self.grid_id)
     hfg_power_grid.remove_power_source(self.grid_id, obj_id)
     -- Create Item with condition
     if self.condition > BROKEN_COND then
@@ -738,7 +730,7 @@ function placeable_solar_panel_wrapper:save_data()
         emission_active      = self.emission_active,
         df_mult              = self.df_mult,
         update_deg_fac_tmr   = self.update_deg_fac_tmr,
-
+        update_cond_tmr      = self.update_cond_tmr,
         panel_tilt           = self.panel_tilt,
         surface_tilt         = self.surface_tilt,
         tilt_deviation       = self.tilt_deviation,
@@ -773,7 +765,7 @@ function placeable_solar_panel_wrapper:load_data()
     self.parts                = data["parts"]
     self.power_state          = data["power_state"]
     self.powerable_device_tmr = data["powerable_device_tmr"]
-    self.power_off_consumers   = data["power_off_consumers"]
+    self.power_off_consumers  = data["power_off_consumers"]
     self.powerable_devices    = data["powerable_devices"]
     self.max_power_output     = data["max_power_output"]
     self.power_output         = data["power_output"]
@@ -789,6 +781,7 @@ function placeable_solar_panel_wrapper:load_data()
     self.emission_active      = data["emission_active"]
     self.df_mult              = data["df_mult"]
     self.update_deg_fac_tmr   = data["update_deg_fac_tmr"]
+    self.update_cond_tmr      = data["update_cond_tmr"]
     self.power_input_tmr      = data["power_input_tmr"]
     self.panel_tilt           = data["panel_tilt"]
     self.surface_tilt         = data["surface_tilt"]
@@ -797,7 +790,7 @@ function placeable_solar_panel_wrapper:load_data()
     self.solar_panel_eff      = data["solar_panel_eff"]
     self.avg_light_hrs        = data["avg_light_hrs"]
     self.daily_power_output   = data["daily_power_output"]
-
+    self.grid_id              = data["grid_id"]
     self.last_cond_state      = data["last_cond_state"]
     self.curr_fx              = data["curr_fx"]
     self.fx_tbl               = data["fx_tbl"]
