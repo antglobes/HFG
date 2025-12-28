@@ -112,6 +112,8 @@ function bone_to_part_name(bone_name, kind)
             part_name = part_name .. "bottom_frame"
         elseif contains({"top_frame_left", "top_frame_right"}, bone_name) then
             part_name = part_name .. "top_frame"
+        elseif contains({"battery_box_left", "battery_box_right"}, bone_name) then
+            part_name = part_name .. "battery_box"
         else
             part_name = part_name .. bone_name
         end

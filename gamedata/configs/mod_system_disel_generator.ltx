@@ -453,3 +453,52 @@ bounding_box_size = 0.475, 0.171, 0.658
 base_rotation = 180
 
 max_power_output = 12000
+
+
+[hfg_makeshift_battery]:hfg_item_base
+visual                  = dynamics\hfg_makeshift_battery.ogf
+description             = st_hfg_makeshift_battery_descr
+inv_name                = st_hfg_makeshift_battery
+inv_name_short          = st_hfg_makeshift_battery
+inv_grid_x              = 14
+inv_grid_y              = 7
+inv_grid_height         = 2
+inv_grid_width          = 2
+cost                    = 6000
+inv_weight              = 2.5
+placeable_type          = battery
+placeable_section       = placeable_makeshift_battery
+
+[placeable_makeshift_battery]:physic_object
+visual                  = dynamics\hfg_makeshift_battery.ogf
+script_binding          = bind_hf_base.init
+item_section            = hfg_makeshift_battery
+placeable_type          = prop
+bounding_box_origin     = 0.000393, 0, 0.11709
+bounding_box_size       = 0.164, 0.116, 0.143
+
+
+[hfg_wooden_box]:hfg_item_base
+visual                  = dynamics\hfg_prt_sp_battery_box.ogf
+description             = st_hfg_wooden_box_descr
+inv_name                = st_hfg_wooden_box
+inv_name_short          = st_hfg_wooden_box
+inv_grid_x              = 16
+inv_grid_y              = 7
+inv_grid_height         = 2
+inv_grid_width          = 2
+cost                    = 400
+inv_weight              = 0.75
+placeable_type          = prop
+placeable_section       = placeable_hfg_wooden_box
+
+[placeable_hfg_wooden_box]:physic_object
+visual                  = dynamics\hfg_prt_sp_battery_box.ogf
+script_binding          = bind_hf_base.init
+item_section            = hfg_wooden_box
+placeable_type          = prop
+bounding_box_origin     = -0.002213, -0.004295, 0.074606
+bounding_box_size       = 0.160, 0.136, 0.088
+
+
+

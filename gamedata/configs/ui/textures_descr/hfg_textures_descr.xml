@@ -67,6 +67,10 @@
         <texture id="ui_hfg_prt_sp_right_leg"    x="650"    y="250" width="100"    height="50" />
         <texture id="ui_hfg_prt_sp_top_panel"    x="750"    y="200" width="100"    height="50" />
         <texture id="ui_hfg_prt_sp_bottom_panel" x="750"    y="200" width="100"    height="50" />
+
+        <texture id="ui_hfg_prt_sp_battery"       x="500"    y="250" width="100"    height="50" />
+        <texture id="ui_hfg_prt_sp_battery_wires" x="0"      y="200" width="50"     height="50" />
+        <texture id="ui_hfg_prt_sp_battery_box"   x="800"    y="350" width="100"    height="100" />
     </file>
 
     <file name="ui\ui_color_picker">
