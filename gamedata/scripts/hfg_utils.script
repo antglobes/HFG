@@ -101,10 +101,10 @@ function bone_to_part_name(bone_name, kind)
         part_name = "hfg_prt_"
         if contains({"link", "body", "frame-a", "frame-b"}, bone_name) then
             part_name = part_name .. "frame"
-        elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
-            part_name = part_name .. bone_name
         elseif contains({"but_belt", "top_belt"}, bone_name) then
             part_name = part_name .. "band"
+        else
+            part_name = part_name .. bone_name
         end
     elseif kind == "solar_panel" then
         part_name = "hfg_prt_sp_"
@@ -119,7 +119,7 @@ function bone_to_part_name(bone_name, kind)
         end
     end
     return part_name
-end
+end --elseif contains({"turbine", "engine", "wires", "battery", "fan", "exhaust", "pipes", "l_rotor", "r_rotor", "tank"}, bone_name)  then
 
 function get_parts_tbl(sect)
     local parts = itms_manager.ini_parts:r_string_ex("nor_parts_list", sect)

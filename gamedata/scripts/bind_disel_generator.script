@@ -564,7 +564,7 @@ function placeable_disel_generator_wrapper:pickup()
     local gen_id = self.object:id()
     local data = hf_obj_manager.get_data(gen_id)
     -- Remove power source from grid
-    hfg_power_grid.remove_power_source(self.grid_id, gen_id)
+    hfg_power_grid.remove_power_source_from_grid(self.grid_id, gen_id)
 
     -- Create Item with condition
     if self.condition > BROKEN_COND then

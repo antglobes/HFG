@@ -554,3 +554,17 @@ function get_visual(sect)
     return ini_sys:r_string_ex(sect, "visual")
 end
 
+function get_closest_bone(obj, pos, hud)
+    local closest_bone
+    local closest_dist
+    hud = not hud and false or hud
+    pos = not pos and db.actor:position() or pos
+    for id, name in pairs(obj:list_bones(hud)) do
+        local bone_pos = obj:bone_position(id, hud)
+        local dist = bone_pos:distance_to(pos)
+        if not closest_dist or dist < closest_dist then
+            closest_bone = id
+        end
+    end
+    return closest_bone
+end
