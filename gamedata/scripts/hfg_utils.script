@@ -127,6 +127,27 @@ function get_parts_tbl(sect)
     return parts_tbl
 end
 
+function init_parts(obj, placeable_type)
+ local parts = {}
+    for bone_id, bone_name in pairs(obj:list_bones()) do
+        local part_name = bone_to_part_name(bone_name, placeable_type)
+        if not contains(parts, part_name, true) then
+            parts[part_name] = {}
+            parts[part_name].name = part_name
+            parts[part_name].condition = 1
+            parts[part_name].bone_name = bone_name
+            parts[part_name].bone_id = bone_id
+            parts[part_name].components = get_parts_tbl(part_name)
+            local name = part_name:gsub("hfg_prt_", "")
+            local dam_multi = hfg_utils.part_damage_multi[placeable_type][name]
+            --dbg("dev", "name: %s, dam multi: %s", name, dam_multi)
+            parts[part_name].dam_multi =  dam_multi + round_idp(math.random(0.01, 0.5), 2)
+            -- dbg("dev", "adding %s to parts", part_name)
+        end
+    end
+    return parts
+end
+
 function valid_screen_pos(pos)
 	return (pos.x ~= -9999) and (pos.y ~= 0) and (pos.x <= 1024) and (pos.y <= 768)
 end
@@ -187,8 +208,10 @@ function get_solar_panels(pos)
 end
 
 function sort_obj_by_closest_pos(t, a, b, pos)
-    local a_dist = t[a]:position():distance_to(pos)
-    local b_dist = t[b]:position():distance_to(pos)
+    local a_pos = type(t[a]) == "userdata" and t[a]:position() or t[a]["pos"]
+    local b_pos = type(t[b]) == "userdata" and t[b]:position() or t[b]["pos"]
+    local a_dist = a_pos:distance_to(pos)
+    local b_dist = b_pos:distance_to(pos)
     return a_dist < b_dist
 end
 
