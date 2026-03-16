@@ -118,7 +118,6 @@ function get_power_data(obj, power_typ)
             consumers = {},
             power_remaining = 0,
             all_consumers_satisfied = false,
-            requires_inverter = false,
         },
         power_consumers = {
             power_state = "off",
@@ -155,11 +154,6 @@ function get_power_data(obj, power_typ)
 
     if power_typ == "power_consumers" then
         data["power_needed"] = ini_sys:r_float_ex(power_obj_sect, "fuel_duration", 300)
-    elseif power_typ == "power_sources" then
-        if power_obj_sect == hfg_utils.PLACEABLE_SOLAR_PANELS then
-            data["requires_inverter"] = true
-            data["inverter_id"] = -1
-        end
     end
     dbg("dev", "getting power data: %s", data)
     return data
@@ -521,20 +515,6 @@ update_grids = throttle(
                         -- Disable power output if broken or off
                         data["power_state"] = hf_data["power_state"]
                         
-                        -- Only for power sources that require inverters ensure it's capable of allowing power
-                        if not data["requires_inverter"] then
-                            data["power_output"] = hf_data["power_output"]
-                        elseif data["requires_inverter"] then
-                            local power_output = 0
-                            if 
-                                data["inverter_id"] > 0 
-                                and grid_data["power_logic"][data.inverter_id]["transmit_power"] 
-                                and grid_data["power_logic"][data.inverter_id]["power_state"] == "on"
-                            then
-                                power_output = hf_data["power_output"]
-                            end
-                            data["power_output"] = power_output
-                        end
 
                         -- Check that power source can satisfy it's consumers
                         local num_satisfied = 0
@@ -552,13 +532,12 @@ update_grids = throttle(
                         if is_not_empty(data["consumers"]) and contains(grid_data, "power_consumers", true) then
 
                             for idx, pc_id in pairs(data["consumers"]) do -- sort by lowest power neeeded
-                                -- Check that power source if inverter required is switched on and connected
-                                local inverter_required = data["requires_inverter"]
-                                local transmit_power = inverter_required and (
-                                    data["inverter_id"] > 0 
-                                    and contains(grid_data, "power_logic", true) and is_not_empty(grid_data["power_logic"])
-                                    and grid_data["power_logic"][data.inverter_id]["transmit_power"] 
-                                    and grid_data["power_logic"][data.inverter_id]["power_state"] == "on"
+                                -- Check that power source if breaker required is switched on and connected
+                                local breaker_attached = data["breaker_id"] > 0
+                                local transmit_power = breaker_attached and (
+                                    can_transmit_power(grid_data, data.breaker_id)
+                                    and is_switched_on(grid_data, data.breaker_id, "power_logic")
+                                    and is_fuse_protected(grid_data, data.breaker_id, pc_id, "power_consumers")
                                 ) or false
 
                                 if 
@@ -570,10 +549,10 @@ update_grids = throttle(
                                     local power_needed = pc_data["power_needed"]
                                     local pc_hf_data = hf_obj_manager.get_data(pc_id)
                                     -- dbg("dev", "id:%s, power available: %s", pc_id, power_remaining - power_needed >= 0)
-                                    -- dbg("dev", "inverter required:%s, transmit power:%s", inverter_required, transmit_power)
+                                    -- dbg("dev", "inverter required:%s, transmit power:%s", breaker_attached, transmit_power)
                                     if 
                                         power_remaining - power_needed >= 0
-                                        and (not inverter_required or inverter_required and transmit_power) 
+                                        and (not breaker_attached or breaker_attached and transmit_power) 
                                     then
                                         if not power_satisfied then
                                             power_satisfied = true
@@ -589,7 +568,7 @@ update_grids = throttle(
                                         
                                     elseif 
                                         power_remaining - power_needed < 0 
-                                        and ( not inverter_required or inverter_required and not transmit_power)
+                                        and ( not breaker_attached or breaker_attached and not transmit_power)
                                     then
                                         if power_satisfied then
                                             power_satisfied = false
@@ -682,30 +661,30 @@ update_grids = throttle(
 
                             -- Add consumer to closest power source, if active, if has enough power
                             elseif power_satisfied_typ == -1 then
-                                local closest_ps_info = get_closest_power_source(grid_id, data["pos"], {"on"})
-                                if is_not_empty(closest_ps_info) and closest_ps_info["id"] then
-                                    local ps_id = closest_ps_info["id"]
-                                    local power_needed = data["power_needed"]
-                                    local ps_data = grid_data["power_sources"][ps_id]
-                                    local power_remaining = ps_data["power_remaining"]
-                                    -- Check that power source if inverter required is switched on and connected
-                                    local inverter_required = data["requires_inverter"]
-                                    local transmit_power = inverter_required and (
-                                        data["inverter_id"] > 0 
-                                        and grid_data["power_logic"][data.inverter_id]["transmit_power"] 
-                                        and grid_data["power_logic"][data.inverter_id]["power_state"] == "on"
-                                    ) or false
-                                    if 
-                                        not contains(data["sources"], ps_id)
-                                        and power_remaining - power_needed >= 0
-                                        and (not inverter_required or inverter_required and transmit_power)
-                                        and not contains(grid_data["power_sources"][ps_id].consumers, id)
-                                    then
-                                        -- data["power_satisfied"] = true
-                                        power_satisfied = true
-                                        data["sources"][#data["sources"] + 1] = ps_id
-                                        grid_data["power_sources"][ps_id].consumers[#grid_data["power_sources"][ps_id].consumers + 1] = id
-                                        dbg("dev", "init power source %s for consumer %s", ps_id, id)
+                                if is_not_empty(grid_data["power_sources"]) then
+                                    for ps_id, ps_data in spairs(grid_data["power_sources"], function(t, a, b) return sort_obj_by_closest_pos(t, a, b, data["pos"]) end) do
+                                        local power_needed = data["power_needed"]
+                                        local ps_data = grid_data["power_sources"][ps_id]
+                                        local power_remaining = ps_data["power_remaining"]
+                                        -- Check that power source if inverter required is switched on and connected
+                                        local breaker_attached = data["breaker_id"] > 0
+                                        local transmit_power = breaker_attached and (
+                                            can_transmit_power(grid_data, data.breaker_id)
+                                            and is_switched_on(grid_data, data.breaker_id, "power_logic")
+                                        ) or false
+                                        if 
+                                            not contains(data["sources"], ps_id)
+                                            and not power_satisfied
+                                            and power_remaining - power_needed >= 0
+                                            and (not breaker_attached or breaker_attached and transmit_power)
+                                            and not contains(grid_data["power_sources"][ps_id].consumers, id)
+                                        then
+                                            -- data["power_satisfied"] = true
+                                            power_satisfied = true
+                                            data["sources"][#data["sources"] + 1] = ps_id
+                                            grid_data["power_sources"][ps_id].consumers[#grid_data["power_sources"][ps_id].consumers + 1] = id
+                                            dbg("dev", "init power source %s for consumer %s", ps_id, id)
+                                        end
                                     end
                                 end
                                 
@@ -735,35 +714,19 @@ update_grids = throttle(
                 if contains(grid_data, "power_logic", true) and is_not_empty(grid_data["power_logic"]) then
                     for id, data in pairs(grid_data["power_logic"]) do
                         local hf_data = hf_obj_manager.get_data(id)
-
+                        -- Power Object Globals
+                        data["condition"] = hf_data["condition"]
+                        data["connections"] = hf_data["connections"]
                         data["power_state"] = hf_data["power_state"]
                         data["transmit_power"] = hf_data["transmit_power"]
-                        
-                        -- Init connection to solar panel
-                        if 
-                            contains(grid_data, "power_sources", true)
-                            and is_not_empty(grid_data["power_sources"])
-                            and contains(data, "connections", true) 
-                            and not contains(data["connections"], "sources", true)
-                            and data["sect"]:find("inverter")
-                        then
-                            for ps_id, ps_data in pairs(grid_data["power_sources"]) do
-                                local ps_obj = get_unknown_object({id=ps_id}, "game")
-                                if ps_obj then
-                                    local closest_bone = get_closest_bone(ps_obj, data["pos"])
-                                    local dist = data["pos"]:distance_to(ps_obj:bone_position(closest_bone))
-                                    dbg("dev", "id:%s, power source id: %s, dist: %s", id, ps_id, data["pos"]:distance_to(ps_data["pos"]))
-                                    if ps_data["inverter_id"] <= 0 and dist <= 3 then
-                                        dbg("dev", "touching sp")
-                                        grid_data["power_sources"][ps_id].inverter_id = id
-                                        data["connections"]["sources"] = {}
-                                        data["connections"]["sources"][#data["connections"]["sources"] + 1] = ps_id
-                                    end
-                                end
+
+                        if data.sect == bind_breaker.BREAKER_SECT then
+
+                            for id, info in pairs(data["connections"]) do
+                                local breaker_id = grid_data[info.typ][info.id].breaker_id
+
                             end
                         end
-
-
                     end
                 end
 
@@ -932,16 +895,16 @@ function ui_furniture_light.toggle_light(obj_id)
                 local ps_data = closest_grid["power_sources"][ps_id]
                 local ps_power_state = ps_data["power_state"]
 
-                local inverter_required = ps_data["requires_inverter"]
-                local transmit_power = inverter_required and (
-                    ps_data["inverter_id"] > 0 
-                    and closest_grid["power_logic"][ps_data.inverter_id]["transmit_power"] 
-                    and closest_grid["power_logic"][ps_data.inverter_id]["power_state"] == "on"
+                local breaker_attached = ps_data["requires_inverter"]
+                local transmit_power = breaker_attached and (
+                    ps_data["breaker_id"] > 0 
+                    and closest_grid["power_logic"][ps_data.breaker_id]["transmit_power"] 
+                    and closest_grid["power_logic"][ps_data.breaker_id]["power_state"] == "on"
                 ) or false
                 dbg("dev", "grid data: %s", closest_grid)
                 if 
                     ps_power_state ~= "on" 
-                    and (not inverter_required or inverter_required and not transmit_power)
+                    and (not breaker_attached or breaker_attached and not transmit_power)
                 then
                     all_sources_on = false
                 end
@@ -1068,9 +1031,9 @@ end
 function gather_power_objects()
     local power_objs = {}
     local power_consumer_types = {"tv", "lamp", "torch", "light", "radio"}
-    local power_source_types = {"generator"}
+    local power_source_types = {"generator", "solar_panel"}
     local power_storage_types = {"battery"}
-    local power_logic_types = {"inverter"}
+    local power_logic_types = {"breaker"}
     local power_item_sects = {}
     ini_sys:section_for_each(function(sect)
         if 
@@ -1159,16 +1122,16 @@ if power_satisfied_typ == 0 then
             data["sources"] = contains(data, "sources", true) and data["sources"] or {}
             local power_remaining = ps_data["power_remaining"]
             local power_needed = data["power_needed"]
-            local inverter_required = data["requires_inverter"]
-            local transmit_power = inverter_required and (
-                data["inverter_id"] > 0 
-                and grid_data["power_logic"][data.inverter_id]["transmit_power"] 
-                and grid_data["power_logic"][data.inverter_id]["power_state"] == "on"
+            local breaker_attached = data["breaker_id"] > 0
+            local transmit_power = breaker_attached and (
+                data["breaker_id"] > 0 
+                and grid_data["power_logic"][data.breaker_id]["transmit_power"] 
+                and grid_data["power_logic"][data.breaker_id]["power_state"] == "on"
             ) or false
             if 
                 not contains(data["sources"], ps_id)
                 and power_remaining - power_needed >= 0
-                and (not inverter_required or inverter_required and transmit_power)
+                and (not breaker_attached or breaker_attached and transmit_power)
                 and not contains(grid_data["power_sources"][ps_id].consumers, id)
             then
                 data["sources"][#data["sources"] + 1] = ps_id

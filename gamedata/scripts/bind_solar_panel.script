@@ -248,7 +248,7 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     }    
 
     -- Power Output
-    self.connected_inverter = 0
+    self.connected_breaker = 0
 
     self:SetupDegradationArgs()
     self:SetupEfficencyArgs()
@@ -822,7 +822,7 @@ end
     if self.att_info["att"] ~= nil then
         self.att_info["att"]:remove_attachment(self.att_info["name"])
         self.att_info["att"] = nil
-        self.object:set_bone_visible("inverter", true, true)
+        self.object:set_bone_visible("breaker", true, true)
         self:save_data()
     end
 
@@ -830,18 +830,18 @@ end
     Attachment Fields
     self.att_info = data["att_info"] or {}
     if is_empty(self.att_info) then
-        self.att_info["name"] = "inverter"
+        self.att_info["name"] = "breaker"
         self.att_info["visual"] = "dynamics\el_tehnika\el_control_unit_1.ogf"
     end
     self.att_info["att"] = self.object:add_attachment(self.att_info["name"], self.att_info["visual"])
-    self.att_info["att"]:set_parent_bone("inverter_base")
+    self.att_info["att"]:set_parent_bone("breaker_base")
     self.att_info["att"]:set_type(script_attachment_type.World)
     self.att_info["att"]:play_motion("idle_close", true, 1)
     dbg("dev", "%s bones: %s", self.att_info["name"], self.att:list_bones())
     self.att_info["att"]:set_rotation(vector():set(90, 0, 35))
-    obj:set_bone_visible("inverter", false, true)
-    obj:set_bone_visible("inverter", false, true)
-    self.object:set_bone_visible("inverter", false, true)
+    obj:set_bone_visible("breaker", false, true)
+    obj:set_bone_visible("breaker", false, true)
+    self.object:set_bone_visible("breaker", false, true)
 
 function placeable_solar_panel_wrapper:ProcessPowerState(cond_state)
     -- On Power State Switch

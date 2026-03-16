@@ -283,14 +283,20 @@
 	</string>
 	<string id="st_hfg_wooden_box_descr">
 		<text>
-		%c[d_orange] ï¿½ %c[ui_gray_1] Placeable Item\n
+		%c[d_orange] • %c[ui_gray_1] Placeable Item\n
 		</text>
 	</string>
-	<string id="st_hfg_inverter">
-		<text>Solar Panel Inverter</text>
+	<string id="st_hfg_breaker">
+		<text>Circuit Breaker</text>
 	</string>
-	<string id="st_hfg_inverter_descr">
-		<text>A electronical panel that converts the dc into ac as well as the control operations for attached power sources</text>
+	<string id="st_hfg_breaker_descr">
+		<text>A electronical panel that prevents electrical devices from overloading</text>
+	</string>
+	<string id="st_fuse_case">
+		<text>Plastic Fuse Case</text>
+	</string>
+	<string id="st_fuse_case_descr">
+		<text>A plastic fuse case</text>
 	</string>
 
 	<!-- Actor Menu Msgs -->
@@ -620,10 +626,10 @@
 	<string id="st_hfg_prt_sp_bottom_frame">
 		<text>Solar Panel Bottom Frame</text>
 	</string>
-	<string id="st_hfg_inverter_pole">
+	<string id="st_hfg_breaker_pole">
 		<text>Metal Pole</text>
 	</string>
-	<string id="st_hfg_inverter_pole_descr">
+	<string id="st_hfg_breaker_pole_descr">
 		<text>A metal pole used for attaching electronics off of.</text>
 	</string>
 	<string id="st_hfg_prt_sp_middle_leg">

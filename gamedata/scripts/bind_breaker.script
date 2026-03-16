@@ -7,18 +7,26 @@ ag_utils.import_metatable(this, ag_strings)
 ag_utils.import_metatable(this, ag_tables)
 gts = get_translation
 
+-- External Imports
+geo_ray = demonized_geometry_ray.geometry_ray
+
+-- Script Imports
+power_grids = hfg_power_grid.grids
+
 -- Utils
-get_config = hfg_utils.get_config
+get_config = hfg_mcm.get_config
 cond_to_state = hfg_utils.cond_to_state
 sort_obj_by_closest_pos = hfg_utils.sort_obj_by_closest_pos
-get_powerable_devices = hfg_utils.get_powerable_devices
-get_solar_panels = hfg_utils.get_solar_panels
+-- get_consumers = hfg_utils.get_consumers
 SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
 get_hf_item_name = hfg_utils.get_hf_item_name
 
 -- Constants
-LOG_HEADER = "[HFG|Bind Inverter]"
+LOG_HEADER = "[HFG|Bind Breaker]"
 BROKEN_COND = 0.1
+MAX_BREAKER_SLOTS = 16
+BREAKER_SECT = "hfg_breaker"
+PLACEABLE_BREAKER_SECT = ini_sys:r_string_ex(BREAKER_SECT, "placeable_section", BREAKER_SECT)
 
 -- Locals
 local dbg_pr = nil
@@ -39,9 +47,13 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     end
     dbg_pr:Log(level, fmt, ...)
+end
+
+function is_breaker(sect)
+    return BREAKER_SECT == sect
 end
 
 function toggle_power(obj_id)
@@ -73,52 +85,41 @@ function toggle_power(obj_id)
 
 end
 
--- Inverter Binder
+-- breaker Binder
 
 function init(obj)
     local id = obj:id()
     local sect = obj:section()
     dbg("dev", "attempt binding %s", sect)
-    if contains(hfg_blueprint.placing_blueprints, id, true) then
-        dbg("dev", "cannot bind %s, as is a blueprint ", sect)
-        return
-    end
-    
-    if not hfg_obj_persistance.in_cache(id, sect) then
-        hfg_obj_persistance.init(id, sect)
-    end
+    hfg_obj_persistance.init(id, sect, {tbl_id=id})
     dbg("dev", "binding %s", sect)
-    obj:bind_object(placeable_inverter_wrapper(obj).binder)
+    obj:bind_object(placeable_breaker_wrapper(obj).binder)
 end
 
-class "placeable_inverter_wrapper" (bind_hf_base.hf_binder_wrapper)
-function placeable_inverter_wrapper:__init(obj) super(obj)
-    dbg("dev", "Intialiasing inverter")
+class "placeable_breaker_wrapper" (bind_hf_base.hf_binder_wrapper)
+function placeable_breaker_wrapper:__init(obj) super(obj)
+    dbg("dev", "Intialiasing breaker")
 
     local data = hf_obj_manager.get_data(self.object:id())
 
     -- Object Fields
     self.section = self.object:section()
     self.item_section = ini_sys:r_string_ex(self.section, "item_section")
-    self.condition = (contains(data, "condition", true) and data["condition"]) or 1
+    self.condition = contains(data, "condition", true) and data["condition"] or 1
+    self.placeable_type = ini_sys:r_string_ex(self.item_section, "placeable_type")
+    self.parts = contains(data, "parts", true) and data["parts"] or hfg_utils.init_parts(self.object, self.placeable_type)
 
     -- Object State
-    self.power_state = self.condition > BROKEN_COND and (data["power_state"] or "off") or "broken"
-    -- self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
-    self.powerable_device_tmr = 0
-
-    -- Powerable Devices
-    self.power_off_consumers = true
-    self.powerable_devices = data["powerable_devices"] or {} -- get_powerable_devices(self.object:position())
-    self.max_power_output = ini_sys:r_float_ex(self.section, "max_power_output", MAX_POWER_OUTPUT)
-    self.power_output = data["power_output"] or 0
-    self.power_demand = data["power_demand"] or 0
-
-    -- Solar Panel Connections
-    self.transmit_power = data["transmit_power"] or false
-    self.transmit_power_tmr = data["transmit_power_tmr"] or 0
-    self.connected_solar_panels = data["connected_solar_panels"] or {}
-    self.update_po_tmr = data["update_po_tmr"] or 0
+    self.power_state = self.condition > BROKEN_COND and (contains(data, "power_state", true) and data["power_state"] or "off") or "broken"
+    self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
+    self.first_update = false
+    -- Breaker Connections
+    --self.power_off_consumers = true
+    self.grid_id = data["grid_id"] or -1
+    self.connections = data["connections"] or {} -- get_consumers(self.object:position())
+    self.max_slots = data["max_slots"] or MAX_BREAKER_SLOTS 
+    self.label_attached = data["label_attached"]  or false
+    self.slot_info = data["slot_info"] or {}
 
     -- Animation State
     self.anim_due = data["anim_due"] or false
@@ -140,133 +141,52 @@ function placeable_inverter_wrapper:__init(obj) super(obj)
         on = {
             [1] = {anim="idle_close",   duration=0.6, snd="device\\metal_small_close_start"},
             [2] = {anim="idle_open_on", duration=0.6, snd="device\\power_switch"},
-            [3] = {anim="idle_close", duration=0,    snd="ambient\\transformer_hum1"}
+            [3] = {anim="idle_close",   duration=0,   snd="ambient\\transformer_hum1"}
         },
         off = {
             [1] = {anim="idle_open_on",  duration=0.6, snd="ambient\\transformer_hum1"},
-            [2] = {anim="idle_open_off",        duration=0.6, snd="device\\power_switch"},
+            [2] = {anim="idle_open_off", duration=0.6, snd="device\\power_switch"},
             [3] = {anim="idle_close",    duration=0,   snd="ambient\\transformer_hum2"},
         }
     }
-
-
     self:save_data()
     dbg("all", "finished init")
-
 end
 
-function placeable_inverter_wrapper:update(delta)
+function placeable_breaker_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
 
     self.tg = time_global()
     self:load_data()
 
-    local condition = self.condition
-    local cond_state = cond_to_state(round_idp(condition * 100, 2))
-
+    -- local condition = self.condition
+    -- local cond_state = cond_to_state(round_idp(condition * 100, 2))
     self:ProcessAnims()
-    self:ProcessPowerInput()
-    self:ProcessPowerOutput()
 end
 
-function placeable_inverter_wrapper:ProcessPowerInput()
-    if self.power_state == "on" then
-        local pos = self.object:position()
-
-        if self.tg > self.update_po_tmr then
-            empty_table(self.connected_solar_panels)
-            local solar_panels = get_solar_panels(pos)
-            if is_not_empty(solar_panels) then
-                for _, obj in pairs(solar_panels) do
-                    local id = obj:id()
-                    local data = hf_obj_manager.get_data(id)
-                    if 
-                        not contains(self.connected_solar_panels, id, true)
-                        and data and contains(data, "connected_inverter", true)
-                        and data["connected_inverter"] == -1
-                    then
-                        self.connected_solar_panels[id] = obj
-                        data["connected_inverter"] = self.object:id()
-                        hf_obj_manager.update_data(id, data)
-                    end
-                end
-                self.transmit_power = is_not_empty(self.connected_solar_panels)
+function placeable_breaker_wrapper:ReinitAtts()
+    local all_slot_info = ui_breaker.slot_info
+    if all_slot_info and is_not_empty(all_slot_info) then
+        for slot_num, slot_info in pairs(all_slot_info[self.object:id()]) do
+            local att_name = strformat("slot_%s_attachment", slot_num)
+            if slot_info.has_fuse_case and not self.object:get_attachment(att_name) then
+                dbg("dev", "slot_info:%s", slot_info)
+                dbg("dev", "adding attachment: %s", att_name)
+                local visual = ini_sys:r_string_ex(hfg_fuses.FUSE_CASE, "visual")
+                dbg("dev", "visual: %s", visual)
+                local att = self.object:add_attachment(att_name, visual)
+                att:set_parent_bone(slot_info.name)
+                att:set_type(script_attachment_type.World)
+                att:set_scale(0.420)
+                local texture = slot_info.sticker_texture ~= "" and slot_info.sticker_texture or strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, "white")
+                dbg("dev", "texture:%s", texture)
+                att:set_shader(hfg_fuses.FUSE_CASE_STICKER_SUBMESH_ID, hfg_utils.DEF_MODEL_SHADER, texture)
             end
-            self.update_po_tmr = self.tg + 1000
-            self:save_data()
-        end
-
-        if self.tg > self.transmit_power_tmr then
-            for _, obj in spairs(self.connected_solar_panels, function(t, a, b) return sort_obj_by_closest_pos(t, a, b, pos) end) do
-                local id = obj:id()
-                local data = hf_obj_manager.get_data(id)
-                if 
-                    data and contains(data, "power_output", true)
-                    and data["power_output"] > 0
-                    and self.power_output <= self.max_power_output
-                then
-                    self.power_output = self.power_output + data["power_output"]
-                end
-            end
-
-            if self.power_output > self.max_power_output then
-                self:Explode()
-            end
-            self.transmit_power_tmr = self.tg + 1000
-            self:save_data()
         end
     end
 end
 
-function placeable_inverter_wrapper:ProcessPowerOutput()
-    if self.power_state == "on" and  self.transmit_power then
-        -- Search and Connect Powerable Devices, if not belonging to an inverter or generator
-        if self.tg > self.update_pd_tmr then
-            empty_table(self.powerable_devices)
-            local powerable_devices = get_powerable_devices(self.object:position())
-            if is_not_empty(powerable_devices) then
-                for id, sect in pairs(powerable_devices) do
-                    if not contains(self.powerable_devices, id, true) then
-                        self.powerable_devices[id] = sect
-                    end
-                end
-            end
-            self.update_pd_tmr = self.tg + 1000
-            self:save_data()
-        end
-
-        -- Keep Connected Powerable Devices Fueled
-        if self.tg > self.powerable_device_tmr then
-            dbg("info", "updating fuel")
-            for id, sect in pairs(self.powerable_devices) do
-                local data = hf_obj_manager.get_data(id)
-                if 
-                    data 
-                    and data["is_on"]
-                    and contains(data, "fuel", true) 
-                    and not contains(data, "infinite_fuel", true)
-                    and data["fuel"] < 0.95 
-                then
-                    hf_obj_manager.update_data(id, {fuel=1})
-                end
-            end
-            self.powerable_device_tmr = self.tg + (3600 * 1000)
-            self:save_data()
-        end
-
-    elseif self.power_state == "off" then
-        if self.power_off_consumers then
-            dbg("debug", "turning off devices")
-            for id, sect in pairs(self.powerable_devices) do
-                hf_obj_manager.update_data(id, {is_on=false})
-            end
-            self.power_off_consumers = false
-            self:save_data()
-        end
-    end
-end
-
-function placeable_inverter_wrapper:ProcessAnims()
+function placeable_breaker_wrapper:ProcessAnims()
     if self.anim_due then
         if not self.anim_in_progress then
             dbg("dev", "Setting Anim Control Vars")
@@ -274,6 +194,7 @@ function placeable_inverter_wrapper:ProcessAnims()
             self.anim_power_state = self.power_state
             self.anim_start_time = self.tg
             --self:CleanupParticles()
+            self:ReinitAtts()
             dbg("dev", "anim power state: %s", self.anim_power_state)
         end
 
@@ -304,7 +225,6 @@ function placeable_inverter_wrapper:ProcessAnims()
             self.anim_in_progress = false
             self.anim_tmr = 0
             self.anim_stage = 1
-            self.power_off_consumers = contains({"off", "broken"}, self.power_state)
             self:save_data()
             return
         end
@@ -342,11 +262,9 @@ function placeable_inverter_wrapper:ProcessAnims()
     end
 end
 
-
-function placeable_inverter_wrapper:pickup()
+function placeable_breaker_wrapper:pickup()
     dbg("info", "on pickup")
     self:load_data()
-
     local obj_id = self.object:id()
     local data = hf_obj_manager.get_data(obj_id)
     -- Create Item with condition
@@ -360,7 +278,7 @@ function placeable_inverter_wrapper:pickup()
 
         -- Replace gen id
         -- replace_generator(data["tbl_id"], se_obj.id)
-        local old = {id=data["tbl_id"], sect=self.item_section}
+        local old = {id=data["tbl_id"], sect=self.section}
         local new = {id=se_obj.id, sect=self.item_section}
         hfg_obj_persistance.replace(old, new)
 
@@ -371,74 +289,84 @@ function placeable_inverter_wrapper:pickup()
     else
         hfg_obj_persistance.remove(obj_id, self.item_section)
         hf_obj_manager.cleanup_data(obj_id)
-        disassemble_power_source(self.item_section, data["parts"], self.object)
+        hfg_power_grid.disassemble_power_obj(self.item_section, data["parts"], self.object)
     end
-
 
     -- Clean up HF-related data
     return true
 end
 
-function placeable_inverter_wrapper:net_destroy()
-    dbg("dev", "on net destroy")
-    self:save_data()
+function placeable_breaker_wrapper:net_spawn()
+    dbg("dev", "on net spawn")
+    self:load_data()
+    if self.label_attached then
+        dbg("dev", "adding attachment: label")
+        local label_visual = ini_sys:r_string_ex(bind_breaker_label.LABEL_SECT, "visual")
+        local att = self.object:add_attachment("label", label_visual)
+        att:set_parent_bone("label")
+        att:set_type(script_attachment_type.World)
+    end
 end
 
-function placeable_inverter_wrapper:save_data()
-    dbg("all", "save data")
+function placeable_breaker_wrapper:net_destroy()
+    dbg("dev", "on net destroy")
+    self:save_data()
+    for i=1, MAX_BREAKER_SLOTS do
+        local att_name = strformat("slot_%s_attachment", i)
+        dbg("dev", "removing attachment: %s", att_name)
+        if self.object:get_attachment(att_name) then
+            self.object:remove_attachment(att_name)
+        end
+    end
+    if self.label_attached then
+        dbg("dev", "removing attachment: label")
+        self.object:remove_attachment("label")
+    end
+
+end
+
+function placeable_breaker_wrapper:save_data()
+    -- dbg("all", "save data")
     local data = {
-    section                = self.section,
-    item_section           = self.item_section,
-    condition              = self.condition,
-    parts                  = self.parts,
-    power_state            = self.power_state,
-    powerable_device_tmr   = self.powerable_device_tmr,
-    power_off_consumers      = self.power_off_consumers,
-    powerable_devices      = self.powerable_devices,
-    max_power_output       = self.max_power_output,
-    power_output           = self.power_output,
-    transmit_power         = self.transmit_power,
-    transmit_power_tmr     = self.transmit_power_tmr,
-    max_power_output     = self.transmit_power_tmr,
-    connected_solar_panels = self.connected_solar_panels,
-    update_po_tmr          = self.update_po_tmr,
-    anim_due               = self.anim_due,
-    anim_in_progress       = self.anim_in_progress,
-    anim_stage             = self.anim_stage,
-    anim_state             = self.anim_state,
-    anim_power_state       = self.anim_power_state,
-    current_motion         = self.current_motion,
-    }
-        -- dbg("dev", "saving hf data with: %s", data)
+        section                = self.section,
+        item_section           = self.item_section,
+        condition              = self.condition,
+        parts                  = self.parts,
+        power_state            = self.power_state,
+        grid_id                = self.grid_id,
+        connections            = self.connections,
+        label_attached         = self.label_attached,
+        max_slots              = self.max_slots,
+        anim_due               = self.anim_due,
+        anim_in_progress       = self.anim_in_progress,
+        anim_stage             = self.anim_stage,
+        anim_state             = self.anim_state,
+        anim_power_state       = self.anim_power_state,
+        current_motion         = self.current_motion,
+    }    -- dbg("dev", "saving hf data with: %s", dat
     local curr_data = hf_obj_manager.get_data(self.object:id())
     if curr_data and contains(curr_data, "tbl_id", true) then
         -- update_generator(curr_data["tbl_id"], data)
         -- dbg("dev", "updating persistance data")
-        hfg_obj_persistance.update(curr_data["tbl_id"], self.item_section, data)
+        hfg_obj_persistance.update(curr_data["tbl_id"], self.section, data)
     end
     -- dbg("dev", "updating hf data")
     hf_obj_manager.update_data(self.object:id(), data)
     -- dbg("dev", "completed save")
 end
 
-function placeable_inverter_wrapper:load_data()
-    dbg("all", "on load")
+function placeable_breaker_wrapper:load_data()
+    -- dbg("all", "on load")
     local data = hf_obj_manager.get_data(self.object:id())
     self.section                = data["section"]
     self.item_section           = data["item_section"]
     self.condition              = data["condition"]
     self.parts                  = data["parts"]
     self.power_state            = data["power_state"]
-    self.powerable_device_tmr   = data["powerable_device_tmr"]
-    self.power_off_consumers      = data["power_off_consumers"]
-    self.powerable_devices      = data["powerable_devices"]
-    self.max_power_output       = data["max_power_output"]
-    self.power_output           = data["power_output"]
-    self.transmit_power         = data["transmit_power"] 
-    self.transmit_power_tmr     = data["transmit_power_tmr"]
-    self.max_power_output     = data["transmit_power_tmr"]
-    self.connected_solar_panels = data["connected_solar_panels"]
-    self.update_po_tmr          = data["update_po_tmr"] 
+    self.grid_id                = data["grid_id"]
+    self.connections            = data["connections"]
+    self.label_attached         = data["label_attached"]
+    self.max_slots              = data["max_slots"]
     self.anim_due               = data["anim_due"] 
     self.anim_in_progress       = data["anim_in_progress"] 
     self.anim_stage             = data["anim_stage"]
@@ -447,11 +375,11 @@ function placeable_inverter_wrapper:load_data()
     self.current_motion         = data["current_motion"]
 end
 
-
 -- Callbacks
 
 function on_option_change(options)
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    BROKEN_COND = options["main"]["power_obj_broken_cond"]
     dbg("debug", "Received options")
 end
 
