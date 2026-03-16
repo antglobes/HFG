@@ -58,7 +58,7 @@ cost                                    = 50000
 inv_weight                              = 14.51
 
 ;placeable_type                          = power_receiver
-placeable_type                          = generator
+placeable_type                          = solar_panel
 placeable_section                       = placeable_solar_panel
 
 [placeable_solar_panel]:physic_object
@@ -67,7 +67,7 @@ visual                                  = dynamics\hfg_solar_panel.ogf
 script_binding                          = bind_solar_panel.init
 item_section                            = hfg_solar_panel
 base_rotation                           = 0
-placeable_type                          = generator
+placeable_type                          = solar_panel
 ;ui_on_interaction                       = bind_power_receiver.show_connections
 ;ui_on_simple_interaction                 = hfg_utils.toggle_power
 bounding_box_origin                     = -0.18217, 1.1476, -0.030934 ; x, z, y
