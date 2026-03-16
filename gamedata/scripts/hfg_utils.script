@@ -25,6 +25,9 @@ PLACEABLE_SOLAR_PANELS = "placeable_solar_panel"
 PLACEABLE_INVERTER = "placable_inverter"
 DISEL_GEN_ITEM = "disel_generator_item"
 SOLAR_PANEL_ITEM = "hfg_solar_panel"
+ELECTRA_PARTICLE = "anomaly2\\electra_damage_02_smoke"
+ELECTRA_SND = "anomaly\\electra_hit"
+DEF_MODEL_SHADER = "models\\model"
 
 -- MCM Variables
 SEARCH_RADIUS = 50
@@ -65,6 +68,19 @@ part_damage_multi = {
         exhaust = 3,
         tank = 5,
         wires = 5,
+    },
+    solar_panel = {
+        top_frame = 1,
+        bottom_frame = 1,
+        right_leg = 2,
+        middle_leg = 2,
+        left_leg = 2,
+        inverter = 2,
+        battery = 3,
+        battery_box = 4,
+        bottom_panel = 4,
+        top_panel = 4,
+        battery_wires = 5,
     }
 }
 
@@ -84,7 +100,7 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     end
     dbg_pr:Log(level, fmt, ...)
 end
@@ -139,7 +155,7 @@ function init_parts(obj, placeable_type)
             parts[part_name].bone_id = bone_id
             parts[part_name].components = get_parts_tbl(part_name)
             local name = part_name:gsub("hfg_prt_", "")
-            local dam_multi = hfg_utils.part_damage_multi[placeable_type][name]
+            local dam_multi = contains(part_damage_multi, placeable_type, true) and part_damage_multi[placeable_type][name] or 1
             --dbg("dev", "name: %s, dam multi: %s", name, dam_multi)
             parts[part_name].dam_multi =  dam_multi + round_idp(math.random(0.01, 0.5), 2)
             -- dbg("dev", "adding %s to parts", part_name)
@@ -278,10 +294,12 @@ function get_month_days(mth, yr)
     return mth ~= 2 and month_days[mth] or is_leap_year(yr) and 29
 end
 
--- MCM
-function get_config(key)
-    return hfg_mcm.get_config(key)
+function get_anim_offset(anim_style, anim_state)
+    return demonized_randomizing_functions[anim_style](anim_state)
 end
+
+
+-- MCM
 
 function is_key_held(key, duration)
     return ui_mcm.key_hold("hfg", key, duration)
@@ -296,10 +314,10 @@ function double_tap(key)
 end
 
 function on_option_change(options)
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
     dbg("debug", "Received options")
-    SEARCH_RADIUS = options["power_source_search_radius"]
-    BROKEN_COND = options["power_source_broken_cond"]
+    SEARCH_RADIUS = options["main"]["power_obj_search_radius"]
+    BROKEN_COND = options["main"]["power_obj_broken_cond"]
 end
 
 function on_game_start()
