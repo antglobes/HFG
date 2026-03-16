@@ -1,0 +1,2235 @@
+-- Library Imports
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_colours)
+
+gts = get_translation
+
+-- Script Imports
+has_mcm_keybinds = hfg_mcm.has_mcm_keybinds
+is_fuse_item = hfg_fuses.is_fuse_item
+get_fuse_info = hfg_fuses.get_fuse_info
+init_fuse_loose_info = hfg_fuses.init_fuse_loose_info
+replace_fuse_loose_info = hfg_fuses.replace_fuse_loose_info
+replace_fuse_case_info = hfg_fuses.replace_fuse_case_info
+is_fuse_case = hfg_fuses.is_fuse_case
+is_fuse_loose = hfg_fuses.is_fuse_loose
+power_grids = hfg_power_grid.grids
+power_types = hfg_power_grid.power_types
+
+-- Utils
+get_config = hfg_mcm.get_config
+simple_press = hfg_utils.simple_press
+double_tap = hfg_utils.double_tap
+dik_to_str = hfg_utils.dik_to_str
+is_key_held = hfg_utils.is_key_held
+get_anim_offset = hfg_utils.get_anim_offset
+
+-- MCM
+KEYBIND_MODIFIER        = get_config("main", "keybind_modifier")
+KEYBIND_MODE            = get_config("main", "keybind_mode")
+QUIT_KEYBIND            = get_config("main", "ui_quit_keybind") 
+TOGGLE_UI_KEYBIND       = get_config("main", "toggle_ui_keybind")
+CLR_BLIND_TYPE          = get_config("misc", "colour_blind_type")
+TOGGLE_PANEL_ANIM_STYLE = get_config("breaker", "toggle_panel_anim_style")
+CLR_SELECTOR_ANIM_STYLE = get_config("breaker", "clr_selector_anim_style")
+
+-- Constants
+LOG_HEADER = "[HFG|Breaker UI]"
+MAX_BREAKER_SLOTS = 16
+CAM_MOVE_TIME = 1 * 1000
+PANEL_MOVE_TIME = 1.5 * 1000
+EPS = 0.01
+TEXTURE_PREFIX = "ui_hfg_breaker"
+RED_CLR = vanilla_clr_tbl["red"]
+GREEN_CLR = vanilla_clr_tbl["green"]
+BLACK_CLR = vanilla_clr_tbl["black"]
+GRAPHITE_CLR = misc_clr_tbl["graphite"]
+-- -1=all,1=sticker, 2=case, 3=switch
+-- Globals
+GUI = nil
+slot_info = {}
+
+-- Locals
+local dbg_pr = nil
+
+-- Tables
+inv_info_order = {
+    hfg_fuse_case = 1,
+    hfg_fuse_normal = 2,
+    hfg_fuse_moist = 3,
+    hfg_fuse_damp = 4,
+    hfg_fuse_homemade = 5,
+    hfg_fuse_broken = 6
+
+}
+fc_sticker_hex = {
+    royal_purple = "430067ff",
+    cardinal_pink = "94216aff",
+    red_ribbon = "ff004dff",
+    tango = "ff8426ff",
+    golden_dream = "ffdd34ff",
+    electric_lime = "50e112ff",
+    ocean_dream = "3fa66fff",
+    venice_blue = "365987ff",
+    black = "000000ff",
+    dark_blue = "0033ffff",
+    cerulean = "29adffff",
+    caribbean_green = "00ffccff",
+    linen = "fff1e8ff",
+    silver_sand = "c2c3c7ff",
+    brown_rust = "ab5236ff",
+    fuscous_gray = "5f574fff",
+    white = "ffffffff",
+}
+fc_sticker_order = {
+    royal_purple = 1,
+    cardinal_pink = 2,
+    red_ribbon = 3,
+    tango = 4,
+    golden_dream = 5,
+    electric_lime = 6,
+    ocean_dream = 7,
+    venice_blue = 8,
+    black = 9,
+    dark_blue = 10,
+    cerulean = 11,
+    caribbean_green = 12,
+    linen = 13,
+    silver_sand = 14,
+    brown_rust = 15,
+    fuscous_gray = 16,
+    white = 17,
+}
+order_to_fc_sticker_clr_name = {}
+for clr, idx in pairs(fc_sticker_order) do
+    order_to_fc_sticker_clr_name[idx] = clr
+end
+
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function start_ui(obj_id)
+    dbg("dev", "start breaker ui")
+    if not GUI then
+        GUI = UICircuitBreaker()
+    end
+
+    if GUI then
+        GUI:Reset(obj_id)
+        GUI:ShowDialog(true)
+        Register_UI("UICircuitBreaker")
+    end
+end
+
+class "UICircuitBreaker" (CUIScriptWnd)
+function UICircuitBreaker:__init() super()
+    self:InitControls()
+    self:InitCallbacks()
+end
+
+-- Essentials
+function UICircuitBreaker:InitControls()
+    dbg("dev", "init controls")
+    self:SetWndRect(Frect():set(0, 0, 1024, 768))
+    self:SetAutoDelete(true)
+
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_breaker.xml")
+
+    self.dialog = self.xml:InitStatic("dialog", self)
+
+    -- Top Panel
+    self.top_panel = self.xml:InitStatic("top_panel", self.dialog)
+    self.top_panel:Show(false)
+
+    -- TP: Fuse Menu
+    self.fm_slot_list = self.xml:InitListBox("fm_slot_list", self.top_panel)
+
+    -- Side Panel
+    self.side_panel = self.xml:InitStatic("side_panel", self.dialog)
+    self.side_panel:Show(false)
+
+    -- self.item_indicator = self.xml:InitStatic("item_indicator", self.side_panel)
+    -- SP: Fuse Menu
+    self.fm_inv_list = self.xml:InitListBox("fm_inv_list", self.side_panel)
+
+    -- SP: Label Menu
+    self.lm_power_obj_list = self.xml:InitListBox("lm_power_obj_list", self.side_panel)
+
+    -- Bottom Panel
+    self.bottom_panel = self.xml:InitStatic("bottom_panel", self.dialog)
+    self.handle_btn = self.xml:Init3tButton("handle_btn", self.bottom_panel)
+    -- BP: Main Menu
+    self.fuses_menu_btn = self.xml:Init3tButton("fuses_menu", self.bottom_panel)
+    self.label_menu_btn = self.xml:Init3tButton("label_menu", self.bottom_panel)
+    self.close_btn = self.xml:Init3tButton("close_btn", self.bottom_panel)
+    -- BP: Fuses Menu
+    self.fm_action_btn      = self.xml:Init3tButton("fm_action_btn", self.bottom_panel)
+    self.fm_change_slot_btn = self.xml:Init3tButton("fm_change_slot_btn", self.bottom_panel)
+    self.fm_sticker_colour_btn      = self.xml:Init3tButton("fm_sticker_colour_btn", self.bottom_panel)
+    self.fm_back_btn        = self.xml:Init3tButton("fm_back_btn", self.bottom_panel)
+
+    -- BP: Label Menu
+    self.lm_label_btn = self.xml:Init3tButton("lm_label_btn", self.bottom_panel)
+    self.lm_view_label_btn = self.xml:Init3tButton("lm_view_label_btn", self.bottom_panel)
+    self.lm_power_obj_btn = self.xml:Init3tButton("lm_power_obj_btn", self.bottom_panel)
+    self.lm_sticker_colour_btn = self.xml:Init3tButton("lm_sticker_colour_btn", self.bottom_panel)
+    self.lm_change_slot_btn = self.xml:Init3tButton("lm_change_slot_btn", self.bottom_panel)
+    self.lm_back_btn = self.xml:Init3tButton("lm_back_btn", self.bottom_panel)
+
+    -- Label Menu UI
+    self.label_ui = {}
+    for i=1, MAX_BREAKER_SLOTS do
+        self.label_ui[i] = {}
+        -- self.label_ui[i].sticker_icon = self.xml:InitStatic("label:sticker_icon", self.dialog)
+        self.label_ui[i].slot_num = self.xml:InitTextWnd("label:slot_num", self.dialog)
+        self.label_ui[i].slot_power_obj = self.xml:InitTextWnd("label:slot_power_obj", self.dialog)
+    end
+
+    -- General
+    self.clr_selector = {}
+    self.clr_selector["bg"] = self.xml:InitFrame("clr_selector:bg", self.dialog)
+    self.clr_selector["clr_block"] = self.xml:InitStatic("clr_selector:clr_block", self.clr_selector["bg"])
+    self.clr_selector["clr_name"] = self.xml:InitTextWnd("clr_selector:clr_name", self.clr_selector["bg"])
+    self.clr_selector["track"] = self.xml:InitTrackBar("clr_selector:track", self.clr_selector["bg"])
+    self.clr_selector["set_btn"] = self.xml:Init3tButton("clr_selector:set_btn", self.clr_selector["bg"])
+    self.clr_selector["close_btn"] = self.xml:Init3tButton("clr_selector:close_btn", self.clr_selector["bg"])
+    for _, ele in pairs(self.clr_selector) do
+        ele:Show(false)
+    end
+
+    self.fm_action_btn:Show(false)
+    self.fm_change_slot_btn:Show(false)
+    self.fm_sticker_colour_btn:Show(false)
+    self.fm_back_btn:Show(false)
+    
+    self.lm_label_btn:Show(false)
+    self.lm_view_label_btn:Show(false)
+    self.lm_power_obj_btn:Show(false)
+    self.lm_sticker_colour_btn:Show(false)
+    self.lm_change_slot_btn:Show(false)
+    self.lm_back_btn:Show(false)
+
+    -- General
+    self:Register(self.clr_selector["set_btn"], "clr_selector_set_btn")
+    self:Register(self.clr_selector["close_btn"], "clr_selector_close_btn")
+    self:Register(self.clr_selector["track"], "clr_selector_track")
+
+    -- Main Menu
+    self:Register(self.handle_btn, "handle_btn")
+    self:Register(self.fuses_menu_btn, "fuses_menu_btn")
+    self:Register(self.label_menu_btn, "label_menu_btn")
+    self:Register(self.close_btn, "close_btn")
+
+    -- Fuses Menu
+    self:Register(self.fm_action_btn, "fm_action_btn")
+    self:Register(self.fm_change_slot_btn, "fm_change_slot_btn")
+    self:Register(self.fm_sticker_colour_btn, "fm_sticker_colour_btn")
+    self:Register(self.fm_back_btn, "fm_back_btn")
+    self:Register(self.fm_inv_list, "fm_inv_list")
+    self:Register(self.fm_slot_list, "fm_slot_list")
+
+    -- Label Menu
+    self:Register(self.lm_label_btn, "lm_label_btn")
+    self:Register(self.lm_view_label_btn, "lm_view_label_btn")
+    self:Register(self.lm_power_obj_btn, "lm_power_obj_btn")
+    self:Register(self.lm_sticker_colour_btn, "lm_sticker_colour_btn")
+    self:Register(self.lm_change_slot_btn, "lm_change_slot_btn")
+    self:Register(self.lm_back_btn, "lm_back_btn")
+    self:Register(self.lm_power_obj_list, "lm_power_obj_list")
+
+    -- 
+    dbg("dev","finished init")
+end -- help box and help panel (3/4 of screen) show controls, guide, mcm functions
+
+function UICircuitBreaker:InitCallbacks()
+    dbg("dev", "init callbacks")
+    -- General
+    self:AddCallback("clr_selector_set_btn", ui_events.BUTTON_CLICKED, self.OnClrSelectSetBtn, self)
+    self:AddCallback("clr_selector_close_btn", ui_events.BUTTON_CLICKED, self.OnClrSelectCloseBtn, self) 
+
+    -- Main Menu
+    self:AddCallback("handle_btn", ui_events.BUTTON_CLICKED, self.OnHandleBtn, self)
+    self:AddCallback("fuses_menu_btn", ui_events.BUTTON_CLICKED, self.OnFuseMenuBtn, self)
+    self:AddCallback("label_menu_btn", ui_events.BUTTON_CLICKED, self.OnLabelMenuBtn, self)
+    self:AddCallback("close_btn", ui_events.BUTTON_CLICKED, self.OnCloseBtn, self)
+
+    -- Fuses Menu
+    self:AddCallback("fm_action_btn", ui_events.BUTTON_CLICKED, self.OnActionBtn, self)
+    self:AddCallback("fm_change_slot_btn", ui_events.BUTTON_CLICKED, self.OnChangeSlot, self)
+    self:AddCallback("fm_back_btn", ui_events.BUTTON_CLICKED, self.OnBackBtn, self)
+    self:AddCallback("fm_inv_list", ui_events.LIST_ITEM_CLICKED, self.OnInvList, self)
+    self:AddCallback("fm_sticker_colour_btn", ui_events.BUTTON_CLICKED, self.OnStickerClrBtn, self)
+
+    -- Label Menu
+    self:AddCallback("lm_label_btn", ui_events.BUTTON_CLICKED, self.OnLabelBtn, self)
+    self:AddCallback("lm_view_label_btn", ui_events.BUTTON_CLICKED, self.OnViewLabelBtn, self)
+    self:AddCallback("lm_power_obj_btn", ui_events.BUTTON_CLICKED, self.OnPowerObjBtn, self)
+    self:AddCallback("lm_sticker_colour_btn", ui_events.BUTTON_CLICKED, self.OnStickerClrBtn, self)
+    self:AddCallback("lm_change_slot_btn", ui_events.BUTTON_CLICKED, self.OnLabelChangeSlot, self)
+    self:AddCallback("lm_back_btn", ui_events.BUTTON_CLICKED, self.OnBackBtn, self)
+    self:AddCallback("lm_power_obj_list", ui_events.LIST_ITEM_CLICKED, self.OnPowerObjList, self)
+    dbg("dev","finished init")
+end
+
+function UICircuitBreaker:Reset(obj_id)
+    dbg("dev", "reset ui")
+    self.object = get_unknown_object({id=obj_id}, "game")
+
+    self.delay_load_info = false
+    self.delay_load_info_tmr = 0
+    -- Camera Anim Args
+    self:SetupCameraArgs()
+    self:SetupPanelArgs()
+    self:SetupMenuArgs()
+    self:SetupFuseArgs()
+    self:SetupClrSelector()
+    self:SetupLabelArgs()
+    self:ResetPanelPos()
+    self:LoadSlotAtts()
+    self:MoveCamera(self.camera_positions["start"])
+    self.object:play_cycle("open_door", true)
+    self.object:play_cycle("idle_open_off", true)
+end
+
+function UICircuitBreaker:Update()
+    CUIScriptWnd.Update(self)
+    self:UpdateCamera()
+    self:ProcessPanelQueue()
+    self:AnimLabelAtt()
+    self:DelayLoadInfo()
+    self:UpdateClrSelectorPos()
+    self:UpdateClrSelector()
+    self:OnAnimEndClose()
+    self:UpdateSlotInfo()
+end
+
+function UICircuitBreaker:OnKeyboard(dik, keyboard_action)
+	local res = CUIScriptWnd.OnKeyboard(self,dik,keyboard_action)
+	if (res == false) then
+		-- local bind = dik_to_bind(dik)
+		if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
+            if dik == QUIT_KEYBIND then
+                dbg("info", "quit keybind pressed")
+                self:MoveCamera(self.camera_positions["original"], true)
+            elseif dik == TOGGLE_UI_KEYBIND then
+                dbg("info", "toggle ui keybind pressed")
+                self:ToggleUI()
+			end
+
+		end
+	end
+	return res
+end
+
+function UICircuitBreaker:IsShown()
+    return self.dialog:IsShown()
+end
+
+function UICircuitBreaker:Show(toggle_hud)
+    if self:IsShown() ~= toggle_hud then
+        self.dialog:Show(toggle_hud)
+        dbg("dev", "Setting ui shown to: %s", toggle_hud)
+    end
+end
+
+function UICircuitBreaker:ToggleUI()
+    local shown_state = self.shown_state
+    self.shown_state = not shown_state
+    self:Show(self.shown_state)
+end
+
+function UICircuitBreaker:Close()
+    dbg("debug", "on close")
+    if (self:IsShown()) then
+		self:HideDialog()
+	end
+    self:RemoveLabelSlotAtt()
+    slot_info[self.object:id()] = self.slot_info
+    self.object:play_cycle("idle_close", true)
+    level.remove_cam_custom_position_direction()
+    Unregister_UI("UICircuitBreaker")
+end
+
+function UICircuitBreaker:OnAnimEndClose()
+    if not self.on_anim_end_close then return end
+    if self.camera_moving or is_not_empty(self.panel_anim_active) then return end
+    self.on_anim_end_close = false
+    self:Close()
+end
+
+-- Setup Args
+function UICircuitBreaker:SetupCameraArgs()
+    dbg("dev", "setup camera args")
+    self.on_anim_end_close = false
+    self.move_cam = false
+    self.camera_moving = false
+    self.end_time = 0
+    self.target_cam = {}
+
+    self.original_cam_pos = device().cam_pos
+    self.orginal_cam_dir = device().cam_dir
+    self.original_cam_top = device().cam_top
+    self.original_cam_right = device().cam_right
+    self.ui_cam_pos = self.object:bone_position("camera")
+    self.back_panel_pos = self.object:bone_position("base")
+    self.label_pos = self.object:bone_position("label")
+    self.switch_pos = self.object:bone_position("hand_switch")
+    self.camera_positions = {
+        original = {
+            pos = vec_set(self.original_cam_pos),
+            dir = vec_set(self.orginal_cam_dir)
+        },
+        start = {
+            pos = vec_set(self.ui_cam_pos),
+            dir = vec_sub(self.back_panel_pos, self.ui_cam_pos):normalize()
+        },
+        label = {
+            pos = vec_set(self.ui_cam_pos),
+            dir = vec_sub(self.label_pos, self.ui_cam_pos):normalize()
+        },
+        switch = {
+            pos = vec_set(self.ui_cam_pos),
+            dir = vec_sub(self.switch_pos, self.ui_cam_pos):normalize()
+        }
+    }
+    for i=1, MAX_BREAKER_SLOTS do
+        local slot_name = strformat("slot_%s", i)
+        local slot_pos = self.object:bone_position(slot_name)
+        self.camera_positions[slot_name] = {
+            duration = CAM_MOVE_TIME / MAX_BREAKER_SLOTS,
+            pos = vec_set(self.ui_cam_pos),
+            dir = vec_sub(slot_pos, self.ui_cam_pos):normalize()
+        }
+    end
+    dbg("dev", "fin")
+end
+
+function UICircuitBreaker:SetupPanelArgs()
+    dbg("dev", "setup panel args")
+    local top_panel_pos = self.top_panel:GetWndPos()
+    local top_panel_size = get_wnd_size(self.top_panel)
+    local bottom_panel_pos = self.bottom_panel:GetWndPos()
+    local bottom_panel_size = get_wnd_size(self.bottom_panel)
+    local side_panel_pos = self.side_panel:GetWndPos()
+    local side_panel_size = get_wnd_size(self.side_panel)
+    dbg("dev", "top panel pos: %s, size: %s", top_panel_pos, top_panel_size)
+    dbg("dev", "bottom panel pos: %s, size: %s", bottom_panel_pos, bottom_panel_size)
+    dbg("dev", "side panel pos: %s, size: %s", side_panel_pos, side_panel_size)
+    self.panel_args = self.panel_args or {
+        top = {
+            duration = PANEL_MOVE_TIME,
+            state = "hide",
+            pos = {
+                hide = vector2():set(top_panel_pos.x, top_panel_pos.y - top_panel_size.y),
+                show = vector2():set(top_panel_pos),
+            },
+            anim_texture = true,
+            anim_dir = "vert",
+        },
+        side = {
+            duration = PANEL_MOVE_TIME,
+            state = "hide",
+            pos = {
+                hide = vector2():set(side_panel_pos.x + round((side_panel_size.x / 4)), side_panel_pos.y),
+                show = vector2():set(side_panel_pos)
+            },
+            anim_texture = true,
+            anim_dir = "horz",
+        },
+        bottom = {
+            duration = PANEL_MOVE_TIME * 0.44,
+            state = "hide",
+            pos = {
+                hide = vector2():set(bottom_panel_pos.x, bottom_panel_pos.y + round((bottom_panel_size.y * 0.75))),
+                show = vector2():set(bottom_panel_pos)
+            },
+            anim_dir = "vert",
+        }
+    }
+    dbg("dev", "panel args: %s", self.panel_args)
+    self.panel_anim_queue = {}
+    self.panel_anim_active = {}
+    self.swap_panel_state = {show="hide", hide="show"}
+    -- local item_indicator_pos = self.item_indicator:GetWndPos()
+    -- local inv_list_size = {w=self.fm_inv_list:GetWidth(), h=self.fm_inv_list:GetHeight()}
+    -- self.item_indicator_args = {
+    --     pos = {
+    --         min = vector2():set(item_indicator_pos),
+    --         max = vector2():set(item_indicator_pos.x, item_indicator_pos.y + inv_list_size.h)
+    --     }
+    -- }
+    dbg("dev", "fin")
+end
+
+function UICircuitBreaker:SetupMenuArgs()
+    dbg("dev", "setup menu args")
+    self.curr_menu = self.curr_menu or "main_menu"
+    self.prev_menu = self.prev_menu or "main_menu"
+    self.menu_btns = {
+        main_menu = {self.fuses_menu_btn, self.label_menu_btn, self.close_btn},
+        fuses_menu = {self.fm_action_btn, self.fm_change_slot_btn, self.fm_sticker_colour_btn, self.fm_back_btn},
+        label_menu = {self.lm_label_btn, self.lm_view_label_btn, self.lm_power_obj_btn, self.lm_sticker_colour_btn, self.lm_change_slot_btn, self.lm_back_btn},
+        clr_select_menu = self.clr_selector,
+    }
+    dbg("dev", "curr menu %s, prev_menu %s", self.curr_menu, self.prev_menu)
+end
+
+function UICircuitBreaker:SetupFuseArgs()
+    dbg("dev", "setup fuse args")
+    self.curr_slot = self.curr_slot or 1
+    self.slot_info = contains(slot_info, self.object:id(), true) and slot_info[self.object:id()] or {}
+    self.slot_attachments = self.slot_attachments or {}
+    self.fuse_case_model = ini_sys:r_string_ex(hfg_fuses.FUSE_CASE, "visual")
+    self.fuse_action = nil
+    for i=1, MAX_BREAKER_SLOTS do
+        self:InitSlotInfo(i)
+    end
+    self.save_info_tmr = 0
+end
+
+function UICircuitBreaker:SetupClrSelector()
+    dbg("dev", "setup clr selector")
+    local clr_selector_pos = self.clr_selector["bg"]:GetWndPos()
+    local clr_selector_size = {w=self.clr_selector["bg"]:GetWidth(), h=self.clr_selector["bg"]:GetHeight()}
+    self.target_clr_selector = {}
+    self.clr_selector_args = self.clr_selector_args or {
+        selected_clr = fc_sticker_hex["white"],
+        clr_name = "white",
+        prev_track_val = fc_sticker_order["white"],
+        track_val = fc_sticker_order["white"],
+        state = "hide",
+        active = false,
+        pos = {
+            show = vector2():set(clr_selector_pos),
+            hide = vector2():set(clr_selector_pos.x, -clr_selector_pos.y - clr_selector_size.h)
+        }
+    }
+    self.clr_selector_args["texture"] = contains(self.clr_selector_args, "texture", true) and self.clr_selector_args["texture"] 
+        or strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, self.clr_selector_args["clr_name"])
+    dbg("dev", "clr selector args: %s", self.clr_selector_args)
+    local argb = Hex2argb(self.clr_selector_args["selected_clr"])
+    local clr_blind_argb = get_colourblind_clr(argb, CLR_BLIND_TYPE, true)
+    dbg("dev", "hex: %s, argb:%s clrblind: %s", to_hex_str(self.clr_selector_args["selected_clr"]), argb, clr_blind_argb)
+    self.clr_selector["clr_block"]:SetTextureColor(tbl2argb(clr_blind_argb))
+    local clr_name_str = sentence_case(replace(self.clr_selector_args["clr_name"], "_", " "))
+    local clr_name_txt = get_clr_str(clr_blind_argb, clr_name_str)
+    self.clr_selector["clr_name"]:SetText(clr_name_txt)
+    self.clr_selector["track"]:SetIValue(self.clr_selector_args["track_val"])
+    self.clr_selector["track"]:SetOptIBounds(1, #fc_sticker_hex)
+    self.clr_selector["track"]:SetStep(1)
+end
+
+function UICircuitBreaker:SetupLabelArgs()
+    dbg("dev", "setup label args")
+    -- Label Menu
+    local link_pos = vec_set(self.object:bone_position("link"))
+    local door_pos = vec_set(self.object:bone_position("door"))
+    local label_pos = vec_set(self.object:bone_position("label"))
+    local dist = self.camera_positions["start"].pos:distance_to(label_pos)
+    local link_to_door_dir = vec_sub(door_pos, link_pos):normalize()
+    local label_to_door_dir = vec_sub(door_pos, label_pos):normalize()
+    local angle = todegrees(vec_set(link_to_door_dir):dotproduct(label_to_door_dir))
+    dbg("dev", "dist:%s, angle:%s", dist, angle)
+    self.label_args = {
+        state = "hide",
+        pos = {
+            hide = vector():set(0.55, 0, 0.2),
+            show = vector():set(0, -0.175, 0.5)
+        },
+        rot = {
+            hide = vector():set(-100, 0, 20),
+            show = vector():set(0, 0, 0)
+        },
+        start_time = 0,
+        end_time = 0,
+        init = false
+    }
+    self.label_atts = {}
+    self.label_atts["label"] = db.actor:get_attachment("ui_label")
+    self.label_atts["slots"] = self.label_atts["slots"] or {}
+    self.label_action = "add_label"
+    self.pobj_action = "add_pobj"
+    self.anim_label = false
+    self.anim_view_btn_state = false
+end
+
+-- Camera Movement
+function UICircuitBreaker:MoveCamera(camera_position, close_on_end) -- add param close on finish bool switch
+    if self.camera_moving then dbg("dev", "anim in progress, can't move camera") return end
+    self.target_cam = {
+        duration = contains(camera_position, "duration", true) and camera_position.duration or CAM_MOVE_TIME,
+        pos = contains(camera_position, "pos", true) and vec_set(camera_position.pos) or device().cam_pos,
+        dir = contains(camera_position, "dir", true) and vec_set(camera_position.dir) or device().cam_dir
+    }
+    self.move_cam = true
+    self.on_anim_end_close = close_on_end or false
+    dbg("dev", "moving camera from curr:%s, to target:%s", {pos=device().cam_pos, dir=device().cam_dir}, self.target_cam)
+end
+
+function UICircuitBreaker:UpdateCamera()
+    if not self.move_cam then return end
+    if not self.camera_moving then
+        self.camera_moving = true
+    end
+    if self.end_time == 0 then 
+        self.start_time = time_global()
+        self.end_time = time_global() + self.target_cam.duration 
+        dbg("dev", "starting cam anim at start time: %s, end time: %s", self.start_time, self.end_time)
+    elseif time_global() >= self.end_time then
+        dbg("dev", "ending anim at: %s", time_global())
+        self.move_cam = false
+        self.start_time = 0
+        self.end_time = 0
+        self.camera_moving = false
+        
+        if self.on_anim_end_close then
+            if self.curr_menu ~= "main_menu" then
+                self:OnBackBtn(true)
+                return
+            end
+            self:OnAnimEndClose()
+        end
+        return
+    end
+    local elapsed_time = time_global() + math.min(50, device().time_delta)
+    -- dbg("dev", "elasped time: %s", self.elapsed_time)
+    local curr_cam = {pos=vec_set(device().cam_pos), dir=vec_set(device().cam_dir)}
+    -- dbg("dev", "curr cam: %s", curr_cam)
+    local time_factor = clamp(normalize(elapsed_time, self.start_time, self.end_time), 0, 1)
+    -- dbg("dev", "time factor: %s", time_factor)
+    local new_cam_pos = vector():set(
+        lerp(curr_cam.pos.x, self.target_cam.pos.x, time_factor),
+        lerp(curr_cam.pos.y, self.target_cam.pos.y, time_factor),
+        lerp(curr_cam.pos.z, self.target_cam.pos.z, time_factor)
+    )
+        
+    local new_cam_dir = vector():set(
+        lerp(curr_cam.dir.x, self.target_cam.dir.x, time_factor),
+        lerp(curr_cam.dir.y, self.target_cam.dir.y, time_factor),
+        lerp(curr_cam.dir.z, self.target_cam.dir.z, time_factor)
+    )
+    local new_cam_hpb = vector():set(new_cam_dir:getH(), new_cam_dir:getP(), 0)
+    -- dbg("dev", "new cam args| pos: %s, dir: %s, hpb: %s", new_cam_pos, new_cam_dir, new_cam_hpb)
+    level.set_cam_custom_position_direction(new_cam_pos, new_cam_hpb) --, true, false, false)
+end
+
+-- Panel Movement
+function UICircuitBreaker:IsPanelShown(panel_name)
+    local panel_state = self:GetPanelState(panel_name)
+    return panel_state == "show" and true or false
+end
+
+function UICircuitBreaker:GetPanelState(panel_name)
+    return self.panel_args[panel_name]["state"]
+end
+
+function UICircuitBreaker:ResetPanelPos()
+    for panel_name, data in pairs(self.panel_args)  do
+        local ele_name = strformat("%s_panel", panel_name)
+        local reset_state = "hide"
+        self[ele_name]:SetWndPos(data["pos"][reset_state])
+        self.panel_args[panel_name].state = reset_state
+        if panel_name == "bottom" then
+            local btn_texture = strformat("%s_bottom_panel_handle_btn_up", TEXTURE_PREFIX) 
+            self.handle_btn:InitTexture(btn_texture)
+        end
+        dbg("dev", "resetting %s to %s", ele_name, reset_state)
+    end
+end
+
+function UICircuitBreaker:ShowPanel(panel_name, panel_state)
+    dbg("dev", "toggle panel: %s", panel_name)
+    if contains(self.panel_anim_active, panel_name, true) then
+        dbg("dev", "%s is in %s already", panel_name, panel_state)
+        return
+    end
+    self.panel_anim_queue = self.panel_anim_queue or {}
+    local idx = size_table(self.panel_anim_queue) + 1
+    local curr_state = self.panel_args[panel_name]["state"]
+    local end_state = panel_state or self.swap_panel_state[curr_state]
+    dbg("dev", "curr state: %s, end state %s", curr_state, end_state)
+    if curr_state == end_state then return end
+    self.panel_anim_queue[idx] = {
+        panel_name = panel_name,
+        curr_state = curr_state,
+        end_state = end_state,
+        start_pos = self.panel_args[panel_name]["pos"][curr_state],
+        end_pos = self.panel_args[panel_name]["pos"][end_state],
+        duration = self.panel_args[panel_name].duration,
+        anim_dir = self.panel_args[panel_name].anim_dir,
+        init = false
+    }
+    if panel_name == "top" then
+        local anim_style = strformat("%sEase%s", TOGGLE_PANEL_ANIM_STYLE, end_state == "show" and "Out" or "In")
+        self.panel_anim_queue[idx].anim_style = anim_style
+    end
+    dbg("dev", "adding data to panel anim queue at index %s: %s", idx, self.panel_anim_queue[idx])
+end
+
+function UICircuitBreaker:ProcessPanelQueue()
+    if is_empty(self.panel_anim_queue) then return end
+    dbg("dev", "process panel queue")
+    for idx, data in pairs(self.panel_anim_queue) do
+        local tg = time_global()
+        local panel_name = data["panel_name"]
+        local ele_name = strformat("%s_panel", panel_name)
+        local has_anim_texture = contains(self.panel_args[panel_name], "anim_texture", true)
+        local curr_state = data["curr_state"]
+        local end_state = data["end_state"]
+
+        if not data.init then
+            dbg("dev", "init for %s at %s", panel_name, idx)
+            dbg("dev", "curr state: %s, has_anim_texture: %s", curr_state, has_anim_texture)
+            data.start_time = tg
+            data.end_time = tg + data.duration
+            dbg("dev", "time|start:%s end :%s duration:%s", data.start_time, data.end_time, data.duration)
+            data.init = true
+            self.panel_anim_active[panel_name] = true
+            self:EnableMenuBtns(self.curr_menu, true)
+            -- Reset texture
+            if has_anim_texture then
+                local anim_texture = strformat("ui\\%s_%s_%s", TEXTURE_PREFIX, ele_name, data["end_state"]) 
+                dbg("dev", "changing texture for %s to %s", anim_texture, ele_name)
+                self[ele_name]:InitTexture(anim_texture)
+                if end_state == "show" and not self:IsPanelShown(panel_name) then
+                    self[ele_name]:Show(true)
+                    dbg("dev", "showing %s", ele_name)
+                end
+                if panel_name == "side" then
+                    if self.prev_menu == "fuses_menu" then
+                        self.fm_inv_list:Show(false)
+                        -- self.item_indicator:Show(false)
+                    elseif self.prev_menu == "label_menu" then
+                        self.lm_power_obj_list:Show(false)
+                    end
+                elseif panel_name == "top" then
+                    self.fm_slot_list:Show(false)
+                end
+            else
+                if not self:IsPanelShown(panel_name) then self[ele_name]:Show(true) end
+            end        
+        end
+
+        -- Skip Early
+        if tg >= data["end_time"] then
+            if has_anim_texture then
+                local original_texture = strformat("%s_%s", TEXTURE_PREFIX, ele_name)
+                dbg("dev", "changing texture for %s back to %s", ele_name, original_texture)
+                self[ele_name]:InitTexture(original_texture)
+                if end_state == "hide" then
+                    if self:IsPanelShown(panel_name) then
+                        self[ele_name]:Show(false)
+                    end
+                elseif end_state == "show" then
+                    if self.curr_menu == "fuses_menu" then
+                        if panel_name == "side" then
+                            self.fm_inv_list:Show(true)
+                             self:LoadInvInfo()
+                        
+                        elseif panel_name == "top" then
+                            self.fm_slot_list:Show(true)
+                            self:LoadSlotInfo()
+                        end
+                    elseif self.curr_menu == "label_menu" then
+                        if panel_name == "side" then
+                            self.lm_power_obj_list:Show(true)
+                            self:LoadPowerObjInfo()
+                        end
+                    end
+                    
+                    if not self:IsPanelShown(panel_name) then 
+                        self[ele_name]:Show(true)
+                    end
+                end
+            end
+            self[ele_name]:SetWndPos(data.end_pos)
+            self.panel_args[panel_name]["state"] = end_state
+            self.panel_anim_queue[idx] = nil
+            self.panel_anim_active[panel_name] = nil
+            self:EnableMenuBtns(self.curr_menu, true)
+            dbg("dev", "finished moving panel: %s", panel_name)
+            goto continue
+        end
+
+        -- Move Panel
+        local elapsed_time = time_global() + math.min(50, device().time_delta)
+        -- dbg("dev", "elapsed_time: %s", elapsed_time)
+        local norm_time = normalize(elapsed_time, data.start_time, data.end_time)
+        -- dbg("dev", "og norm time: %s", norm_time)
+        if curr_state == "hide" then norm_time = 1 - norm_time end
+        local time_factor = clamp(norm_time, 0, 1)
+        local has_anim_style = contains(data, "anim_style", true)
+        local increment = has_anim_style and get_anim_offset(data.anim_style, time_factor) or time_factor
+        -- dbg("dev", "norm time: %s, time fac: %s, incre: %s", norm_time, time_factor, increment)
+        local new_pos = vector2():set(0, 0)
+
+        if data.anim_dir == "vert" then
+            if curr_state == "hide" then
+                new_pos = vector2():set(
+                    data.start_pos.x,
+                    lerp(data.end_pos.y, data.start_pos.y, increment)
+                )
+            elseif curr_state == "show" then
+                new_pos = vector2():set(
+                    data.start_pos.x,
+                    lerp(data.start_pos.y, data.end_pos.y, increment)
+                )
+            end
+
+        elseif data.anim_dir == "horz" then
+            if curr_state == "hide" then
+                new_pos = vector2():set(
+                    lerp(data.end_pos.x, data.start_pos.x, increment),
+                    data.start_pos.y
+                )
+            elseif curr_state == "show" then
+                new_pos = vector2():set(
+                    lerp(data.start_pos.x, data.end_pos.x, increment),
+                    data.start_pos.y
+                )
+            end
+        end
+
+        self[ele_name]:SetWndPos(new_pos)
+        ::continue::
+    end
+end
+
+-- Menu Switching
+function UICircuitBreaker:LoadMenuBtns(menu_name)
+    dbg("dev", "hiding %s", self.curr_menu)
+    dbg("dev", "showing %s", menu_name)
+    for _, ele in pairs(self.menu_btns[self.curr_menu]) do
+        ele:Show(false)
+    end
+    for _, ele in pairs(self.menu_btns[menu_name]) do
+        ele:Show(true)
+    end
+    self.prev_menu = self.curr_menu
+    self.curr_menu = menu_name
+    dbg("dev", "curr menu %s, prev_menu %s", self.curr_menu, self.prev_menu)
+end
+
+function UICircuitBreaker:EnableMenuBtns(menu_name, enable)
+    for _, ele in pairs(self.menu_btns[menu_name]) do
+        ele:Enable(enable)
+    end
+end
+
+function UICircuitBreaker:SetLabelMenuBtns(enable)
+    if self.curr_menu ~= "label_menu" then return end
+    local has_ui_label = self.label_atts["label"] and true or false
+    if has_ui_label and self.lm_power_obj_list:GetSize() > 0 then
+        self.lm_power_obj_btn:Enable(true)
+    else
+        self.lm_power_obj_list:Enable(false)
+    end
+end
+
+--Inventory Info (Side Panel)
+function UICircuitBreaker:GetInvInfo()
+    local inv_info = {}
+    itr_inv(db.actor, function(_, obj)
+        local id = obj:id()
+        local sect = obj:section()
+        if is_fuse_case(sect) or is_fuse_loose(sect) then
+            inv_info[sect] = inv_info[sect] or {}
+            inv_info[sect][id] = get_fuse_info(id)            
+        end
+    end)
+    return inv_info
+end
+
+function UICircuitBreaker:LoadInvInfo()
+    if self.curr_menu ~= "fuses_menu" then return end
+    dbg("dev", "load inv info")
+    self.fm_inv_list:RemoveAll()
+    local inv_info = self:GetInvInfo()
+    if is_empty(inv_info) then return end
+    local idx = 0
+    for sect, fuse_infos in spairs(inv_info, function(t, a, b) return inv_info_order[a] > inv_info_order[b] end) do
+        dbg("dev", "init inv list item: %s, %s, %s", idx, sect, fuse_infos)
+        local item = inv_list_item(idx, sect, fuse_infos)
+        self.fm_inv_list:AddExistingItem(item)
+        idx = idx + 1
+    end
+end
+
+function UICircuitBreaker:DelayLoadInfo()
+    if not self.delay_load_info then return end
+    local tg = time_global()
+    if self.delay_load_info_tmr == 0 then
+        self.delay_load_info_tmr = tg + 150
+        return
+    end
+    if tg >= self.delay_load_info_tmr then
+        dbg("dev", "delay load info")
+        self:LoadInvInfo()
+        self:LoadSlotInfo()
+        self:SetFuseAction()
+        self:LoadPowerObjInfo()
+        self:SetPowerObjAction()
+        self:SetLabelAction()
+        self.delay_load_info = false
+        self.delay_load_info_tmr = 0
+    end
+end
+
+-- Slot Info (Top Panel)
+function UICircuitBreaker:GetSlotInfo(slot_num)
+    slot_num = not slot_num and self.curr_slot or slot_num
+    return self.slot_info[slot_num]
+end
+
+function UICircuitBreaker:LoadSlotInfo()
+    if self.curr_menu ~= "fuses_menu" then return end
+    dbg("dev", "load fuse info")
+    self.fm_slot_list:RemoveAll()
+    local slot_info = self:GetSlotInfo()
+    if is_empty(slot_info) then return end
+    local item = slot_info_item(self.curr_slot, slot_info)
+    self.fm_slot_list:AddExistingItem(item)
+end
+
+function UICircuitBreaker:InitSlot(slot_num)
+    dbg("dev", "init slot %s", slot_num)
+    self:InitSlotInfo(slot_num)
+    self:InitSlotAtt(slot_num)
+    self:SetFuseCaseShader(slot_num)
+end
+
+function UICircuitBreaker:InitSlotInfo(slot_num)
+    local slot_name = strformat("slot_%s", slot_num)
+    if not contains(self.slot_info, slot_num, true) then
+        dbg("dev", "init slot info for %s", slot_num)
+        self.slot_info[slot_num] = {
+            has_fuse_case = false,
+            has_fuse = false,
+            fuse_info = {},
+            name  = slot_name,
+            sticker_texture = "",
+            power_obj = {}
+        }
+    end
+end
+
+function UICircuitBreaker:RemoveSlotInfo(slot_num)
+    if contains(self.slot_info, slot_num, true) then
+        dbg("dev", "removing slot info for %s", slot_num)
+        self.slot_info[slot_num] = nil
+    end
+end
+
+-- Slot Attachments (Fuse Case Models)
+function UICircuitBreaker:InitSlotAtt(slot_num)
+    local att_name = strformat("slot_%s_attachment", slot_num)
+    local slot_name = strformat("slot_%s", slot_num)
+    if not contains(self.slot_attachments, att_name, true) then
+        dbg("dev", "init slot att args for %s", slot_num)
+        self.slot_attachments[att_name] = {}
+        self.slot_attachments[att_name].slot_num = slot_num
+        self.slot_attachments[att_name].att_name = att_name
+        self.slot_attachments[att_name].not_present_shader = "models_xdistortinv" --models_xdistortinv models_xdistort, models_xdistortcolor, models_xdistortcolorl, models_xdistortcolorlinv
+        self.slot_attachments[att_name].highlight_shader = "models_pautina"
+
+        local att = self.object:get_attachment(att_name)
+        if not att then
+            dbg("dev", "init slot att: %s", slot_num)
+            self.slot_attachments[att_name].att = self.object:add_attachment(att_name, self.fuse_case_model)
+            self.slot_attachments[att_name].att:set_parent_bone(slot_name)
+            self.slot_attachments[att_name].att:set_type(script_attachment_type.World)
+            self.slot_attachments[att_name].att:set_scale(0.420)
+        else
+            dbg("dev", "adding existing slot att")
+            self.slot_attachments[att_name].att = att
+        end
+    end
+    -- Restore previous or default shader and texture
+    self:SetAttShader(slot_num)
+end
+
+function UICircuitBreaker:RemoveSlotAtt(slot_num)
+    local att_name = strformat("slot_%s_attachment", slot_num)
+    if contains(self.slot_attachments, att_name, true) then
+        dbg("dev", "removing slot att for %s", slot_num)
+        self.object:remove_attachment(att_name)
+        self.slot_attachments[att_name].att = nil
+        self.slot_attachments[att_name] = nil
+    end
+end
+
+function UICircuitBreaker:LoadSlotAtts()
+    for i=1, MAX_BREAKER_SLOTS do
+        if self.slot_info[i].has_fuse_case then
+            self:InitSlotAtt(i)
+            self:SetFuseCaseShader(i)
+        else
+            self:RemoveSlotAtt(i)
+        end
+    end
+end
+
+function UICircuitBreaker:SetAttShader(slot_num, shader_name, texture_name)
+    dbg("dev", "setting shader for slot: %s", slot_num)
+    local att_name = strformat("slot_%s_attachment", slot_num)
+    dbg("dev", "att_name: %s, slot_attchments:%s", att_name, self.slot_attachments)
+    if not contains(self.slot_attachments, att_name, true) then
+        self:InitSlotAtt(slot_num)
+    end
+    local def_shaders = self.slot_attachments[att_name].att:get_default_shaders()
+    local curr_shaders = self.slot_attachments[att_name].att:get_shaders()
+    local highlight_shader = self.slot_attachments[att_name].highlight_shader
+    local not_present_shader = self.slot_attachments[att_name].not_present_shader
+    dbg("dev", "shaders|def:%s, curr:%s", def_shaders, curr_shaders)
+    for submesh_id=1, hfg_fuses.FUSE_CASE_SUBMESH_NUM do
+        local texture = not texture_name 
+            and (
+                (
+                    curr_shaders[submesh_id].texture ~= nil
+                    and curr_shaders[submesh_id].texture
+                )
+                or def_shaders[submesh_id].texture
+            )
+            or texture_name
+
+        local shader = not shader_name 
+            and (
+                curr_shaders[submesh_id].shader == highlight_shader
+                or curr_shaders[submesh_id].shader == not_present_shader
+                and curr_shaders[submesh_id].shader
+            )
+            or shader_name == hfg_utils.DEF_MODEL_SHADER and shader_name
+            or self.slot_attachments[att_name][shader_name]
+        if 
+            submesh_id == hfg_fuses.FUSE_CASE_STICKER_SUBMESH_ID 
+            and self.slot_info[slot_num].sticker_texture ~= ""
+        then
+            dbg("dev", "using sticker texture")
+            texture = self.slot_info[slot_num].sticker_texture
+        elseif 
+            submesh_id == hfg_fuses.FUSE_CASE_STICKER_SUBMESH_ID
+            and self.slot_info[slot_num].sticker_texture == ""
+        then
+            dbg("dev", "using default sticker texture")
+            texture = def_shaders[hfg_fuses.FUSE_CASE_STICKER_SUBMESH_ID].texture
+        end
+        dbg("dev", "submesh id:%s, shader:%s, texture:%s", submesh_id, shader, texture)
+        self.slot_attachments[att_name].att:set_shader(submesh_id, shader, texture)
+    end
+end
+
+function UICircuitBreaker:SetFuseCaseShader(slot_num)
+    local att_name = strformat("slot_%s_attachment", slot_num)
+    if self.curr_menu == "fuses_menu" then
+        if slot_num == self.curr_slot and self.slot_info[slot_num].has_fuse_case then
+            dbg("dev", "setting slot %s shader to highlight", slot_num)
+            self:SetAttShader(slot_num, "highlight_shader")
+
+        elseif not self.slot_info[slot_num].has_fuse_case then
+            dbg("dev", "setting slot %s shader to not present", slot_num)
+            self:SetAttShader(slot_num, "not_present_shader")
+
+        elseif self.slot_info[slot_num].has_fuse_case then
+            dbg("dev", "setting slot %s shader to default", slot_num)
+            self:SetAttShader(slot_num, hfg_utils.DEF_MODEL_SHADER)
+        end
+    else
+        -- Reset shaders for all
+        dbg("dev", "setting slot %s shader to default", slot_num)
+        self:SetAttShader(slot_num, hfg_utils.DEF_MODEL_SHADER)
+        -- self.slot_info[slot_num].has_fuse_case = true
+    end  
+end
+
+function UICircuitBreaker:SetAttStickerClr(slot_num)
+    if self.curr_menu == "fuses_menu" or self.label_atts["label"] then
+        local att_name = strformat("slot_%s_attachment", slot_num)
+        if self.slot_info[slot_num].has_fuse_case then
+            self.slot_attachments[att_name].att:set_shader(hfg_fuses.FUSE_CASE_STICKER_SUBMESH_ID, nil, self.clr_selector_args["texture"])
+            self.slot_info[slot_num].sticker_texture = self.clr_selector_args["texture"]
+            self.slot_info[slot_num]["fuse_info"].clr_name = self.clr_selector_args["clr_name"]
+        end
+    end
+    if self.label_atts["label"] then
+        self.label_atts["slots"][slot_num]:set_shader(-1, nil, self.clr_selector_args["texture"])
+    end
+end
+
+function UICircuitBreaker:SetFuseAction()
+    if self.curr_menu ~= "fuses_menu" then return end
+    local itm = self.fm_inv_list:GetSelectedItem()
+    local slot_info = self.slot_info[self.curr_slot]
+    dbg("dev", "setting fuse action")
+    dbg("dev", "slot num:%s slot info: %s", self.curr_slot, slot_info)
+    if not slot_info.has_fuse_case and (not itm or itm and is_fuse_case(itm.sect)) then
+        self.fm_action_btn:TextControl():SetText(gts("st_hfg_add", "Fuse Case"))
+        self.fuse_action = "add_fuse_case"
+
+    elseif slot_info.has_fuse_case and itm and is_fuse_case(itm.sect) then 
+        self.fm_action_btn:TextControl():SetText(gts("st_hfg_replace", "Fuse Case"))
+        self.fuse_action = "replace_fuse_case"
+
+     elseif slot_info.has_fuse_case and not slot_info.has_fuse and not itm then 
+        self.fm_action_btn:TextControl():SetText(gts("st_hfg_remove", "Fuse Case"))
+        self.fuse_action = "remove_fuse_case"
+
+    elseif slot_info.has_fuse_case and not slot_info.has_fuse and itm and is_fuse_loose(itm.sect) then 
+        self.fm_action_btn:TextControl():SetText(gts("st_hfg_add", "Fuse"))
+        self.fuse_action = "add_fuse"
+
+    elseif slot_info.has_fuse_case and slot_info.has_fuse and itm and is_fuse_loose(itm.sect) then
+        self.fm_action_btn:TextControl():SetText(gts("st_hfg_replace", "Fuse"))
+        self.fuse_action = "replace_fuse"
+
+    elseif slot_info.has_fuse_case and slot_info.has_fuse and not itm then
+        self.fm_action_btn:TextControl():SetText(gts("st_hfg_remove", "Fuse"))
+        self.fuse_action = "remove_fuse"
+    end
+    dbg("dev", "fuse action %s", self.fuse_action)
+end
+
+-- Label Menu
+function UICircuitBreaker:SetLabelAction()
+    if self.curr_menu ~= "label_menu" then return end
+    local has_label_attachment = self.object:get_attachment("label")
+    if not has_label_attachment then
+        self.label_action = "add_label"
+        self.lm_label_btn:TextControl():SetText(gts("st_hfg_add", "Label"))
+    else
+        self.label_action = "remove_label"
+        self.lm_label_btn:TextControl():SetText(gts("st_hfg_remove", "Label"))
+    end
+    dbg("dev", "setting label action to %s", self.label_action)
+end
+
+function UICircuitBreaker:SetPowerObjAction()
+    if self.curr_menu ~= "label_menu" then return end
+    local itm = self.lm_power_obj_list:GetSelectedItem()
+    if not itm and is_not_empty(self.slot_info[self.curr_slot].power_obj) then
+        self.pobj_action = "remove_pobj"
+        self.lm_power_obj_btn:TextControl():SetText(gts("st_hfg_remove", "Power Object"))
+    elseif itm and is_empty(self.slot_info[self.curr_slot].power_obj) then
+        self.pobj_action = "add_pobj"
+        self.lm_power_obj_btn:TextControl():SetText(gts("st_hfg_add", "Power Object"))
+    elseif itm and is_not_empty(self.slot_info[self.curr_slot].power_obj) then
+        self.pobj_action = "replace_pobj"
+        self.lm_power_obj_btn:TextControl():SetText(gts("st_hfg_replace", "Power Object"))
+    end
+    dbg("dev", "set power obj action to %s", self.pobj_action)
+    local has_ui_label = self.label_atts["label"]
+    local view_label_enabled = self.lm_view_label_btn:IsEnabled()
+    local has_fuse = self.slot_info[self.curr_slot].has_fuse
+    local has_fuse_case = self.slot_info[self.curr_slot].has_fuse_case
+    self.lm_power_obj_btn:Enable(has_ui_label and view_label_enabled and has_fuse)
+    self.lm_sticker_colour_btn:Enable(has_ui_label and view_label_enabled and has_fuse_case)
+    self.lm_change_slot_btn:Enable(has_ui_label and view_label_enabled)
+end
+
+function UICircuitBreaker:GetPowerObjInfo()
+    dbg("dev", "get power obj info")
+    local power_obj_info = {}
+    local breaker_id = self.object:id()
+    local data = hf_obj_manager.get_data(breaker_id)
+    local grid_id = data.grid_id
+    if not grid_id or grid_id <= 0 then
+        return power_obj_info
+    end
+    local closest_grid = hfg_power_grid.grids[grid_id]
+    for _, power_typ in pairs(power_types) do
+        if closest_grid and contains(closest_grid, power_typ, true) then
+            for id, data in pairs(closest_grid[power_typ]) do
+                dbg("dev", "id: %s, power_typ:%s, data:%s", id, power_typ, data)
+                if 
+                    data.sect ~= bind_breaker.PLACEABLE_BREAKER_SECT
+                    and contains(closest_grid, "power_logic", true)
+                    and contains(closest_grid["power_logic"], breaker_id, true)
+                    and not contains(closest_grid["power_logic"][breaker_id]["connections"], id, true) 
+                then
+                    power_obj_info[#power_obj_info + 1] = {id=data.id, sect=data.sect, typ=power_typ}
+                end
+            end
+        end
+    end
+    return power_obj_info
+end
+
+function UICircuitBreaker:LoadPowerObjInfo()
+    if self.curr_menu ~= "label_menu" then return end
+    dbg("dev", "load power obj info")
+    self.lm_power_obj_list:RemoveAll()
+    local pobj_info = self:GetPowerObjInfo()
+    for i=1, #pobj_info do
+        local idx = i - 1
+        local item = power_obj_item(idx, pobj_info[i])
+        self.lm_power_obj_list:AddExistingItem(item)
+    end
+end
+
+function UICircuitBreaker:AnimLabelAtt()
+    if not self.anim_label then return end
+    if not contains(self.label_atts, "label", true) or not self.label_atts["label"] then return end
+    local tg = time_global()
+    
+    local curr_state = self.label_args["state"]
+    local end_state = self.swap_panel_state[curr_state]
+    if not self.label_args["init"] then
+        dbg("dev", "init anim label att")
+        
+        self:ShowPanel("side", end_state)
+        if end_state == "hide" then 
+            self:ShowLabelUI(false)
+            self:SetPowerObjAction()
+        elseif end_state == "show" then
+            local label_att = self.object:get_attachment("label")
+            if label_att then
+                label_att:set_bone_visible("link", false, false)
+            end
+        end
+
+        dbg("dev", "state|curr: %s end: %s", curr_state, end_state)
+        self.label_atts["label"]:set_rotation(self.label_args["rot"][curr_state])
+        self.label_atts["label"]:set_position(self.label_args["pos"][curr_state])
+        self.anim_view_btn_state = self.lm_view_label_btn:IsEnabled()
+        dbg("dev", "saving view label btn state as:%s", self.anim_view_btn_state)
+        self.lm_view_label_btn:Enable(false)
+        self.label_args["start_time"] = time_global()
+        self.label_args["end_time"] = time_global() + (PANEL_MOVE_TIME * 1.8)
+        dbg("dev", "start time:%s, end time:%s", self.label_args["start_time"], self.label_args["end_time"])
+        self.label_args["init"] = true
+    end
+
+    local start_time = self.label_args["start_time"]
+    local end_time = self.label_args["end_time"]
+    if time_global() >= end_time then
+        dbg("dev", "finish anim label att")
+        dbg("dev", "restoring view label btn to:%s", self.anim_view_btn_state)
+        self.anim_label = false
+        self.lm_view_label_btn:Enable(self.anim_view_btn_state)
+        self.label_args["init"] = false
+        self.label_args["state"] = end_state
+        self.label_atts["label"]:set_position(self.label_args["pos"][end_state])
+        self.label_atts["label"]:set_rotation(self.label_args["rot"][end_state])
+        
+        if end_state == "show" then
+            self:InitLabelSlotAtt()
+            self:InitLabelUI()
+            self:ShowLabelUI(true)
+            self:SetStickerShader(self.curr_slot)
+        elseif end_state == "hide" then 
+            self:RemoveLabelSlotAtt()
+            local label_att = self.object:get_attachment("label")
+            if label_att then
+                label_att:set_bone_visible("link", true, false)
+            end
+            self:ShowLabelUI(false)
+        end
+        self:SetPowerObjAction()
+        return
+    end
+
+    local curr_pos = self.label_atts["label"]:get_position()
+    local targ_pos = self.label_args["pos"][end_state]
+    local curr_rot = self.label_atts["label"]:get_rotation()
+    local targ_rot = self.label_args["rot"][end_state]
+
+    local elapsed_time = time_global() + device().time_delta
+    local time_factor = normalize(elapsed_time, start_time, end_time)
+    local increment = clamp(time_factor, 0, 1)
+    -- dbg("dev", "elapsed:%s, start:%s, end:%s", elapsed_time, start_time, end_time)
+    -- dbg("dev", "time fac:%s, increment:%s", time_factor, increment)
+    
+    -- Postiion
+    local new_pos = vector():set(
+        lerp(curr_pos.x, targ_pos.x, increment),
+        lerp(curr_pos.y, targ_pos.y, increment),
+        lerp(curr_pos.z, targ_pos.z, increment)
+    )
+
+    -- Rotation
+    local new_rot = vector():set(0, 0, 0)
+    local angle_diff_x = angle_difference(curr_rot.x * PI_D180, targ_rot.x * PI_D180)
+    if (math.abs(angle_diff_x) > 0.001) then
+        new_rot.x = (curr_rot.x * PI_D180 - angle_diff_x * 0.1) / PI_D180
+    end
+    local angle_diff_z = angle_difference(curr_rot.z * PI_D180, targ_rot.z * PI_D180)
+    if (math.abs(angle_diff_z) > 0.001) then
+        new_rot.z = (curr_rot.z * PI_D180 - angle_diff_z * 0.1) / PI_D180
+    end
+    -- dbg("dev", "curr pos:%s, targ pos:%s, new pos:%s", curr_pos, targ_pos, new_pos)
+    -- dbg("dev", "curr rot:%s, targ rot:%s, new rot:%s", curr_rot, targ_rot, new_rot)
+    self.label_atts["label"]:set_position(new_pos)
+    self.label_atts["label"]:set_rotation(new_rot)
+end
+
+function UICircuitBreaker:HideLabelAtt()
+    dbg("dev", "hiding label att")
+    self.label_args["state"] = "show"
+    self.anim_label = true
+end
+
+function UICircuitBreaker:ShowLabelAtt()
+    dbg("dev", "showing label att")
+    self.label_args["state"] = "hide"
+    self.anim_label = true
+end
+
+function UICircuitBreaker:InitLabelAtt()
+    local sect = bind_breaker_label.LABEL_SECT
+    local placeable_sect = ini_sys:r_string_ex(sect, "placeable_section")
+    local att_visual = ini_sys:r_string_ex(placeable_sect, "visual")
+    local has_label_attachment = db.actor:get_attachment("ui_label")
+    if not has_label_attachment then
+        dbg("dev", "init label att: %s", att_visual)
+        self.label_atts["label"] = db.actor:add_attachment("ui_label", att_visual)
+        self.label_atts["label"]:set_type(script_attachment_type.CamAttached)
+        self.label_atts["label"]:set_position(self.label_args["pos"]["hide"])
+        self.label_atts["label"]:set_rotation(self.label_args["rot"]["hide"])
+    end
+end
+
+function UICircuitBreaker:InitLabelSlotAtt()
+    if not self.label_atts["label"] then
+        self:InitLabelAtt() 
+    end
+    for i=1, MAX_BREAKER_SLOTS do
+        dbg("dev", "init label slot att %s", i)
+        local att_label_slot = strformat("att_label_slot_%s", i)
+        dbg("dev", "slot name: %s", att_label_slot)
+        self.label_atts["slots"][i] = self.label_atts["label"]:add_attachment(att_label_slot, hfg_fuses.STICKER_MODEL)
+        local parent_bone = strformat("slot_%s_sticker", i)
+        self.label_atts["slots"][i]:set_parent_bone(parent_bone)
+        self.label_atts["slots"][i]:set_type(script_attachment_type.CamAttached)
+        self.label_atts["slots"][i]:set_scale(0.555)
+        local slot_info = self.slot_info[i]
+        local fuse_info = slot_info.fuse_info
+        if 
+            slot_info 
+            and contains(slot_info, "sticker_texture", true) 
+            and slot_info.sticker_texture ~= "" 
+        then
+            dbg("dev", "setting label slot att %s to %s", i, slot_info.sticker_texture)
+            self.label_atts["slots"][i]:set_shader(-1, nil, slot_info.sticker_texture)
+        end
+    end        
+end
+
+function UICircuitBreaker:LoadLabelSlotAtts()
+    for i=1, MAX_BREAKER_SLOTS do
+        self:SetStickerShader(i)
+    end
+end
+
+function UICircuitBreaker:RemoveLabelSlotAtt()
+    for i=1, MAX_BREAKER_SLOTS do
+        dbg("dev", "removing label slot att for %s", i)
+        local att_label_slot = strformat("att_label_slot_%s", i)
+        if 
+            self.label_atts["label"] 
+            and self.label_atts["label"]:get_attachment(att_label_slot) 
+        then
+            self.label_atts["label"]:remove_attachment(att_label_slot)
+            self.label_atts["slots"][i] = nil
+        end
+    end
+    self:RemoveLabelAtt()
+end
+
+function UICircuitBreaker:RemoveLabelAtt()
+    if db.actor:get_attachment("ui_label") then
+        dbg("dev", "removing label att")
+        db.actor:remove_attachment("ui_label")
+        self.label_atts["label"] = nil
+    end
+end
+
+function UICircuitBreaker:SetLabelSlotAttShader(slot_num, shader_name, texture_name)
+    dbg("dev", "set label slot att shader: %s", slot_num)
+    local highlight_shader = "models_pautina"
+    local def_shaders = self.label_atts["slots"][slot_num]:get_default_shaders()
+    local curr_shaders = self.label_atts["slots"][slot_num]:get_shaders()
+    for submesh_id=1, #def_shaders do
+        local texture = not texture_name 
+        and (
+            self.slot_info[slot_num].sticker_texture ~= ""
+            and self.slot_info[slot_num].sticker_texture 
+            or (
+                curr_shaders[submesh_id].texture ~= nil
+                and curr_shaders[submesh_id].texture
+            )
+            or def_shaders[submesh_id].texture
+        )
+        or texture_name
+        local shader = not shader_name 
+        and (
+            curr_shaders[submesh_id].shader == highlight_shader
+            and curr_shaders[submesh_id].shader
+        )
+        or shader_name == hfg_utils.DEF_MODEL_SHADER and shader_name
+        or shader_name == "highlight_shader" and highlight_shader
+        or def_shaders[submesh_id].shader
+        dbg("dev", "submesh id:%s, shader:%s, texture:%s", submesh_id, shader, texture)
+        self.label_atts["slots"][slot_num]:set_shader(submesh_id, shader, texture)
+    end
+end
+
+function UICircuitBreaker:SetStickerShader(slot_num)
+    if self.curr_menu == "label_menu" then
+        if slot_num ~= self.curr_slot then
+            self:SetLabelSlotAttShader(slot_num, hfg_utils.DEF_MODEL_SHADER)
+        else
+            self:SetLabelSlotAttShader(slot_num, "highlight_shader")
+        end
+    else
+        self:SetLabelSlotAttShader(slot_num, hfg_utils.DEF_MODEL_SHADER)
+    end
+end
+
+function UICircuitBreaker:InitLabelUI()
+    dbg("dev", "init label ui")
+    for i=1, MAX_BREAKER_SLOTS do
+        self:SetLabelUI(i)
+    end
+end
+
+function UICircuitBreaker:ShowLabelUI(state, label_slot)
+    for slot, _ in pairs(self.label_ui) do
+        if not label_slot or slot == label_slot then
+            dbg("dev", "setting label ui to %s for slot %s", state, slot)
+            self.label_ui[slot].slot_num:Show(state)
+            self.label_ui[slot].slot_power_obj:Show(state)
+        end
+    end
+end
+
+function UICircuitBreaker:SetLabelUI(label_slot)
+    dbg("dev", "\nset label ui for slot: %s", label_slot)    
+    local ui_hud_pos = vector2():set(818, 132)
+    dbg("dev", "ui hud pos:%s", ui_hud_pos)
+    local x, y = ui_hud_pos.x - 428, ui_hud_pos.y - 24
+    local slot_mult = get_slot_mult(label_slot)
+    local x_offset = label_slot % 2 == 0 and 128 or 0
+    local y_offset = slot_mult
+    dbg("dev", "x: %s, y: %s", x, y)
+    dbg("dev", "x offset: %s, y offset: %s", x_offset, y_offset)
+    local slot_num_x = x + x_offset
+    local slot_num_y = y + y_offset
+    dbg("dev", "slot num x:%s y:%s", slot_num_x, slot_num_y)
+    local clr_blind_black = get_colourblind_clr(BLACK_CLR, CLR_BLIND_TYPE)
+    self.label_ui[label_slot].slot_num:SetWndPos(vector2():set(slot_num_x, slot_num_y))
+    self.label_ui[label_slot].slot_num:SetText(strformat("Slot %s", label_slot))
+    self.label_ui[label_slot].slot_num:SetTextColor(clr_blind_black)
+    self.label_ui[label_slot].slot_num:SetFont(GetFontLetterica16Russian())
+    self.label_ui[label_slot].slot_num:AdjustHeightToText()
+    self.label_ui[label_slot].slot_num:AdjustWidthToText()
+
+    local slot_pobj_x = slot_num_x
+    local slot_pobj_y = slot_num_y + 25
+    dbg("dev", "slot pobj x:%s y:%s", slot_pobj_x, slot_pobj_y)
+    self.label_ui[label_slot].slot_power_obj:SetWndPos(vector2():set(slot_pobj_x, slot_pobj_y))
+    local power_obj_name = "None"
+    if 
+        contains(self.slot_info[label_slot], "power_obj", true) 
+        and is_not_empty(self.slot_info[label_slot]["power_obj"]) 
+    then
+        local sect = self.slot_info[label_slot]["power_obj"].sect
+        local item_sect = ini_sys:r_string_ex(sect, "item_section", sect)
+        power_obj_name = capitalise(get_item_name(item_sect))
+    end
+    local clr_blind_graphite = get_colourblind_clr(BLACK_CLR, CLR_BLIND_TYPE)
+    self.label_ui[label_slot].slot_power_obj:SetText(power_obj_name)
+    self.label_ui[label_slot].slot_power_obj:SetTextColor(clr_blind_graphite)
+    self.label_ui[label_slot].slot_power_obj:SetFont(GetFontMedium())
+    self.label_ui[label_slot].slot_power_obj:AdjustHeightToText()
+    self.label_ui[label_slot].slot_power_obj:AdjustWidthToText()
+end
+
+-- Colour Selector
+function UICircuitBreaker:ShowClrSelector(state)
+    dbg("dev", "showing clr selector: %s", state)
+    if self.clr_selector_args["active"] then dbg("dev", "clr selector moving already") return end
+    dbg("dev", "start state: %s, end state: %s", self.clr_selector_args["state"], state)
+    if self.clr_selector_args["state"] == state then return end
+    self.target_clr_selector = {
+        start_pos = self.clr_selector_args["pos"][self.clr_selector_args["state"]],
+        end_pos = self.clr_selector_args["pos"][state],
+        duration = CAM_MOVE_TIME,
+        start_state = self.clr_selector_args["state"],
+        end_state = state,
+        anim_style = strformat("%sEase%s", CLR_SELECTOR_ANIM_STYLE, state == "hide" and "Out" or "In"),
+        init = false,
+    }
+    self.clr_selector_args["active"] = true
+    dbg("dev", "target cam selector args setup: %s", self.target_clr_selector)
+end
+
+function UICircuitBreaker:UpdateClrSelectorPos()
+    if not self.clr_selector_args["active"] then return end
+    local tg = time_global()
+    
+    local start_state = self.target_clr_selector["start_state"]
+    local end_state = self.target_clr_selector["end_state"]
+    local start_pos = self.target_clr_selector["start_pos"]
+    local end_pos = self.target_clr_selector["end_pos"]
+
+    if not self.target_clr_selector["init"] then
+        self.target_clr_selector["start_time"] = tg
+        self.target_clr_selector["end_time"] = tg + self.target_clr_selector["duration"]
+        dbg("dev", "start time: %s, end time: %s, duration: %s", self.target_clr_selector["end_time"], self.target_clr_selector["start_time"], self.target_clr_selector["duration"])
+        dbg("dev", "start state: %s, end state: %s", start_state, end_state)
+        if self.target_clr_selector["end_state"] == "show" then
+            for _, ele in pairs(self.clr_selector) do
+                ele:Show(true)
+            end
+        end
+        self.target_clr_selector["init"] = true
+    end
+
+    local start_time = self.target_clr_selector["start_time"]
+    local end_time = self.target_clr_selector["end_time"]
+
+    if tg >= end_time then
+        if end_state == "hide" then
+            for _, ele in pairs(self.clr_selector) do
+                ele:Show(false)
+            end
+        end        
+        self.clr_selector_args["state"] = end_state
+        self.clr_selector_args["active"] = false
+        self.clr_selector["bg"]:SetWndPos(end_pos)
+        dbg("dev", "finish moving clr selector")
+        return
+    end
+
+    local elapsed_time = time_global() + math.min(50, device().time_delta)
+    local norm_time = normalize(elapsed_time, start_time, end_time)
+    if end_state == "hide" then norm_time = 1 - norm_time end
+    local time_factor = clamp(norm_time, 0, 1)
+    -- dbg("dev", "norm time:%s, time fac:%s anim style:%s", norm_time, time_factor, self.target_clr_selector["anim_style"])
+    local increment = get_anim_offset(self.target_clr_selector["anim_style"], time_factor)
+    local new_pos = vector2():set(0, 0)
+    if start_state == "hide" then
+        new_pos = vector2():set(
+            start_pos.x,
+            lerp(start_pos.y, end_pos.y, increment)
+        )
+    elseif start_state == "show" then
+        new_pos = vector2():set(
+            start_pos.x,
+            lerp(end_pos.y, start_pos.y, increment)
+        )
+    end
+    self.clr_selector["bg"]:SetWndPos(new_pos)
+end
+
+function UICircuitBreaker:UpdateClrSelector()
+    if not self.clr_selector["bg"]:IsShown() then return end
+    local curr_track_val = self.clr_selector["track"]:GetIValue()
+    if curr_track_val and curr_track_val ~= self.clr_selector_args["track_val"] then
+        dbg("dev", "update clr selector")
+        local clr_name = order_to_fc_sticker_clr_name[curr_track_val]
+        local texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, clr_name)
+        dbg("dev", "clr name: %s", clr_name)
+        local hex = fc_sticker_hex[clr_name]
+        dbg("dev", "clr hex: %s", hex)
+        local argb = Hex2argb(hex)
+        local clr_blind_argb = get_colourblind_clr(argb, CLR_BLIND_TYPE, true)
+        dbg("dev", "clr name:%s, texture: %s", clr_name, texture)
+        dbg("dev", "hex: %s, argb:%s clrblind: %s", to_hex_str(hex), argb, clr_blind_argb)
+        self.clr_selector["clr_block"]:SetTextureColor(tbl2argb(clr_blind_argb))
+        local clr_name_str = sentence_case(replace(clr_name, "_", " "))
+        local clr_name_txt = get_clr_str(clr_blind_argb, clr_name_str)
+        self.clr_selector["clr_name"]:SetText(clr_name_txt)
+        self.clr_selector_args["clr_name"] = clr_name
+        self.clr_selector_args["texture"] = texture
+        self.clr_selector_args["selected_clr"] = hex
+        self.clr_selector_args["prev_track_val"] = self.clr_selector["track_val"]
+        self.clr_selector_args["track_val"] = curr_track_val
+    end
+end
+
+function UICircuitBreaker:UpdateSlotInfo()
+    if self.curr_menu == "main_menu" and time_global() < self.save_info_tmr then return end
+    slot_info[self.object:id()] = self.slot_info
+    self.save_info_tmr = time_global() + (5 * 1000)
+end
+
+-- Button Callbacks
+function UICircuitBreaker:OnHandleBtn()
+    dbg("dev", "on handle btn")
+    local panel_name = "bottom"
+    local curr_state = self.panel_args[panel_name]["state"]
+    local icon_dir = curr_state == "hide" and "down" or "up"
+    local ele_name = strformat("%s_panel", panel_name)
+    local btn_texture = strformat("%s_%s_handle_btn_%s", TEXTURE_PREFIX, ele_name, icon_dir) 
+    dbg("dev", "switching btn texture to: %s", btn_texture)
+    self.handle_btn:InitTexture(btn_texture)
+    self:ShowPanel("bottom", self.swap_panel_state[curr_state])
+end
+
+function UICircuitBreaker:OnFuseMenuBtn()
+    dbg("dev", "on fuse menu btn")
+    --[[
+        hide current menu btns
+        show fuses menu btns
+        move camera to last viewed slot
+        show side panel and top panel
+        load side panel info from inv when anim finished
+        load top panel info for fuse info
+    ]]
+    self:LoadMenuBtns("fuses_menu")
+    self:ShowPanel("top", "show")
+    self:ShowPanel("side", "show")
+    self:InitSlotAtt(self.curr_slot)
+    self:SetFuseCaseShader(self.curr_slot)
+    self:MoveCamera(self.camera_positions[self.slot_info[self.curr_slot].name])
+end
+
+function UICircuitBreaker:OnLabelMenuBtn()
+    dbg("dev", "on label menu btn")
+    self:LoadMenuBtns("label_menu")
+    self:MoveCamera(self.camera_positions["label"])
+    self:SetLabelAction()
+    self:SetPowerObjAction()
+    local has_label = self.object:get_attachment("label") and true or false
+    dbg("dev", "setting view label btn to:%s", has_label)
+    self.lm_view_label_btn:Enable(has_label)
+end
+
+function UICircuitBreaker:OnCloseBtn()
+    dbg("dev", "on close tbn")
+    self:OnKeyboard(DIK_keys.DIK_ESCAPE, ui_events.WINDOW_KEY_PRESSED)
+end
+
+function UICircuitBreaker:OnActionBtn()
+    if not self.fuse_action then return end
+    dbg("dev", "on action btn")
+    dbg("dev", "fuse action: %s", self.fuse_action)
+    local itm = self.fm_inv_list:GetSelectedItem()
+    if itm then
+        dbg("dev", "fuse info: %s", itm.fuse_infos)
+        local found_fuse_itms = {}
+        local item_sect = itm.sect
+        itr_inv(db.actor, function(_, obj)
+            local sect = obj:section()
+            if item_sect == sect then
+                found_fuse_itms[#found_fuse_itms + 1] = obj
+            end
+        end)
+        dbg("dev", "found fuse itms: %s", get_sect_tbl(found_fuse_itms))
+        if is_empty(found_fuse_itms) then
+            self.fm_inv_list:RemoveItem(itm)    
+            return
+        end
+
+        local id = found_fuse_itms[#found_fuse_itms]:id()
+    
+        if self.fuse_action == "add_fuse_case" then
+            dbg("dev", "removing item from inv: %s", id)
+            alife_release(alife_object(id))
+            dbg("dev", "setting 'has_fuse_case' to true")
+            self.slot_info[self.curr_slot]["has_fuse_case"] = true
+            dbg("dev", "adding slot attachment for: %s", self.curr_slot)
+            self:InitSlotAtt(self.curr_slot)
+            -- self:SetFuseCaseShader(self.curr_slot)
+
+            local fuse_info = itm.fuse_infos[id]
+            dbg("dev", "fuse info for %s: %s", id, fuse_info)        
+            local has_fuse_info = is_not_empty(fuse_info)
+            self.slot_info[self.curr_slot]["has_fuse"] = has_fuse_info
+            if has_fuse_info then
+                dbg("dev", "has fuse info, adding fuse info")
+                self.slot_info[self.curr_slot].fuse_info = fuse_info
+                if fuse_info.clr_name and fuse_info.clr_name ~= "" then
+                    local texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, fuse_info.clr_name)
+                    self.slot_info[self.curr_slot].sticker_texture = texture
+                    self.slot_info[self.curr_slot]["fuse_info"].clr_name = fuse_info.clr_name
+                    self:SetFuseCaseShader(self.curr_slot)
+                end
+            end
+            dbg("dev", "removing %s from inv info", id)
+            dbg("dev", "%s left in inv info", size_table(itm.fuse_infos))
+            
+        elseif self.fuse_action == "replace_fuse_case" then
+            dbg("dev", "replacing fuse case in slot: %s", self.curr_slot)
+            alife_release(alife_object(id))
+            local new_fuse_info = itm.fuse_infos[id]
+            dbg("dev", "replacement fuse case info: %s", new_fuse_info)
+            local old_fuse_info = self.slot_info[self.curr_slot]["fuse_info"]
+            local se_obj = alife_create_item(hfg_fuses.FUSE_CASE, db.actor)
+            if contains(new_fuse_info, "id", true) then
+                dbg("dev", "updating fuse case info")
+                replace_fuse_case_info(new_fuse_info.id, se_obj.id, old_fuse_info)
+            end
+            self.slot_info[self.curr_slot]["fuse_info"] = new_fuse_info
+            local texture = ""
+            local clr_name = ""
+            if is_not_empty(new_fuse_info) and new_fuse_info.clr_name and new_fuse_info.clr_name ~= "" then
+                texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, fuse_info.clr_name)
+                clr_name = new_fuse_info.clr_name
+                dbg("dev", "replacement fuse case: %s, %s", texture, clr_name)
+            end
+            self.slot_info[self.curr_slot].sticker_texture = texture
+            self.slot_info[self.curr_slot]["fuse_info"].clr_name = clr_name
+            dbg("dev", "setting sticker texture %s, clr name %s for slot %s", texture, clr_name, self.curr_slot)
+            self:SetFuseCaseShader(self.curr_slot)
+        
+        elseif self.fuse_action == "add_fuse" then
+            alife_release(alife_object(id))
+            local fuse_info = itm.fuse_infos[id]
+            self.slot_info[self.curr_slot]["has_fuse"] = true
+            local old_fuse_info = self.slot_info[self.curr_slot].fuse_info
+            self.slot_info[self.curr_slot].fuse_info = fuse_info
+            self.slot_info[self.curr_slot]["fuse_info"].clr_name = old_fuse_info.clr_name
+
+        elseif self.fuse_action == "replace_fuse" then
+            alife_release(alife_object(id))
+            local fuse_info = itm.fuse_infos[id]
+            local se_obj = alife_create_item(fuse_info.sect, db.actor)
+            replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
+            self.slot_info[self.curr_slot].fuse_info = fuse_info
+        end
+    else
+        if self.fuse_action == "remove_fuse_case" then
+            local se_fuse = alife_create_item(hfg_fuses.FUSE_CASE, db.actor)
+            self.slot_info[self.curr_slot]["has_fuse_case"] = false
+            self:RemoveSlotAtt(self.curr_slot)
+            local has_fuse = self.slot_info[self.curr_slot]["has_fuse"]
+            local fuse_info = self.slot_info[self.curr_slot]["fuse_info"]
+            if has_fuse then                
+                local se_obj = alife_create_item(fuse_info.sect, db.actor)
+                replace_fuse_case_info(fuse_info.id, se_obj.id, fuse_info)
+                self.slot_info[self.curr_slot]["has_fuse"] = false
+            else
+                hfg_fuses.fuse_case_info[se_fuse.id] = fuse_info
+            end
+            self.slot_info[self.curr_slot]["fuse_info"] = {}
+            self.slot_info[self.curr_slot].sticker_texture = ""
+
+        elseif self.fuse_action == "remove_fuse" then
+            local fuse_info = self.slot_info[self.curr_slot]["fuse_info"]
+            local se_obj = alife_create_item(fuse_info.sect, db.actor)
+            replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
+            self.slot_info[self.curr_slot]["has_fuse"] = false
+            self.slot_info[self.curr_slot].fuse_info = {}
+            self.slot_info[self.curr_slot]["fuse_info"].clr_name = fuse_info.clr_name
+        end
+    end
+
+    self.delay_load_info = true -- load slot clr for sticker
+end
+
+function UICircuitBreaker:OnChangeSlot()
+    dbg("dev", "on change slot")
+    if self.camera_moving then return end
+    local next_slot = self.curr_slot < MAX_BREAKER_SLOTS and self.curr_slot + 1 or 1
+    local prev_slot = self.curr_slot
+    self.curr_slot = next_slot
+
+    local att_name = strformat("slot_%s_attachment", self.curr_slot)
+    if not self.slot_info[prev_slot].has_fuse_case then
+        self:RemoveSlotAtt(prev_slot)
+    else
+        self:SetFuseCaseShader(prev_slot)
+    end
+    self:InitSlotAtt(next_slot)
+    self:SetFuseCaseShader(next_slot)
+
+    dbg("dev", "changing slot from %s to %s", prev_slot, next_slot)
+    self:MoveCamera(self.camera_positions[self.slot_info[next_slot].name])
+    self:SetFuseAction()
+    self:LoadSlotInfo()
+end
+
+function UICircuitBreaker:OnLabelChangeSlot()
+    dbg("dev", "on label change slot")
+    if self.camera_moving then return end
+    local next_slot = self.curr_slot < MAX_BREAKER_SLOTS and self.curr_slot + 1 or 1
+    local prev_slot = self.curr_slot
+    self.curr_slot = next_slot
+
+    self:SetStickerShader(prev_slot)
+    self:SetStickerShader(next_slot)
+    self:SetPowerObjAction()
+    self:LoadPowerObjInfo()
+end
+
+function UICircuitBreaker:OnBackBtn(close_on_end)
+    dbg("dev", "on back btn: %s to %s", self.curr_menu, self.prev_menu)
+    
+    local curr_menu = self.curr_menu
+    if curr_menu == "fuses_menu" then
+        self:LoadMenuBtns(self.prev_menu)
+        self:LoadSlotAtts()
+        self:MoveCamera(self.camera_positions["start"], close_on_end)
+        self:ShowPanel("side", "hide")
+        self:ShowPanel("top", "hide")
+
+    elseif curr_menu == "label_menu" then
+        self:RemoveLabelSlotAtt()
+        self:LoadMenuBtns(self.prev_menu)
+        self:MoveCamera(self.camera_positions["start"], close_on_end)
+        self:ShowPanel("side", "hide")
+        self:ShowLabelUI(false)
+        local has_label = self.object:get_attachment("label") and true or false
+        if has_label then
+            local label_att = self.object:get_attachment("label")
+            label_att:set_bone_visible("link", true, false)
+            self.lm_view_label_btn:Enable(has_label)
+        end
+
+
+    elseif curr_menu == "main_menu" then
+        if close_on_end then
+            self:OnHandleBtn()
+        end
+    end
+end
+
+function UICircuitBreaker:OnInvList()
+    local itm = self.fm_inv_list:GetSelectedItem()
+    if not itm then return end
+    -- Check curr slot
+    -- 1.
+    -- if selected item is fuse case
+    -- if fuse case present and has no fuse, change action btn to add fuse case
+    -- if fuse case present and has fuse, change action btn to remove fuse case
+    -- 2.
+    -- if selected item is fuse
+    -- if fuse case present and has fuse, change action to replace fuse
+    -- if fuse case present and has no fuse, change action to add fuse
+    -- 3.
+    -- if selected item is fuse pack
+    -- change action to unpack fuse pack
+    local sect = itm.sect
+    dbg("dev", "on click inv list item: %s", sect)   
+    self:SetFuseAction()
+end
+
+function UICircuitBreaker:OnStickerClrBtn()
+    self:EnableMenuBtns(self.curr_menu, false)
+    self:ShowClrSelector("show")
+end
+
+function UICircuitBreaker:OnClrSelectSetBtn()
+    self:SetAttStickerClr(self.curr_slot)
+    self:LoadSlotInfo()
+end
+
+function UICircuitBreaker:OnClrSelectCloseBtn()
+    self:EnableMenuBtns(self.curr_menu, true)
+    self:ShowClrSelector("hide")
+end
+
+-- Label Menu
+function UICircuitBreaker:OnLabelBtn()
+    local label_obj = db.actor:object(bind_breaker_label.LABEL_SECT)
+    if self.label_action == "add_label" and label_obj then
+        dbg("dev", "adding label to breaker")
+        bind_breaker_label.add_label_to_breaker_func(label_obj, self.object)        
+        dbg("dev", "enabling view label btn")
+        self.lm_view_label_btn:Enable(true)
+
+    elseif self.label_action == "remove_label" and self.object:get_attachment("label") then
+        dbg("dev", "removing label from breaker")
+        self.object:remove_attachment("label")
+        hf_obj_manager.update_data(self.object:id(), {label_attached=false})
+        dbg("dev", "creating label in inv")
+        alife_create_item(bind_breaker_label.LABEL_SECT, db.actor)       
+        dbg("dev", "disabling view label btn")
+        self.lm_view_label_btn:Enable(false)
+    end
+    self.delay_load_info = true
+end
+
+function UICircuitBreaker:OnViewLabelBtn()
+    if self.anim_label then return end
+    dbg("dev", "on view label btn")
+    self:InitLabelAtt()
+    self.anim_label = true
+end
+
+function UICircuitBreaker:OnPowerObjBtn()
+    dbg("dev", "on power obj btn: slot num:%s", self.curr_slot)
+    local breaker_id = self.object:id()
+    local data = hf_obj_manager.get_data(breaker_id)
+    local grid_id = data.grid_id
+    
+    if not grid_id or not self.slot_info[self.curr_slot].has_fuse then return end
+
+    local itm = self.lm_power_obj_list:GetSelectedItem()
+    if itm and self.pobj_action == "add_pobj" then
+        local info = itm.info
+        dbg("dev", "For breaker:%s setting fuse protected to true and adding %s", info)
+        self.slot_info[self.curr_slot].power_obj = info
+        hf_obj_manager.update_data(info.id, {fuse_protected=true, breaker_id=breaker_id})
+        local breaker_hf_data = hf_obj_manager.get_data(breaker_id) or {}
+        breaker_hf_data["connections"] = breaker_hf_data["connections"] or {}
+        breaker_hf_data["connections"][info.id] = self.slot_info[self.curr_slot]
+        hf_obj_manager.update_data(breaker_id, {connections=breaker_hf_data["connections"]})
+
+    elseif itm and self.pobj_action == "replace_pobj" then
+        local curr_info = self.slot_info[self.curr_slot].power_obj
+        local new_info = itm.info
+        dbg("dev", "For breaker:%s replacing %s with %s", curr_info, new_info)
+        local hf_data = hf_obj_manager.get_data(curr_info.id)
+        local curr_fuse_protected = hf_data["fuse_protected"]
+        local curr_breaker_id = hf_data["breaker_id"]
+
+        hf_obj_manager.update_data(new_info.id, {fuse_protected=curr_fuse_protected, breaker_id=curr_breaker_id})
+        hf_obj_manager.update_data(curr_info.id, {fuse_protected=false, breaker_id=-1})
+        local breaker_hf_data = hf_obj_manager.get_data(breaker_id) or {}
+        breaker_hf_data["connections"] = breaker_hf_data["connections"] or {}
+        breaker_hf_data["connections"][curr_info.id] = nil
+        breaker_hf_data["connections"][new_info.id] = self.slot_info[self.curr_slot]
+        hf_obj_manager.update_data(breaker_id, {connections=breaker_hf_data["connections"]})
+
+    elseif not itm and self.pobj_action == "remove_pobj" then
+        local info = self.slot_info[self.curr_slot].power_obj
+        self.slot_info[self.curr_slot].power_obj = {}
+        hf_obj_manager.update_data(info.id, {fuse_protected=false, breaker_id=-1})
+        local breaker_hf_data = hf_obj_manager.get_data(breaker_id) or {}
+        breaker_hf_data["connections"] = breaker_hf_data["connections"] or {}
+        breaker_hf_data["connections"][info.id] = nil
+        hf_obj_manager.update_data(breaker_id, {connections=breaker_hf_data["connections"]})
+        dbg("dev", "For breaker:%s setting fuse protected to false and removing %s", info)
+    end
+    dbg("dev", "breaker connections for %s:%s", breaker_id, hfg_power_grid.grids[grid_id]["power_logic"][breaker_id]["connections"])
+    self:SetLabelUI(self.curr_slot)
+    self.delay_load_info = true
+end
+
+function UICircuitBreaker:OnPowerObjList()
+    local itm = self.lm_power_obj_list:GetSelectedItem()
+    if not itm then return end
+    dbg("dev", "on power obj list")
+    self:SetLabelUI(self.curr_slot)
+    self:SetPowerObjAction()
+end
+
+-- External Sub Classes
+class "inv_list_item" (CUIListBoxItem)
+function inv_list_item:__init(idx, sect, fuse_infos) super(idx, sect, fuse_infos)
+    self.idx = idx
+    self.sect = sect
+    self.fuse_infos = fuse_infos
+    self.itm_count = size_table(fuse_infos)
+    local obj = db.actor:object(sect)
+    local fuse_info = fuse_infos[obj:id()]
+    dbg("dev", "selected fuse info: %s", fuse_info)
+    
+    local width = 185
+    local height = 90
+    local itm_path, itm_pos, itm_size = get_obj_icon(nil, sect)
+    local padding_w = width * 0.125
+    local padding_h = height * 0.125
+    local max_size = get_max_size_within_rect(1, height - padding_h, width - padding_w)
+    local icon_w = clamp(itm_size.w, 0, max_size)
+    local icon_h = clamp(itm_size.h, 0, max_size)
+    local icon_x = (width - padding_w) / 2 - (icon_w / 2)
+    local icon_y = (height - padding_h) / 2 - (icon_h / 2)
+    local text_w = width
+
+    self.item_icon = self:AddIconField(1)
+    self.item_icon:InitTexture(itm_path)
+    self.item_icon:SetTextureRect(Frect():set(itm_pos.x, itm_pos.y, itm_pos.x + itm_size.w, itm_pos.y + itm_size.h))
+    self.item_icon:SetStretchTexture(true)
+    self.item_icon:SetWndSize(vector2():set(icon_w, icon_h))
+    self.item_icon:SetWndPos(vector2():set(icon_x, icon_y))
+
+    self.item_name = self:AddTextField(get_item_name(sect), 1)
+    self.item_name:AdjustHeightToText()
+    local text_h = self.item_name:GetHeight()
+    self.item_name:SetTextAlignment(CGameFont.alLeft)
+    self.item_name:SetWndSize(vector2():set(text_w, text_h))
+    self.item_name:SetWndPos(vector2():set(0, padding_h))
+    self.item_name:SetTextComplexMode(true)
+
+    if is_not_empty(fuse_info) and contains(fuse_info, "typ", true) then
+        self.fuse_typ = self:AddTextField(capitalise(fuse_info.typ), 1)
+        self.fuse_typ:SetTextAlignment(CGameFont.alRight)
+        self.fuse_typ:SetWndSize(vector2():set(text_w / 2, text_h))
+        self.fuse_typ:AdjustWidthToText()
+        local fuse_typ_w = width - padding_w - self.fuse_typ:GetWidth()
+        self.fuse_typ:SetWndPos(vector2():set(fuse_typ_w, padding_h))
+        self.fuse_typ:SetTextComplexMode(true)
+    end
+
+    if is_fuse_case(sect) then
+        local sticker_clr_str = "Blank"
+        if is_not_empty(fuse_info) and contains(fuse_info, "clr_name", true) and fuse_info.clr_name ~= "" then
+            local clr_name_txt = sentence_case(replace(fuse_info.clr_name, "_", " "))
+            local sticker_clr_argb = Hex2argb(fc_sticker_hex[fuse_info.clr_name])
+            local sticker_clr_blind_argb = get_colourblind_clr(sticker_clr_argb, CLR_BLIND_TYPE, true)
+            sticker_clr_str = get_clr_str(sticker_clr_blind_argb, clr_name_txt)
+        end
+
+        self.sticker_clr = self:AddTextField(sticker_clr_str, 1)
+        self.sticker_clr:SetTextAlignment(CGameFont.alLeft)
+        self.sticker_clr:SetWndSize(vector2():set(text_w / 2, text_h))
+        self.sticker_clr:AdjustWidthToText()
+        self.sticker_clr:SetWndPos(vector2():set(0, height - padding_h - self.sticker_clr:GetHeight()))
+        self.sticker_clr:SetTextComplexMode(true)
+    end
+
+    self.item_count = self:AddTextField(strformat("%sx", self.itm_count), 1)
+    self.item_count:SetTextAlignment(CGameFont.alRight)
+    self.item_count:SetWndSize(vector2():set(text_w / 2, text_h))
+    local item_count_w = width - padding_w - self.item_count:GetWidth()
+    local item_count_h = height - padding_h - self.item_count:GetHeight()
+    self.item_count:SetWndPos(vector2():set(item_count_w, item_count_h))
+    self.item_count:SetTextComplexMode(true)
+end -- rax stacking control
+
+class "slot_info_item" (CUIListBoxItem)
+function slot_info_item:__init(slot_num, slot_info) super(slot_num, slot_info)
+    dbg("dev", "init slot info item: %s %s", slot_num, slot_info)
+    local width = 180
+    local height = 200
+    local padding_w = 5
+    local padding_h = 2
+    local txt_w = width
+    local txt_h = (height / 8)
+    
+    local fuse_info = slot_info.fuse_info
+    local clr_blind_red = get_colourblind_clr(RED_CLR, CLR_BLIND_TYPE, true)
+    local clr_blind_green = get_colourblind_clr(GREEN_CLR, CLR_BLIND_TYPE, true)
+
+    local fuse_case_txt = slot_info.has_fuse_case and "Yes" or "No"
+    local fuse_case_txt_clr = slot_info.has_fuse_case and clr_blind_green or clr_blind_red
+    local has_fuse_case_str = strformat("Has Fuse Case: %s", get_clr_str(fuse_case_txt_clr, fuse_case_txt))
+
+    local fuse_txt = slot_info.has_fuse and "Yes" or "No"
+    local fuse_txt_clr = slot_info.has_fuse and clr_blind_green or clr_blind_red
+    local has_fuse_str = strformat("Has Fuse: %s", get_clr_str(fuse_txt_clr, fuse_txt))
+
+    local slot_name_str = strformat("Slot %s", slot_num)
+    
+    dbg("dev", "%s, %s, %s", has_fuse_case_str, has_fuse_str, slot_name_str)
+    
+    self.slot_name = self:AddTextField(slot_name_str, 1)
+    self.slot_name:SetTextAlignment(CGameFont.alLeft)
+    self.slot_name:SetWndSize(vector2():set(txt_w, txt_h))
+    self.slot_name:SetWndPos(vector2():set(padding_w, padding_h))
+    self.slot_name:SetTextComplexMode(true)
+
+    self.fuse_case = self:AddTextField(has_fuse_case_str, 1)
+    self.fuse_case:SetTextAlignment(CGameFont.alLeft)
+    self.fuse_case:SetWndSize(vector2():set(txt_w, txt_h))
+    self.fuse_case:SetWndPos(vector2():set(padding_w, txt_h + padding_h))
+    self.fuse_case:SetTextComplexMode(true)
+
+    self.fuse      = self:AddTextField(has_fuse_str, 1)
+    self.fuse:SetTextAlignment(CGameFont.alLeft)
+    self.fuse:SetWndSize(vector2():set(txt_w, txt_h))
+    self.fuse:SetWndPos(vector2():set(padding_w, (txt_h * 2) + padding_h))
+    self.fuse:SetTextComplexMode(true)
+
+    local sticker_clr_txt = "Blank"
+    if is_not_empty(fuse_info) and contains(fuse_info, "clr_name", true) and fuse_info.clr_name ~= "" then
+        local clr_name_txt = sentence_case(replace(fuse_info.clr_name, "_", " "))
+        local sticker_clr_argb = Hex2argb(fc_sticker_hex[fuse_info.clr_name])
+        local sticker_clr_blind_argb = get_colourblind_clr(sticker_clr_argb, CLR_BLIND_TYPE, true)
+        sticker_clr_txt = get_clr_str(sticker_clr_blind_argb, clr_name_txt)
+    end
+    local sticker_clr_str = strformat("Sticker Colour: %s", sticker_clr_txt)
+
+    self.sticker_clr = self:AddTextField(sticker_clr_str, 1)
+    self.sticker_clr:SetTextAlignment(CGameFont.alLeft)
+    self.sticker_clr:SetWndSize(vector2():set(txt_w, txt_h))
+    self.sticker_clr:SetWndPos(vector2():set(padding_w, (txt_h * 3) + padding_h))
+    self.sticker_clr:SetTextComplexMode(true)
+    
+    if is_not_empty(fuse_info) then
+        if contains(fuse_info, "typ", true) then
+            local fuse_type_str = strformat("Fuse Type: %s", capitalise(fuse_info.typ))
+            self.fuse_type = self:AddTextField(fuse_type_str, 1)
+            self.fuse_type:SetTextAlignment(CGameFont.alLeft)
+            self.fuse_type:SetWndSize(vector2():set(txt_w, txt_h))
+            self.fuse_type:SetWndPos(vector2():set(padding_w, (txt_h * 4) + padding_h))
+            self.fuse_type:SetTextComplexMode(true)
+        end
+    end
+
+    if is_not_empty(slot_info.power_obj) then
+        local sect = slot_info.power_obj["sect"]
+        local item_section = ini_sys:r_string_ex(sect, "item_section", sect)
+        local pobj_name = get_item_name(item_section)
+        local pobj_str = strformat("Protecting: %s", pobj_name)
+        self.fuse_type = self:AddTextField(pobj_str, 1)
+        self.fuse_type:SetTextAlignment(CGameFont.alLeft)
+        self.fuse_type:SetWndSize(vector2():set(txt_w, txt_h))
+        self.fuse_type:SetWndPos(vector2():set(padding_w, (txt_h * 5) + padding_h))
+        self.fuse_type:SetTextComplexMode(true)
+    end
+
+end
+
+class "power_obj_item" (CUIListBoxItem)
+function power_obj_item:__init(idx, info) super(idx, info)
+    self.idx = idx
+    self.info = info
+    dbg("dev", "power obj item: idx %s, info %s", idx, info)
+    local item_sect = ini_sys:r_string_ex(info.sect, "item_section", info.sect)
+    local width = 185
+    local height = 90
+    local padding_w = width * 0.125
+    local padding_h = height * 0.125
+    local itm_path, itm_pos, itm_size = get_obj_icon(nil, item_sect)
+    dbg("dev", "itm_path:%s, itm_pos:%s, itm_size:%s", itm_path, itm_pos, itm_size)
+    local max_size = get_max_size_within_rect(1, height, width)
+    local icon_w = clamp(itm_size.w, 0, max_size)
+    local icon_h = clamp(itm_size.h, 0, max_size)
+    local icon_x = (width - padding_w) / 2 - (icon_w / 2)
+    local icon_y = (height - padding_h) / 2 - (icon_h / 2)
+
+    self.icon = self:AddIconField(1)
+    self.icon:InitTexture(itm_path)
+    self.icon:SetTextureRect(Frect():set(itm_pos.x, itm_pos.y, itm_pos.x + itm_size.w, itm_pos.y + itm_size.h))
+    self.icon:SetStretchTexture(true)
+    self.icon:SetWndSize(vector2():set(icon_w, icon_h))
+    self.icon:SetWndPos(vector2():set(icon_x, icon_y))
+
+    self.name = self:AddTextField(get_item_name(item_sect), 1)
+    self.name:SetTextAlignment(CGameFont.alCenter)
+    self.name:SetWndSize(vector2():set(width, height))
+    self.name:AdjustHeightToText()
+    local text_x = (width / 2) - self.name:GetWidth() / 2
+    local text_y = (height / 2) - self.name:GetHeight() / 2
+    self.name:SetWndPos(vector2():set(text_x, text_y))
+end
+
+-- Helpers
+function get_wnd_size(ele)
+    dbg("dev", "getting wnd size")
+    local width = ele:GetWidth()
+    local height = ele:GetHeight()
+    return vector2():set(width, height)
+end
+
+
+function get_slot_mult(slot_num)
+    local slot_mults = {}
+    for i=1, MAX_BREAKER_SLOTS, 2 do
+        slot_mults[i] = (i - 1) * 50 / 2
+        slot_mults[i + 1] = slot_mults[i]
+    end
+    return slot_mults[slot_num]
+end
+
+-- Callbacks
+
+function on_key_hold(key)
+    if
+        has_mcm_keybinds()
+        and GUI ~= nil
+        and KEYBIND_MODE == 2
+        and ui_mcm.get_mod_key(KEYBIND_MODIFIER)
+        and is_key_held(key, KEY_TRIGGER_TIME * 1000)
+    then
+        dbg("dev", "on key hold: %s", dik_to_str(key))
+        GUI:OnKeyboard(key, ui_events.WINDOW_KEY_PRESSED)
+    end
+end
+
+function on_key_press(key)
+    if 
+        has_mcm_keybinds() -- alternative for regualr keybinds
+        and GUI ~= nil
+    then
+        if 
+            KEYBIND_MODE == 0
+            and ui_mcm.get_mod_key(KEYBIND_MODIFIER)
+        then
+            simple_press(key, function()
+                dbg("dev", "on simple key press: %s", dik_to_str(key))
+                GUI:OnKeyboard(key, ui_events.WINDOW_KEY_PRESSED)
+            end)
+        elseif 
+            KEYBIND_MODE == 1
+            and ui_mcm.get_mod_key(KEYBIND_MODIFIER)
+            and double_tap(key)
+        then
+            dbg("dev", "on double tap key press: %s", dik_to_str(key))
+            GUI:OnKeyboard(key, ui_events.WINDOW_KEY_PRESSED)
+        end
+    end
+end
+
+function on_save(mdata)
+    mdata.slot_info = slot_info
+end
+
+function on_load(mdata)
+    slot_info = mdata.slot_info or {}
+end
+
+function on_option_change(options)
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    BROKEN_COND = options["main"]["power_obj_broken_cond"]
+    KEYBIND_MODIFIER = options["main"]["keybind_modifier"]
+    KEYBIND_MODE = options["main"]["keybind_mode"]
+    KEY_TRIGGER_TIME = options["main"]["key_trigger_time"]
+    QUIT_KEYBIND = options["main"]["ui_quit_keybind"]
+    TOGGLE_UI_KEYBIND = options["main"]["toggle_ui_keybind"]
+    CLR_BLIND_TYPE = options["misc"]["colour_blind_type"]
+    TOGGLE_PANEL_ANIM_STYLE = options["breaker"]["toggle_panel_anim_style"]
+    CLR_SELECTOR_ANIM_STYLE = options["breaker"]["clr_selector_anim_style"]
+    dbg("debug", "Received options")
+end
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("on_key_hold", on_key_hold)
+    RegisterScriptCallback("on_key_press", on_key_press)
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
+end
+
+--[[
+setlabelui ui func
+local att_trans = self.label_atts["label"]:get_transform()
+local ui_trans = self.label_atts["label"]:bone_transform("ui")
+local ui_mat = matrix():mul(att_trans, ui_trans)
+local fov = math.rad(get_console_cmd(2, "hud_fov") + 83.0)
+local aspect = device().aspect_ratio
+local near_plane = 0.005
+local far_plane = clamp(level.environment():current().far_plane, 0, 744)
+dbg("dev", "fov:%s, aspect:%s, near plane:%s, far plane:%s", fov, aspect, near_plane, far_plane)
+local hud_proj = matrix():build_projection(
+    fov,
+    aspect,
+    far_plane
+)
+local cam_view = matrix():build_camera_dir(
+    device().cam_pos,
+    device().cam_dir,
+    device().cam_top
+)
+local full_transform = matrix():mul(hud_proj, cam_view)
+local ui_world_pos = matrix():mul(full_transform, ui_mat).c
+local ui_hud_pos = game.world2ui(ui_world_pos, true)
+]]

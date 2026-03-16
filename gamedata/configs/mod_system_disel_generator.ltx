@@ -107,6 +107,30 @@ base_rotation = 180
 
 max_power_output = 12000
 
+[hfg_breaker_label]:hfg_item_base
+visual = dynamics\hfg_breaker_label.ogf
+inv_name = st_hfg_breaker_label
+inv_name_short = st_hfg_breaker_label
+description = st_hfg_breaker_label_descr
+inv_grid_x = 17
+inv_grid_y = 2
+inv_grid_height = 2
+inv_grid_width = 1
+inv_weight = 0.01
+placeable_type = label
+placeable_section = placeable_breaker_label
+use1_functor = bind_breaker_label.add_label
+use1_action_functor = bind_breaker_label.add_label_func
+
+[placeable_breaker_label]:physic_object
+visual = dynamics\hfg_breaker_label_attachment.ogf
+script_binding = bind_breaker_label.init
+item_section = hfg_breaker_label
+placeable_type = label
+bounding_box_origin = 0, 0.285297, 0.000233
+bounding_box_size = 0.225, 0.283, 0.001 ;0.404, 0.561, 0.00163
+
+
 ; POWER STORAGE
 [hfg_makeshift_battery]:hfg_item_base
 visual                  = dynamics\hfg_makeshift_battery.ogf
@@ -490,7 +514,8 @@ inv_grid_y                              = 0
 inv_grid_height                         = 3
 inv_grid_width                          = 3
 cost                                    = 2500
-inv_weight    g                          = bind_power_receiver.init
+inv_weight                              = 8.5
+;script_binding                          = bind_power_receiver.init
 item_section                            = hfg_barbed_fence
 base_rotation                           = 90
 placeable_type                          = prop
@@ -499,7 +524,6 @@ placeable_type                          = prop
 bounding_box_origin                     = -0.32133, 1.5025, 0 ; x, z, y
 bounding_box_size                       = 0.719, 3, 3.01
 on_physic_contact                       = hfg.on_contact
-                          = 8.5
 
 ;placeable_type                          = power_receiver
 placeable_type                          = prop

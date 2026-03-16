@@ -1,0 +1,89 @@
+
+-- Lib Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+gts = get_translation
+
+-- Script Imports
+add_functor = custom_functor_autoinject.add_functor
+
+-- Utils
+get_config = hfg_mcm.get_config
+
+-- Constants
+LOG_HEADER = "[HFG|Bind Breaker Label]"
+LABEL_SECT = "hfg_breaker_label"
+ADD_LABEL_DIST = 0.7
+
+-- Locals
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function is_breaker_label(sect)
+    return LABEL_SECT == sect
+end
+
+-- Add lablel to breaker
+function add_label_to_breaker_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    if not is_breaker_label(sect) then return end
+    local targ_obj = level.get_target_obj()
+    if not targ_obj or not bind_breaker.is_breaker(targ_obj:section()) then return end
+    if not targ_obj or targ_obj:get_attachment("label") then return end
+    local dist_to_breaker = db.actor:position():distance_to(targ_obj:position())
+    return dist_to_breaker <= ADD_LABEL_DIST
+end
+
+function add_label_to_breaker_menu(obj)
+    return gts("st_hfg_add_label")
+end
+
+function add_label_to_breaker_func(obj, breaker)
+    dbg("dev", "add label to breaker func")
+    local id = obj:id()
+    local sect = obj:section()
+    alife_release(alife_object(id))
+    local targ_obj = not breaker and level.get_target_obj() or breaker
+    local visual = ini_sys:r_string_ex(sect, "visual")
+    dbg("dev", "using %s and model %s adding as att to %s", sect, visual, breaker:section())
+    local att = targ_obj:add_attachment("label", visual)
+    att:set_parent_bone("label")
+    att:set_type(script_attachment_type.World)
+    -- att:bone_callback(att:bone_id("link"), breaker:bone_id("label"))
+    hf_obj_manager.update_data(breaker:id(), {label_attached=true})
+end
+
+-- Callbacks
+
+function on_option_change(options)
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    dbg("debug", "Received options")
+end
+
+function on_game_start()
+    add_functor("hfg_add_label_to_breaker", add_label_to_breaker_cond, add_label_to_breaker_menu, nil, add_label_to_breaker_func)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+end

@@ -71,6 +71,8 @@
         <texture id="ui_hfg_prt_sp_battery"       x="500"    y="250" width="100"    height="50" />
         <texture id="ui_hfg_prt_sp_battery_wires" x="0"      y="200" width="50"     height="50" />
         <texture id="ui_hfg_prt_sp_battery_box"   x="800"    y="350" width="100"    height="100" />
+        <texture id="ui_hfg_prt_sp_inverter"      x="900"    y="0"   width="50"     height="150" />
+
     </file>
 
     <file name="ui\ui_color_picker">
@@ -83,5 +85,81 @@
         <texture id="ui_hfg_blueprint_tick"      x="559" y="202" width="178" height="198" />
         <texture id="ui_hfg_blueprint_mark"      x="551" y="406" width="148" height="136" />
         <texture id="ui_hfg_blueprint_key_background" x="562" y="558" width="127" height="129" />
+    </file>
+
+    <file name="ui\ui_hfg_power_grid_viewer">
+        <texture id="ui_hfg_pgv_logo_e"               x="4"    y="0"    width="258"  height="257" />
+        <texture id="ui_hfg_pgv_logo_h"               x="264"  y="0"    width="258"  height="257" />
+        <texture id="ui_hfg_pgv_logo_t"               x="5"    y="260"  width="258"  height="257" />
+        <texture id="ui_hfg_pgv_logo_d"               x="264"  y="260"  width="258"  height="257" />
+
+        <texture id="ui_hfg_pgv_btn_white"            x="548"  y="3"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_blue_e"           x="1150" y="1"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_blue_h"           x="548"  y="3"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_blue_t"           x="1150" y="1"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_blue_d"           x="1150" y="1"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_silver_e"         x="1750" y="1"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_silver_h"         x="548"  y="3"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_silver_t"         x="1750" y="1"    width="590"  height="240" />
+        <texture id="ui_hfg_pgv_btn_silver_d"         x="1750" y="1"    width="590"  height="240" />
+
+        <texture id="ui_hfg_pgv_toolbar_blank"          x="2355" y="0"    width="1050" height="250" />
+        <texture id="ui_hfg_pgv_btn_exit_e"             x="550"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_exit_h"             x="550"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_exit_t"             x="550"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_exit_d"             x="550"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_options_e"          x="800"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_options_h"          x="800"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_options_t"          x="800"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_options_d"          x="800"  y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_back_e"             x="1050" y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_back_h"             x="1050" y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_back_t"             x="1050" y="250"  width="250"  height="250" />
+        <texture id="ui_hfg_pgv_btn_back_d"             x="1050" y="250"  width="250"  height="250" />
+
+        <texture id="ui_hfg_pgv_window_blue"          x="0"    y="550"  width="1014" height="1014" />
+        <texture id="ui_hfg_pgv_window_silver"        x="1025" y="550"  width="1014" height="1014" />
+        <texture id="ui_hfg_pgv_window_indent_blue"   x="2059" y="562"  width="891"  height="892" />
+        <texture id="ui_hfg_pgv_window_indent_silver" x="2959" y="562"  width="891"  height="892" />
+
+        <texture id="ui_hfg_pgv_title_hfg"            x="0"    y="1560" width="450"  height="190" />
+        <texture id="ui_hfg_pgv_title_colon"          x="450"  y="1562" width="100"  height="188" />
+        <texture id="ui_hfg_pgv_title_grid"           x="500"  y="1563" width="550"  height="187" />
+        <texture id="ui_hfg_pgv_title_viewer"         x="1142" y="1563" width="908"  height="187" />
+        <texture id="ui_hfg_pgv_title_power"          x="0"    y="1750" width="950"  height="200" />
+        <texture id="ui_hfg_pgv_title_power_sources"        x="950"  y="1750" width="1100" height="200" />
+        <texture id="ui_hfg_pgv_title_power_logic"          x="0"    y="1950" width="800"  height="200" />
+        <texture id="ui_hfg_pgv_title_power_consumers"      x="800"  y="1950" width="1650" height="200" />
+        <texture id="ui_hfg_pgv_title_power_storage"        x="0"    y="2150" width="1200" height="200" />
+        <texture id="ui_hfg_pgv_title_grids"          x="5"    y="2354" width="726" height="193" />
+        <texture id="ui_hfg_pgv_title_level"          x="753"  y="2350" width="897" height="200" />
+
+        <texture id="ui_hfg_pgv_num_one"              x="1200" y="2150" width="150"  height="150" />
+        <texture id="ui_hfg_pgv_num_two"              x="1350" y="2150" width="182"  height="150" />
+        <texture id="ui_hfg_pgv_num_three"            x="1533" y="2150" width="182"  height="150" />
+        <texture id="ui_hfg_pgv_num_four"             x="1714" y="2150" width="186"  height="150" />
+        <texture id="ui_hfg_pgv_num_five"             x="1950" y="2150" width="192"  height="173" />
+        <texture id="ui_hfg_pgv_num_six"              x="2140" y="2150" width="173"  height="165" />
+        <texture id="ui_hfg_pgv_num_seven"            x="2314" y="2150" width="136"  height="150" />
+        <texture id="ui_hfg_pgv_num_eight"            x="2450" y="2150" width="189"  height="150" />
+        <texture id="ui_hfg_pgv_num_nine"             x="2638" y="2150" width="175"  height="150" />
+        <texture id="ui_hfg_pgv_num_zero"             x="2812" y="2150" width="173"  height="150" />
+    </file>
+
+    <file name="ui\ui_hfg_breaker">
+        <texture id="ui_hfg_breaker_top_panel"    x="18" y="0" width="320" height="489" />
+        <texture id="ui_hfg_breaker_side_panel"   x="667" y="75" width="333" height="611" />
+        <texture id="ui_hfg_breaker_bottom_panel" x="4" y="712" width="987" height="314" />
+        <texture id="ui_hfg_breaker_side_panel_item_indicator" x="350" y="200" width="63" height="43"/>
+
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_up_d" x="353" y="54" width="113" height="26" />
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_up_e" x="353" y="84" width="113" height="26" />
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_up_t" x="353" y="112" width="113" height="26" />
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_up_h" x="353" y="142" width="113" height="26" />
+
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_down_d" x="469" y="54" width="113" height="26" />
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_down_e" x="469" y="83" width="113" height="26" />
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_down_t" x="469" y="112" width="113" height="26" />
+        <texture id="ui_hfg_breaker_bottom_panel_handle_btn_down_h" x="469" y="141" width="113" height="26" />
     </file>
 </w>

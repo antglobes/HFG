@@ -1,0 +1,140 @@
+<w>
+    <dialog x="0" y="0" width="1024" height="768" stretch="1">
+    </dialog>
+
+    <!-- General -->
+    <clr_selector>
+        <bg x="352" y="184" width="310" height="420" stretch="1">
+            <texture>ui_inGame2_hint_wnd_main_window</texture>
+        </bg>
+        <clr_block x="10" y="10" width="280" height="280" stretch="1">
+            <texture>ui_clr_picker_clr_block</texture>
+        </clr_block>
+        <clr_name x="10" y="300" width="280" height="30" stretch="1">
+            <text font="letterica18" complex_mode="1" align="c" vert_align="c">Black</text>
+        </clr_name>
+        <track x="10" y="340" width="280" height="30" stretch="1" is_integer="1" step="1"/>
+        <set_btn x="10" y="380" width="140" height="40" stretch="1">
+            <text font="medium">Set Colour</text>
+            <texture>ui_button_ordinary</texture>
+        </set_btn>
+        <close_btn x="150" y="380" width="140" height="40" stretch="1">
+            <text font="medium">Close</text>
+            <texture>ui_button_ordinary</texture>
+        </close_btn>
+    </clr_selector>
+
+    <!-- Top Panel: Aka Info box -->
+    <top_panel x="20" y="-5" width="240" height="367" stretch="1">
+        <texture>ui_hfg_breaker_top_panel</texture>
+    </top_panel>
+
+    <fm_slot_list x="30" y="110" width="180" height="200" stretch="1" item_height="200" can_select="0" complex_mode="1" scroll_profile="default">
+        <font font="letterica25"/>
+    </fm_slot_list>
+
+    <!-- Side Panel: Aka View/Interact with Inventory -->
+    <side_panel x="790" y="78" width="249" height="458" stretch="1">
+        <texture>ui_hfg_breaker_side_panel</texture>
+    </side_panel>
+
+    <item_indicator x="-13" y="5" width="47" height="32" stretch="1">
+        <texture>ui_hfg_breaker_side_panel_item_indicator</texture>
+    </item_indicator>
+
+    <!-- Fuse Menu -->
+    <fm_inv_list x="25" y="32" width="187" height="400" stretch="1" item_height="100" can_select="1" complex_mode="1" scroll_profile="default">
+        <font font="letterica16"/>
+    </fm_inv_list>
+
+    <!-- Label Menu -->
+    <lm_power_obj_list x="25" y="32" width="187" height="400" stretch="1" item_height="100" can_select="1" complex_mode="1" scroll_profile="default">
+        <font font="letterica25" />
+    </lm_power_obj_list>
+
+    <!-- Bottom Panel: Aka toolbar holds controls -->
+    <bottom_panel x="142" y="532" width="740" height="236" stretch="1">
+        <texture>ui_hfg_breaker_bottom_panel</texture>
+    </bottom_panel>
+
+    <!-- Main Menu -->
+    <handle_btn x="314" y="-5" width="113" height="26" stretch="1">
+        <texture>ui_hfg_breaker_bottom_panel_handle_btn_up</texture>
+    </handle_btn>
+
+    <fuses_menu x="121" y="108" width="242" height="50" stretch="1">
+        <text font="letterica18">Fuses</text>
+        <texture>ui_button_ordinary</texture>
+    </fuses_menu>
+
+    <label_menu x="377" y="108" width="242" height="50" stretch="1">
+        <text font="letterica18">Label</text>
+        <texture>ui_button_ordinary</texture>
+    </label_menu>
+
+    <close_btn x="249" y="163" width="242" height="50" stretch="1">
+        <text font="letterica18">Close</text>
+        <texture>ui_button_ordinary</texture>
+    </close_btn>
+
+    <!-- Fuses Menu -->
+    <fm_action_btn x="121" y="108" width="242" height="50" stretch="1">
+        <text font="letterica18">Add Fuse Case</text> <!-- Add/Remove -->
+        <texture>ui_button_ordinary</texture>
+    </fm_action_btn>
+
+    <fm_change_slot_btn x="377" y="108" width="242" height="50" stretch="1">
+        <text font="letterica18">Change Slot</text>
+        <texture>ui_button_ordinary</texture>
+    </fm_change_slot_btn>
+
+    <fm_sticker_colour_btn x="121" y="168" width="242" height="50" stretch="1">
+    <text font="letterica18">Set Sticker Colour</text>
+        <texture>ui_button_ordinary</texture>
+    </fm_sticker_colour_btn>
+
+    <fm_back_btn x="377" y="168" width="242" height="50" stretch="1">
+        <text font="letterica18">Back</text>
+        <texture>ui_button_ordinary</texture>
+    </fm_back_btn>
+
+    <!-- Label Menu -->
+    <label>
+        <sticker_icon stretch="1" />
+        <slot_num stretch="1" />
+        <slot_power_obj stretch="1" />
+    </label>
+
+    <!-- Top 3 -->
+    <lm_label_btn x="101" y="108" width="170" height="50" stretch="1">
+        <text font="letterica18">Add Label</text>
+        <texture>ui_button_ordinary</texture>
+    </lm_label_btn>
+
+    <lm_view_label_btn x="284" y="108" width="170" height="50" stretch="1">
+        <text font="letterica18">View Label</text>
+        <texture>ui_button_ordinary</texture>
+    </lm_view_label_btn>
+
+    <lm_power_obj_btn x="474" y="108" width="170" height="50" stretch="1">
+        <text font="letterica18">Add Power Object</text>
+        <texture>ui_button_ordinary</texture>
+    </lm_power_obj_btn>
+
+    <!-- Bottom 3 -->
+    <lm_sticker_colour_btn x="80" y="168" width="170" height="50" stretch="1"> <!-- 126 -->
+        <text font="letterica18">Change Sticker Colour</text>
+        <texture>ui_button_ordinary</texture>
+    </lm_sticker_colour_btn>
+
+    <lm_change_slot_btn x="280" y="168" width="170" height="50" stretch="1">
+        <text font="letterica18">Change Slot</text>
+        <texture>ui_button_ordinary</texture>
+    </lm_change_slot_btn>
+
+    <lm_back_btn x="480" y="168" width="170" height="50" stretch="1"> <!--496-->
+        <text font="letterica18">Back</text>
+        <texture>ui_button_ordinary</texture>
+    </lm_back_btn>
+
+</w>
