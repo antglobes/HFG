@@ -16,7 +16,7 @@ SCRIPT_LIGHT_FIELDS = {
     "range", 
     "type", 
     "lanim", 
-    "hud_mode", 
+    "keybind_mode", 
     "enabled", 
 }
 
@@ -39,7 +39,7 @@ function create_script_light(data)
     sl.light.type = data["type"] -- 0 direct 1 point 2 spot 3 omnipart 4 reflected
     sl.light.lanim = data["lanim"]
     sl.light.brightness = data["brightness"]
-    sl.light.hud_mode = data["hud_mode"]
+    sl.light.keybind_mode = data["keybind_mode"]
     sl.light.enabled = data["enabled"]
 
     sl.light:set_position(sl.pos)
@@ -92,7 +92,7 @@ function spawn_script_light()
         type = 1,
         lanim = LANIMS["halogen_broken"],
         brightness = 1,
-        hud_mode = false,
+        keybind_mode = false,
         enabled = true
     }
     init_script_light(#script_lights + 1, data)

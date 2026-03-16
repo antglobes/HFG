@@ -17,7 +17,7 @@ AOE = demonized_aoe.AOE
 
 -- Utils
 is_obj_visible = hfg_utils.is_object_visible
-get_config = hfg_utils.get_config
+get_config = hfg_mcm.get_config
 
 -- Constants
 GENERATOR_ITEMS = {
@@ -48,7 +48,7 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     end
     dbg_pr:Log(level, fmt, ...)
 end
@@ -617,9 +617,9 @@ function on_npc_fired(bullet)
 end
 
 function on_option_change(options)
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
-    SEARCH_RADIUS = options["power_source_search_radius"]
-    MAX_FUEL = options["max_fuel"]
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    SEARCH_RADIUS = options["main"]["power_obj_search_radius"]
+    MAX_FUEL = options["main"]["max_fuel"]
     dbg("debug", "Received options")
 end
 

@@ -22,7 +22,7 @@ gray = demonized_geometry_ray.geometry_ray
 
 -- Utils
 bone_to_part_name = hfg_utils.bone_to_part_name
-get_config = hfg_utils.get_config
+get_config = hfg_mcm.get_config
 
 -- Constants
 MAX_FUEL = 60
@@ -83,7 +83,7 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     
     end
     dbg_pr:Log(level, fmt, ...)
@@ -886,12 +886,12 @@ function UIPowerableDevices:ApplyScreenRatio(ele)
 end
 
 function on_option_change(options)
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
     dbg("debug", "Received options")
-    SEARCH_RADIUS = options["power_source_search_radius"]
-    MAX_FUEL = options["max_fuel"]
-    MAX_POWER_OUTPUT = options["max_power_output"]
-    BROKEN_COND = options["power_source_broken_cond"]
+    SEARCH_RADIUS = options["main"]["power_obj_search_radius"]
+    MAX_FUEL = options["main"]["max_fuel"]
+    MAX_POWER_OUTPUT = options["main"]["max_power_output"]
+    BROKEN_COND = options["main"]["power_obj_broken_cond"]
 end
 
 function on_game_start()

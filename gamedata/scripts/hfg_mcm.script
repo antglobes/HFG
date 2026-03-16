@@ -1,26 +1,40 @@
 AddScriptCallback("hfg_on_option_change")
 
-
 defaults = {
-    max_fuel = 60,
-    max_power_output = 5000,
-    power_source_search_radius = 50,
-    power_source_broken_cond = 0.1,
-    siphon_activation_range = 3,
-    enable_debug = false,
-    debug_level = 1,
-    colour_blind_type = 1,
-    blueprint_toggle_hud = DIK_keys.DIK_U,
-    blueprint_toggle_preview = DIK_keys.DIK_P,
-    blueprint_toggle_preview_anim_style = "Bounce",
-    blueprint_toggle_preview_anim_duration = 3,
-    blueprint_scroll_up = DIK_keys.DIK_NUMPAD9,
-    blueprint_scroll_down = DIK_keys.DIK_NUMPAD6,
-    blueprint_scroll_step = 20,
-    blueprint_hud_modifier = 1,
-    blueprint_hud_mode = 0,
-    blueprint_key_trigger_time = 0.1,
+    main = {
+        max_fuel = 60,
+        max_power_output = 5000,
+        power_obj_search_radius = 50,
+        power_obj_broken_cond = 0.1,
+        toggle_ui_keybind = DIK_keys.DIK_U,
+        keybind_modifier = 1,
+        keybind_mode = 0,
+        key_trigger_time = 0.1,
+        ui_quit_keybind = DIK_keys.DIK_ESCAPE,
+    },
+    blueprint = {
+        toggle_preview_keybind = DIK_keys.DIK_P,
+        toggle_preview_anim_style = "Bounce",
+        toggle_preview_anim_duration = 3,
+        scroll_up_keybind = DIK_keys.DIK_NUMPAD9,
+        scroll_down_keybind = DIK_keys.DIK_NUMPAD6,
+        scroll_step = 20,
+        highlight_radius = 3,
+    },
+    breaker = {
+        toggle_panel_anim_style = "Back",
+        clr_selector_anim_style = "Quintic"
+    },
+    siphon = {
+        activation_range = 3,
+    },
+    misc = {
+        colour_blind_type = 1,
+        enable_debug = false,
+        debug_level = 1,
+    },
 }
+
 LOG_HEADER = "[HFG|MCM]"
 
 hfg_version = "0.13.12"
@@ -44,18 +58,22 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     
     end
     dbg_pr:Log(level, fmt, ...)
 end
 
-function get_config(key)
-    if ui_mcm then return ui_mcm.get("hfg/"..key) else return defaults[key] end
+function get_config(tab, key)
+    local mcm_id = strformat("hfg/%s/%s", tab, key)
+    if ui_mcm then 
+        return ui_mcm.get(mcm_id) 
+    end
+    return defaults[tab][key]
 end
 
 function debugging_enabled()
-	return get_config("enable_debug")
+	return get_config("misc", "enable_debug")
 end
 
 function has_mcm_keybinds()
@@ -63,73 +81,138 @@ function has_mcm_keybinds()
 end
 
 function on_mcm_load()
-    return { id="hfg", sh=true, gr={
-        {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title", size={512, 50}, spacing=20},
-        {id="max_fuel", type="track", val=2, min=0, max=100, step=1, def=60},
-        {id="max_power_output", type="track", val=2, min=0, max=100000, step=100, def=5000}, --1
-        {id="power_source_search_radius", type="track", val=2, min=0, max=100, step=1, def=50},
-        {id="power_source_broken_cond", type="track", val=2, min=0, max=1, step=0.1, def=0.1},
-        {id="siphon_activation_range", type="track", val=2, min=0.5, max=5, step=0.1, def=3},
-        {id="colour_blind_type", type="list", val=2, def=1,
-            content={
-                {1, "normal"},
-                {2, "achromatopsia"},
-                {3, "achromatomaly"},
-                {4, "deuteranopia"},
-                {5, "deuteranomaly"},
-                {6, "protanopia"},
-                {7, "protanomaly"},
-                {8, "tritanopia"},
-                {9, "tritanomaly"},
+    return { 
+        id="hfg", 
+        gr={
+            {
+                id="main",
+                sh=true,
+                gr={
+                    {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title_main", size={512, 50}, spacing=20},
+                    {id="max_fuel", type="track", val=2, min=0, max=100, step=1, def=60},
+                    {id="max_power_output", type="track", val=2, min=0, max=100000, step=100, def=5000}, --1
+                    {id="power_obj_search_radius", type="track", val=2, min=0, max=100, step=1, def=50},
+                    {id="power_obj_broken_cond", type="track", val=2, min=0, max=1, step=0.1, def=0.1},
+                    {id="toggle_ui_keybind", type="key_bind", val=2, def=DIK_keys.DIK_U, precondition={has_mcm_keybinds}},
+                    {id="keybind_modifier", type=ui_mcm.kb_mod_list, val=2, def=1, hint="mcm_kb_modifier", precondition={has_mcm_keybinds},
+                        content={
+                            {0,"mcm_kb_mod_none"},
+                            {1,"mcm_kb_mod_shift"},
+                            {3,"mcm_kb_mod_alt"}
+                        }
+                    },
+                    {id = "keybind_mode", type=ui_mcm.kb_mod_radio, val=2, def=0, hint="mcm_kb_mode", precondition={has_mcm_keybinds}, 
+                        content={
+                            {0,"mcm_kb_mode_press"},
+                            {1,"mcm_kb_mode_dtap"},
+                            {2,"mcm_kb_mode_hold"}
+                        }
+                    },
+                    {id="key_trigger_time", type="track", val=2, def=0.1, min=0.1, max=10.0, step=0.1, precondition={has_mcm_keybinds}},
+                    {id="ui_quit_keybind", type="key_bind", val=2, def=DIK_keys.DIK_ESCAPE, precondition={has_mcm_keybinds}},
+                }
+            },
+            {
+                id="blueprint",
+                sh=true,
+                gr={
+                    {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title_blueprint", size={512, 50}, spacing=20},
+                    {id="toggle_preview_keybind", type="key_bind", val=2, def=DIK_keys.DIK_P, precondition={has_mcm_keybinds}},
+                    {id="toggle_preview_anim_style", type="list", val=0, def="Bounce", precondition={has_mcm_keybinds}, 
+                        content={
+                            {"Quadratic", "Quadratic"},
+                            {"Cubic", "Cubic"},
+                            {"Quartic", "Quartic"},
+                            {"Quintic", "Quintic"},
+                            {"Sine", "Sine"},
+                            {"Circular", "Circular"},
+                            {"Exponential", "Exponential"},
+                            {"Elastic", "Elastic"},
+                            {"Back", "Back"},
+                            {"Bounce", "Bounce"},
+                        }
+                    },
+                    {id="toggle_preview_anim_duration", type="track", val=2, def=3.0, min=0.1, max=60.0, step=0.1, precondition={has_mcm_keybinds}},
+                    {id="scroll_up_keybind", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD9, precondition={has_mcm_keybinds}},
+                    {id="scroll_down_keybind", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD6, precondition={has_mcm_keybinds}},
+                    {id="scroll_step", type="track", val=2, def=20, min=1, max=100, step=1, precondition={has_mcm_keybinds}},
+                    {id="highlight_radius", type="track", val=2, def=3, min=1, max=20, step=1.0},
+                }
+            },
+            {
+                id="breaker",
+                sh=true,
+                gr={
+                    {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title_breaker", size={512, 50}, spacing=20},
+                    {id="toggle_panel_anim_style", type="list", val=0, def="Back", precondition={has_mcm_keybinds}, 
+                        content={
+                            {"Quadratic", "Quadratic"},
+                            {"Cubic", "Cubic"},
+                            {"Quartic", "Quartic"},
+                            {"Quintic", "Quintic"},
+                            {"Sine", "Sine"},
+                            {"Circular", "Circular"},
+                            {"Exponential", "Exponential"},
+                            {"Elastic", "Elastic"},
+                            {"Back", "Back"},
+                            {"Bounce", "Bounce"},
+                        }
+                    },
+                    {id="clr_selector_anim_style", type="list", val=0, def="Quintic", precondition={has_mcm_keybinds}, 
+                        content={
+                            {"Quadratic", "Quadratic"},
+                            {"Cubic", "Cubic"},
+                            {"Quartic", "Quartic"},
+                            {"Quintic", "Quintic"},
+                            {"Sine", "Sine"},
+                            {"Circular", "Circular"},
+                            {"Exponential", "Exponential"},
+                            {"Elastic", "Elastic"},
+                            {"Back", "Back"},
+                            {"Bounce", "Bounce"},
+                        }
+                    },
+                }
+            },
+            {
+                id="siphon",
+                sh=true,
+                gr={
+                    {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title_siphon", size={512, 50}, spacing=20},
+                    {id="activation_range", type="track", val=2, min=0.5, max=5, step=0.1, def=3},
+                }
+            },
+            {
+                id="misc",
+                sh=true,
+                gr={
+                    {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title_misc", size={512, 50}, spacing=20},
+                    {id="colour_blind_type", type="list", val=2, def=1,
+                        content={
+                            {1, "normal"},
+                            {2, "achromatopsia"},
+                            {3, "achromatomaly"},
+                            {4, "deuteranopia"},
+                            {5, "deuteranomaly"},
+                            {6, "protanopia"},
+                            {7, "protanomaly"},
+                            {8, "tritanopia"},
+                            {9, "tritanomaly"},
+                        }
+                    },
+                    {id="enable_debug", type="check", val=1, def=false},
+                    {id="debug_level", type="list", val=2, def=1, precondition={debugging_enabled},
+                        content={
+                            {1, "player"},
+                            {2, "debug"},
+                            {3, "info"},
+                            {4, "dev"},
+                            {5, "error"},
+                            {6, "all"},
+                        }
+                    }
+                }
             }
-        },
-        {id="title_blueprint"},
-        {id="blueprint_toggle_hud", type="key_bind", val=2, def=DIK_keys.DIK_U, precondition={has_mcm_keybinds}},
-        {id="blueprint_toggle_preview", type="key_bind", val=2, def=DIK_keys.DIK_P, precondition={has_mcm_keybinds}},
-        {id="blueprint_toggle_preview_anim_style", type="list", val=0, def="Bounce", precondition={has_mcm_keybinds}, 
-            content={
-                {"Quadratic", "Quadratic"},
-                {"Cubic", "Cubic"},
-                {"Quartic", "Quartic"},
-                {"Quintic", "Quintic"},
-                {"Sine", "Sine"},
-                {"Circular", "Circular"},
-                {"Exponential", "Exponential"},
-                {"Elastic", "Elastic"},
-                {"Back", "Back"},
-                {"Bounce", "Bounce"},
-            }
-        },
-        {id="blueprint_toggle_preview_anim_duration", type="track", val=2, def=3.0, min=0.1, max=60.0, step=0.1, precondition={has_mcm_keybinds}},
-        {id="blueprint_scroll_up", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD9, precondition={has_mcm_keybinds}},
-        {id="blueprint_scroll_down", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD6, precondition={has_mcm_keybinds}},
-        {id="blueprint_scroll_step", type="track", val=2, def=20, min=1, max=100, step=1, precondition={has_mcm_keybinds}},
-        {id="blueprint_hud_modifier", type=ui_mcm.kb_mod_list, val=2, def=1, hint="mcm_kb_modifier", precondition={has_mcm_keybinds},
-            content={
-                {0,"mcm_kb_mod_none"},
-                {1,"mcm_kb_mod_shift"},
-                {3,"mcm_kb_mod_alt"}
-            }
-        },
-        {id = "blueprint_hud_mode", type=ui_mcm.kb_mod_radio, val=2, def=0, hint="mcm_kb_mode", precondition={has_mcm_keybinds}, 
-            content={
-                {0,"mcm_kb_mode_press"},
-                {1,"mcm_kb_mode_dtap"},
-                {2,"mcm_kb_mode_hold"}
-            }
-        },
-        {id="blueprint_key_trigger_time", type="track", val=2, def=0.1, min=0.1, max=10.0, step=0.1, precondition={has_mcm_keybinds}},
-        {id="enable_debug", type="check", val=1, def=false},
-        {id="debug_level", type="list", val=2, def=1, precondition={debugging_enabled},
-				content={
-					{1, "player"},
-					{2, "debug"},
-					{3, "info"},
-					{4, "dev"},
-					{5, "error"},
-					{6, "all"},
-				}
-			}
         }
     }
 end
@@ -137,11 +220,14 @@ end
 
 function on_option_change()
     local options = {}
-    for k, _ in pairs(defaults) do
-        options[k] = get_config(k)
+    for tab, keys in pairs(defaults) do
+        options[tab] = {}
+        for k, _ in pairs(keys) do
+            options[tab][k] = get_config(tab, k)
+        end
     end
 
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
     dbg("debug", "Loading Options: \n%s", options)
     SendScriptCallback("hfg_on_option_change", options)
 end

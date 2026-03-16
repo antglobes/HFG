@@ -25,12 +25,12 @@ geo_ray = demonized_geometry_ray.geometry_ray
 get_hf_item_name = hfg_utils.get_hf_item_name
 bone_to_part_name = hfg_utils.bone_to_part_name
 get_bone_pos = hfg_utils.get_bone_pos
-get_config = hfg_utils.get_config
+get_config = hfg_mcm.get_config
 get_parts_tbl = hfg_utils.get_parts_tbl
 get_powerable_devices = hfg_utils.get_powerable_devices
 cond_to_state = hfg_utils.cond_to_state
 bones_by_distance = hfg_utils.bones_by_distance
-disassemble_power_source = hfg_power_grid.disassemble_power_source
+disassemble_power_obj = hfg_power_grid.disassemble_power_obj
 update_power_source_cond = hfg_power_grid.update_power_source_cond
 SWAP_POWER_STATE = hfg_utils.SWAP_POWER_STATE
 get_time_elapsed = hfg_utils.get_time_elapsed
@@ -68,7 +68,7 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     end
     dbg_pr:Log(level, fmt, ...)
 end
@@ -143,7 +143,7 @@ function placeable_disel_generator_wrapper:__init(obj) super(obj)
     self.item_section = ini_sys:r_string_ex(self.section, "item_section")
     self.condition = contains(data, "condition", true) and data["condition"] or 1
     self.placeable_type = ini_sys:r_string_ex(self.item_section, "placeable_type")
-    self.parts = contains(data, "parts", true) and data["parts"] or self:InitParts()
+    self.parts = contains(data, "parts", true) and data["parts"] or hfg_utils.init_parts(self.object, self.placeable_type)
     
     -- Object State
     self.power_state = self.condition > BROKEN_COND and (contains(data, "power_state", true) and data["power_state"] or "off") or "broken"
@@ -481,36 +481,12 @@ function placeable_disel_generator_wrapper:ProcessFuel()
         local time_frac = (time_diff/1)
         local tte = self.time_til_empty - time_frac
         self.time_til_empty = tte > 0 and tte or 0
-        dbg("all", "stored fuel: %s", self.stored_fuel)
-        dbg("all", "using %s fuel per ms", drain_rate_sec)
-        dbg("all", "current time:%s, time diff:%s, time frac:%s", time_curr, time_diff, time_frac)
+        -- dbg("all", "stored fuel: %s", self.stored_fuel)
+        -- dbg("all", "using %s fuel per ms", drain_rate_sec)
+        -- dbg("all", "current time:%s, time diff:%s, time frac:%s", time_curr, time_diff, time_frac)
         self.fuel_tmr = time_global() + 1000
         self.time_last = time_curr
     end
-    self:save_data()
-end
-
-function placeable_disel_generator_wrapper:InitParts()
-    dbg("info", "init parts")
-    local parts = {}
-    for bone_id, bone_name in pairs(self.object:list_bones()) do
-        local part_name = bone_to_part_name(bone_name, self.placeable_type)
-        if not contains(parts, part_name, true) then
-            parts[part_name] = {}
-            parts[part_name].name = part_name
-            parts[part_name].condition = 1
-            parts[part_name].bone_name = bone_name
-            parts[part_name].bone_id = bone_id
-            parts[part_name].components = get_parts_tbl(part_name)
-            local name = part_name:gsub("hfg_prt_", "")
-            local dam_multi = hfg_utils.part_damage_multi[self.placeable_type][name]
-            --dbg("dev", "name: %s, dam multi: %s", name, dam_multi)
-            parts[part_name].dam_multi =  dam_multi + round_idp(math.random(0.01, 0.5), 2)
-            -- dbg("dev", "adding %s to parts", part_name)
-        end
-    end
-    -- dbg("dev", "parts table: %s", parts)
-    self.parts = parts
     self:save_data()
 end
 
@@ -588,7 +564,7 @@ function placeable_disel_generator_wrapper:pickup()
     else
         hfg_obj_persistance.remove(gen_id, self.section)
         hf_obj_manager.cleanup_data(gen_id)
-        disassemble_power_source(self.item_section, data["parts"], self.object)
+        disassemble_power_obj(self.item_section, data["parts"], self.object)
     end
     
     -- Clean up HF-related data
@@ -706,12 +682,12 @@ end
 
 -- Callbacks
 function on_option_change(options)
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
     dbg("debug", "Received options")
-    SEARCH_RADIUS = options["power_source_search_radius"]
-    BROKEN_COND = options["power_source_broken_cond"]
-    MAX_FUEL = options["max_fuel"]
-    MAX_POWER_OUTPUT = options["max_power_output"]
+    SEARCH_RADIUS = options["main"]["power_obj_search_radius"]
+    BROKEN_COND = options["main"]["power_obj_broken_cond"]
+    MAX_FUEL = options["main"]["max_fuel"]
+    MAX_POWER_OUTPUT = options["main"]["max_power_output"]
 end
 
 function on_game_start()

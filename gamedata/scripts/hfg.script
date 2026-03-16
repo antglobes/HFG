@@ -8,7 +8,7 @@ gts = get_translation
 add_functor = custom_functor_autoinject.add_functor
 
 -- Utils
-get_config = hfg_utils.get_config
+get_config = hfg_mcm.get_config
 is_power_consumer = hfg_power_grid.is_power_consumer
 
 -- Constants
@@ -36,7 +36,7 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     
     end
     dbg_pr:Log(level, fmt, ...)
@@ -232,6 +232,6 @@ function on_game_start()
 end
 
 function on_option_change(options)
-    setup_log(options["debug_level"], LOG_HEADER, options["enable_debug"])
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
     dbg("debug", "Received options")
 end
