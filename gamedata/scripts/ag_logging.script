@@ -8,6 +8,7 @@ ag_utils.import_metatable(this, ag_strings)
 ag_utils.import_metatable(this, ag_tables)
 ag_utils.import_metatable(this, ag_game_objects)
 ag_utils.import_metatable(this, ag_configs)
+ag_utils.import_metatable(this, ag_colours)
 gts = get_translation
 
 ---Create a new Logging class
@@ -25,6 +26,7 @@ function AG_Log:__init(info)
 	self:SetLevel(info.level)
 	self.enabled = info.enabled and info.enabled or false
 	self.flush_tmr = 0
+	self.flush_tick = info.flush_tick and info.flush_tick or 60
 	self:SetupObjectTable()
 -- alive, faction, 
 end
@@ -91,8 +93,14 @@ function AG_Log:Log(log_level, fmt, ...)
 	local src = tostring(info.short_src)
 	local line = tostring(info.currentline)
 	src = string.sub(src, #src - string.find(string.reverse(src),"\\") + 2, #src)
-	local caller = strformat("[%s L#%s]", src, line)
-	local header = strformat("%s | %s", self.header, caller)
+	local header = strformat("[%s] | [L#%s]", src, line)
+
+	if log_level < self.log_levels.DEBUG then
+		header = strformat(self.header)
+	elseif log_level < self.log_levels.DEV then
+		local caller = strformat("[L#%s]", line)
+		header = strformat("%s | %s", self.header, caller)
+	end
 	self:printf(header, fmt, ...)
 end
 
@@ -104,6 +112,8 @@ function AG_Log:printf(header, fmt, ...)
 	elseif fmt_type == "table" or fmt_type == 'userdata' then
 		if fmt.x or fmt.y or fmt.z then
 			fmt = vec_to_str(fmt)
+		elseif (fmt.r  and fmt.g and fmt.b) or (fmt.h and fmt.s and fmt.v) then
+			fmt = clr_to_str(fmt)
 		elseif fmt.id then
 			fmt = self:ObjectToTable(fmt)
 		else
@@ -119,6 +129,8 @@ function AG_Log:printf(header, fmt, ...)
 			if (type(p[i]) == 'userdata') then
 				if (p[i].x or p[i].y or p[i].z) then
 					return vec_to_str(p[i])
+				elseif (p[i].r  and p[i].g and p[i].b) or (p[i].h and p[i].s and p[i].v) then
+					return clr_to_str(p[i])
 				elseif p[i].id then
 					return self:ObjectToTable(p[i])
 				end
@@ -137,6 +149,8 @@ function AG_Log:printf(header, fmt, ...)
 				end
 				if contains_obj then
 					return ag_tables.print_table(obj_tbl)
+				elseif not contains_obj and (p[i].r and p[i].g and p[i].b) or (p[i].h and p[i].s and p[i].v) then
+					return clr_to_str(p[i])
 				end
                 return ag_tables.print_table(p[i])    
             end
@@ -152,7 +166,7 @@ function AG_Log:printf(header, fmt, ...)
 		log(fmt)
 		if DEV_DEBUG and time_global() >= self.flush_tmr then
 			exec_console_cmd("flush")
-			self.flush_tmr = time_global() + (60 * 1000)
+			self.flush_tmr = time_global() + (self.flush_tick * 1000)
 		end
 	else
 		--printf("debug log")
@@ -196,12 +210,12 @@ function AG_Log:SetupObjectTable()
 			return has_key(sect, "visual") and get_visual(sect)
 		end,
 		weight = function(obj, typ, lvl)
-			if lvl < self.log_levels.INFO then return end
+			if lvl > self.log_levels.INFO then return end
 			local sect = get_unknown_sect(obj, typ)
 			return has_key(sect, "inv_weight") and get_item_weight(sect)
 		end,
 		cost = function(obj, typ, lvl)
-			if lvl < self.log_levels.INFO then return end
+			if lvl > self.log_levels.INFO then return end
 			local sect = get_unknown_sect(obj, typ)
 			return has_key(sect, "cost") and get_item_cost(sect, true)
 		end,

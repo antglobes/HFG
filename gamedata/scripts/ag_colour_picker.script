@@ -5,7 +5,7 @@ ag_utils.import_metatable(this, ag_strings)
 ag_utils.import_metatable(this, ag_maths)
 
 -- Utils
-get_config = hfg_utils.get_config
+get_config = hfg_mcm.get_config
 
 -- Constants
 FLOAT_PRECISION = 3
@@ -34,7 +34,7 @@ end
 
 function dbg(level, fmt, ...)
     if not dbg_pr then
-        setup_log(get_config("debug_level"), LOG_HEADER, get_config("enable_debug"))    
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
     
     end
     dbg_pr:Log(level, fmt, ...)

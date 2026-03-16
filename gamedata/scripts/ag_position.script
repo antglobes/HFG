@@ -2,6 +2,14 @@
 ---Apart of `ag_utils` library
 ---@author antglobes
 
+-- Library Imports
+ag_utils.import_metatable(this, ag_tables)
+
+-- Globals
+LEVEL_NAMES = {}
+LEVEL_INFO = {}
+SMART_POINTS = {}
+
 ---Get the difference in distance between two position vectors
 ---@author antglobes
 ---@param a vector
@@ -66,4 +74,260 @@ function get_bone_pos(obj, bone_name)
     --  local bpos = obj:bone_position(bid)
     --  return bpos
     return utils_obj.safe_bone_pos(obj, bone_name)
+end
+
+function is_pos_behind_npc(pos, npc)
+    npc = not npc and db.actor or npc
+    local npc_pos = vector():set(npc:position())
+    local npc_dir = vector():set(npc:direction())
+    local targ_dir = vec_sub(npc_pos, pos):normalize()
+    local fov = 100
+    for i=fov, 360 - fov, 1 do
+        local new_dir = vector_rotate_y(npc_dir, i)
+        if vec_similar(new_dir, targ_dir, 0.1) then
+            return true
+        end
+    end
+    return false
+end
+
+function get_random_pos_behind_npc(npc, dist)
+    local positions = get_positions_behind_npc(amount, npc, dist)
+    math.randomseed(time_continual())
+    local rnd_i = math.random(1, #positions)
+    return positions[rnd_i]
+end
+
+function get_positions_behind_npc(amount, npc, dist)
+    local positions = {}
+    for i=1, amount do
+        positions[i] = get_pos_behind_npc(npc, dist)
+    end
+    return positions
+end
+
+function get_pos_behind_npc(npc, dist)
+    npc = not npc and db.actor or npc
+    local gvid = npc:game_vertex_id()
+    local lvid = 4294967295
+    local npc_pos = vector():set(npc:position())
+    local npc_dir = vector():set(npc:direction())
+
+    local fov_min = 100
+    local fov_max = 360 - fov_min
+
+    local min_dist = 0.1
+    local min_vec = vector():set(min_dist, 0, 0)
+    local bound_vol = level.get_bounding_volume()
+    local radius_min = dist and (type(dist) == "table" and (contains(dist, "min", true) and dist["min"] or dist[1]) or dist) or min_dist
+    local radius_max = dist and (type(dist) == "table" and (contains(dist, "max", true) and dist["max"] or dist[2]) or dist) or min_dist
+    radius_min = clamp(dist, min_dist, vec_add(bound_vol.min, min_vec).x) 
+    radius_max = clamp(dist, min_dist, vec_sub(bound_vol.max, min_vec).x)
+
+    local behind_pos = vector():set(npc_pos)
+    repeat
+        math.randomseed(time_continual())
+        local dir = vector_rotate_y(npc_dir, math.random(fov_min, fov_min))
+        local radius = math.random(radius_min, radius_max)
+        local add_pos = vector():set(dir):mul(radius)
+        behind_pos = vec_add(npc_pos, add_pos)
+        lvid = level.vertex_id(behind_pos)
+    until lvid < 4294967295
+    return {
+        pos  = behind_pos,
+        lvid = lvid,
+        gvid  = gvid,
+    }
+end
+
+
+function get_lvl_info_by_pos(position)
+    local level_name = level.name()
+    local near_dist, i
+    for idx, info in pairs(LEVEL_INFO[level_name]) do
+        local level_pos = info.pos
+        local dist = position:distance_to_sqr(level_pos)
+        if not near_dist or dist < near_dist then
+            near_dist = dist
+            i = idx
+        end
+    end
+    return i and LEVEL_INFO[level_name][i] or {}
+end
+
+function get_lvl_info()
+    return LEVEL_INFO[level.name()]
+end
+
+function get_smart_points(level_name, smart_name)
+    local smart_points = {}
+    level_name = not level_name and level.name() or level_name
+    if contains(SMART_POINTS, level_name, true) then
+        smart_points = SMART_POINTS[level_name]
+        if contains(smart_points, smart_name, true) then
+            smart_points = smart_points[smart_name]
+        end
+    end
+    return smart_points
+end
+
+function get_smart_points_behind_npc(npc)
+    local points = {}
+    local level_name = level.name()
+    local smart = get_closest_smart()
+    local smart_name = smart:name()
+    local smart_points = get_smart_points(level_name, smart_name)
+    for idx, data in pairs(smart_points) do
+        if is_pos_behind_npc(data.pos, npc) then
+            points[#points + 1] = data
+        end
+    end
+    return points
+end
+
+-- Callbacks
+function collect_level_names() --game_levels.ltx
+    if is_not_empty(LEVEL_NAMES) then return end
+    for i=1, 32 do
+        local level_num = i < 10 and strformat("0%s", i) or tostring(i)
+        local sect = strformat("level%s", level_num)
+        local name = ini_sys:r_string_ex(sect, "name")
+        LEVEL_NAMES[i] = name
+    end
+    printf("level names:%s", print_table(LEVEL_NAMES))
+end
+
+function gather_level_info()
+    local curr_level = level.name()
+    if contains(LEVEL_INFO, curr_level, true) then return end
+    printf("gathering info for level:%s",curr_level)
+    local gg = game_graph()
+    local vertex, level_name, lvid, pos
+    local near_lvid, near_dist, near_gvid, dist
+    local gvid = 0
+    local lgvid = 0
+    while gg:valid_vertex_id(gvid) do
+        vertex = gg:vertex(gvid)
+        level_name = alife():level_name(vertex:level_id())
+        if (level_name == curr_level) then
+            pos = vertex:level_point()
+            LEVEL_INFO[level_name] = LEVEL_INFO[level_name] or {}
+            LEVEL_INFO[level_name][#LEVEL_INFO[level_name] + 1] = {
+                pos = pos,
+                lvid = lgvid,
+                gvid = gvid,
+            }
+
+            lgvid = lgvid + 1
+        end
+        gvid = gvid + 1
+    end
+    -- printf("level info:%s", print_table(LEVEL_INFO[curr_level]))
+end
+
+function gather_smart_points()
+    if not level.present() then return end
+    local level_name = level.name()
+    if contains(SMART_POINTS, level_name, true) then return end
+    printf("gathering smart info for level:%s",level_name)
+    local smart_points = {}
+    local max_dist = 15 --10 "51.48621484375ms"
+    local geo_ray = demonized_geometry_ray.geometry_ray
+    local ray = geo_ray({
+            ray_range = max_dist,
+            flags = 2,
+        })
+    local exclude_materials = {
+        "bush", "bush_sux", "tree_trunk", "setka_rabica", "slate"
+    }
+    -- local profiler = profile_timer()
+    -- profiler:start()
+    for name, smart in pairs(SIMBOARD.smarts_by_names) do
+        local center_pos = smart.position
+        local result = ray:get(center_pos, VEC_Y)
+        if 
+            simulation_objects.is_on_the_same_level(alife():actor(), smart) 
+            and result 
+            and result.in_contact
+            and (not result.result.material_name or 
+                not contains(exclude_materials, result.result.material_name:gsub("material\\","")))
+        then
+            -- printf("center pos: %s, smart name: %s", center_pos, name)
+            local new_pos = vector():set(center_pos)
+            smart_points[name] = {}
+            local pos_x, pos_y, pos_z = 0,0,0
+            for y=1, max_dist, 1.5 do
+                for x=1, max_dist, 1.5 do
+                    for z=1, max_dist, 1.5 do                        
+                        local add_pos = vector():set(x, y, z)
+                        local new_pos = vec_add(center_pos, add_pos)
+                        local lvid = level.vertex_id(new_pos)
+                        if lvid and lvid > 0 and lvid < 4294967295 then
+                            local idx = #smart_points[name] + 1
+                            smart_points[name][idx] = {}
+                            smart_points[name][idx].pos = new_pos
+                            smart_points[name][idx].lvid = lvid
+
+                            local level_info = get_lvl_info_by_pos(new_pos)
+                            if is_not_empty(level_info) then
+                                smart_points[name][idx].gvid = level_info.gvid
+                            end
+                        end
+                    end
+
+                end
+            end
+        end
+    end
+    -- profiler:stop()
+    -- printf("Time taken %sms", profiler:time() / 1000)
+
+    SMART_POINTS[level_name] = smart_points
+    -- printf("smart points for level %s: %s", level_name, print_table(smart_points))
+    return smart_points
+end
+
+function on_save(mdata)
+    mdata.level_names = LEVEL_NAMES
+
+    local tmp_lvl_info = LEVEL_INFO
+    local tmp_smart_points = SMART_POINTS
+    for _, level_name in pairs(LEVEL_NAMES) do
+        for idx, info in pairs(tmp_lvl_info[level_name]) do
+            tmp_lvl_info[level_name][idx].pos = utils_data.vector_to_string(tmp_lvl_info[level_name][idx].pos)
+        end
+        for smart_name, points in pairs(tmp_smart_points[level_name]) do
+            for idx, info in pairs(points) do
+                tmp_smart_points[level_name][smart_name][idx].pos = utils_data.vector_to_string(tmp_smart_points[level_name][smart_name][idx].pos)
+            end
+        end
+    end
+    mdata.level_info = tmp_lvl_info
+    mdata.smart_points = tmp_smart_points
+end
+
+function on_load(mdata)
+    LEVEL_NAMES = mdata.level_names or {}
+    local tmp_lvl_info = mdata.level_info or {}
+    local tmp_smart_points = mdata.smart_points or {}
+    for _, level_name in pairs(LEVEL_NAMES) do
+        for idx, info in pairs(tmp_lvl_info[level_name]) do
+            tmp_lvl_info[level_name][idx].pos = utils_data.string_to_vector(tmp_lvl_info[level_name][idx].pos)
+        end
+        for smart_name, points in pairs(tmp_smart_points[level_name]) do
+            for idx, info in pairs(points) do
+                tmp_smart_points[level_name][smart_name][idx].pos = utils_data.string_to_vector(tmp_smart_points[level_name][smart_name][idx].pos)
+            end
+        end
+    end
+    LEVEL_INFO = tmp_lvl_info
+    SMART_POINTS = tmp_smart_points
+end
+
+function on_game_start()
+    RegisterScriptCallback("on_game_load", collect_level_names)
+    RegisterScriptCallback("on_game_load", gather_level_info)
+    RegisterScriptCallback("on_game_load", gather_smart_points)
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
 end

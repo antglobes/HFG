@@ -1,5 +1,6 @@
 -- Libarary Imports
 
+ag_utils.import_metatable(this, ag_tables)
 ag_utils.import_metatable(this, ag_strings)
 gts = get_translation
 
@@ -490,6 +491,9 @@ end
 ---@return string, table<string, number>, table<string, number>
 function get_obj_icon(obj, sec)
     local sect = obj and obj:section() or sec
+    if placeable_furniture and sect:find("placeable") then
+        sect = ini_sys:r_string_ex(sect, "item_section", sect)
+    end
     local path = utils_xml.get_icons_texture(sect)
     local grid_size = 50
     local x = ini_sys:r_string_ex(sect, "inv_grid_x") or 0
@@ -531,11 +535,9 @@ function get_wpn_dir(wpn)
 end
 
 -- Debugging
-function print_bones()
-    local obj = level.get_target_obj()
-    if not obj then return end
+function print_bones(obj)
     local bones = obj:list_bones()
-    -- printf("%s: %s", obj:section(), utils_data.print_table(bones, nil, true))
+    return print_table(bones)
 end
 
 

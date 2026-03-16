@@ -2,7 +2,69 @@
 ---Apart of `ag_utils` library
 ---@author antglobes
 
+-- Library Imports
+ag_utils.import_metatable(this, ag_strings)
+
+-- Tables
+special_character_faction = {
+    -- Cordon
+    ["Loris"] = "stalker",
+    ["Sidorovich"] = "stalker",
+    -- Garbage
+    ["Butcher"] = "stalker",
+    -- Rostok
+    ["Barkeep"] = "stalker",
+    ["Snitch"] = "stalker",
+    ["Arnie"] = "stalker",
+    -- Red Forest
+    ["Forester"] = "stalker",
+    -- Jupiter
+    ["Hawaiian"] = "stalker",
+    ["Ashot"] = "freedom",
+    -- Zaton
+    ["Nimble"] = "stalker",
+    ["Beard"] = "stalker",
+    ["Owl"] = "stalker",
+    -- Great Swamps
+    ["Professor Kalancha"] = "csky",
+    -- Misc
+    ['Senior Sergeant Grebenko'] = "dolg",
+    ["Xenotech"] = "stalker",
+}
+communities = {
+    "stalker",
+    "csky",
+    "bandit",
+    "army", 
+    "killer",
+    "monolith",
+    "ecolog",
+    "dolg", 
+    "freedom",
+    "greh",
+    "renegade",
+    "isg",
+    "monster",
+    "sin",
+}
+
 -- Boolean Functions
+
+function IsNpc(npc, npc_type)
+    if not npc then return false end
+    if not npc_type and (IsMonster(npc) or IsStalker(npc)) then
+        return true
+    elseif npc_type == "actor" then
+        return IsStalker(npc) and npc:id() == 0
+    elseif npc_type == "stalker" then
+        local comm = get_community(npc)
+        return (IsStalker(npc) or contains(communities, comm)) and npc:id() ~= 0
+    elseif npc_type == "monster" then
+        return IsMonster(npc)
+    end
+end
+
+
 
 ---Check if a NPC in dialog
 ---@author antglobes
@@ -292,4 +354,44 @@ function get_repairable_item(npc)
         end
     end)
     return items
+end
+
+function get_community(npc)
+    if IsMonster(npc) then
+        return "monster"
+    end
+
+    local name = get_npc_name(npc)
+    if contains(special_character_faction, name, true) then
+        return special_character_faction[name]
+    end
+
+    local faction = npc:character_community()
+    if faction == "zombied" then
+        local visual = npc:get_visual_name()
+        local path_tkns = split(visual, "\\")
+        local faction_found = false
+        for i=1, #path_tkns do
+            local file_tkns = split(path_tkns[#path_tkns + 1 - i], "_")
+            for i=1, #file_tkns do
+                for _, community in pairs(communities) do
+                    local file_tkn = file_tkns[#file_tkns + 1 - i]
+                    if not faction_found and file_tkn:find(community) then
+                        faction_found = true
+                        faction = community     
+                    end
+                end
+            end
+        end
+    end
+
+    return faction
+end
+
+function get_npc_type(npc)
+    if npc:id() == 0 then
+        return "actor"
+    end
+    local comm = get_community(npc)
+    return contains(communities, comm) and "stalker" or comm
 end

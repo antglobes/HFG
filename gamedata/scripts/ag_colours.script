@@ -1,10 +1,22 @@
 ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_strings)
 
 ---Utility Functions that focus on colour mainpulation in argb and fcolor format
 ---Apart of `ag_utils` library
 ---@author antglobes
 clr_cache = {}
-
+rgba_idx_to_channel = {
+	[1]="r",
+	[2]="g",
+	[3]="b",
+	[4]="a"
+}
+hsva_idx_to_channel = {
+	[1]="h",
+	[2]="s",
+	[3]="v",
+	[4]="a"
+}
 ---Get vanilla colour
 ---@author antglobes
 ---@param name string
@@ -59,7 +71,50 @@ function change_alpha(clr, a)
     return clr_cache[clr .. "_" .. a]
 end
 
----Get an argb value represented as a 32 bit number or as a table from a float
+function normalize_argb(clr)
+	local argb = {}
+	for channel, unit in pairs(clr) do
+		argb[channel] = clamp(normalize(unit, 0, 255), 0, 1)
+	end
+	return argb
+end
+
+
+function convert_to_argb(clr)
+	local argb = {}
+	for channel, unit in pairs(clr) do
+		argb[channel] = clamp(unit * 255, 0, 255)
+	end
+	return argb
+end
+
+function clr_to_str(clr)
+	local channel_str = ""
+    local clr_str = ""
+	local order_tbl = {}
+	if type(clr) == "number" then
+		clr = float2argb(clr, true)
+	elseif type(clr) == "userdata" and (clr.r or clr.b or clr.g) then
+		clr = fcolor2argb(clr, true)
+	elseif type(clr) == "string" and Hex2argb(clr) then
+		clr = Hex2argb(clr)
+	end
+
+	if clr.r or clr.b or clr.g then
+		order_tbl = rgba_idx_to_channel
+	elseif clr.h or clr.s or clr.v then
+		order_tbl = hsva_idx_to_channel
+	end
+	
+	for idx, channel in ipairs(order_tbl) do
+		channel_str = channel_str .. channel
+        clr_str = clr_str .. clr[channel] .. ","
+	end
+    clr_str = clr_str:gsub(",$", "")
+	return strformat("%s(%s)", channel_str, clr_str)
+end
+
+---Get an argb value represented as a 32 bit number or as a table, from a float
 ---@author antglobes
 ---@param clr number
 ---@param as_table boolean
@@ -113,21 +168,16 @@ function argb2Hex(clr, as_table)
 	return as_table and {r=rh, g=gh, b=bh, a=ah} or rh .. gh .. bh .. ah
 end
 
-idx_to_clr_key = {
-	[1]="r",
-	[2]="b",
-	[3]="g",
-	[4]="a"
-}
 function Hex2argb(hex_str, as_argb)
-	local argb = {r=0, b=0, g=0, a=0}
+	printf("hex str: %s, as argb:%s", hex_str, as_argb)
+	local argb = {}
 	local idx=1
 	hex_str = hex_str:gsub("#","")
 	for i=1, #hex_str, 2 do
 		local hex_char = hex_str:sub(i, i + 1)
 		local hex_s = "0x"..hex_char
 		local unit = tonumber(hex_s)
-		local clr_key = idx_to_clr_key[idx]
+		local clr_key = rgba_idx_to_channel[idx]
 		argb[clr_key] = unit
 		idx = idx + 1
 	end
@@ -155,6 +205,157 @@ function compare_argb(clr_x, clr_y, op)
 			or clr_x.a ~= clr_y.a	
 	end
 end
+
+function to_hex_str(hex_clr)
+    return strformat("#%s",hex_clr)
+end
+
+---adapted from https://github.com/EmmanuelOga/columns/blob/master/utils/color.lua#L51
+function argb2hsv(clr)
+	local red = clr.r or clr[1]
+	local green = clr.g or clr[2]
+	local blue = clr.b or clr[3]
+	local alpha = clr.a or clr[4]
+	local norm_argb = normalize_argb({a=alpha, r=red, g=green, blue})
+	local max = math.max(norm_argb.r, norm_argb.g, norm_argb.b)
+	local min = math.min(norm_argb.r, norm_argb.g, norm_argb.b)
+	
+	local h, s, v
+	v = max
+	local delta = max - min
+	if max == 0 then
+		s = 0
+	else
+		s = delta / max
+	end
+
+	if max == min then
+		h = 0
+	else
+		if max == norm_argb.r then
+			h = (norm_argb.g - norm_argb.b) / delta
+			if norm_argb.g < norm_argb.b then
+				h = h + 6
+			end
+		elseif max == norm_argb.g then
+			h = (norm_argb.b - norm_argb.r) / delta + 2
+		elseif max == norm_argb.b then
+			h = (norm_argb.r - norm_argb.g) / delta + 4
+		end
+		h = h / 6
+	end
+	return {
+		h=h,
+		s=s,
+		v=v,
+		a=norm_argb.a
+	}
+end
+
+---adapted from https://github.com/EmmanuelOga/columns/blob/master/utils/color.lua#L51
+function hsv2argb(clr)
+	local hue        = clr.h or clr[1]
+	local saturation = clr.s or clr[2]
+	local value      = clr.v or clr[3]
+	local alpha      = clr.a or clr[4]
+
+	local i = math.floor(hue * 6)
+	local f = hue * 6 - i
+	local p = value * (1 - saturation)
+	local q = value * (1 - f * saturation)
+	local t = value * (1 - (1 - f) * saturation)
+
+	i = i % 6
+
+	if i == 0 then 
+		return convert_to_argb({value, t, p, alpha})
+	elseif i == 1 then 
+		return convert_to_argb({q, value, p, alpha})
+	elseif i == 2 then 
+		return convert_to_argb({p, value, t, alpha})
+	elseif i == 3 then 
+		return convert_to_argb({p, q, value, alpha})
+	elseif i == 4 then 
+		return convert_to_argb({t, p, value, alpha})
+	elseif i == 5 then 
+		return convert_to_argb({value, p, q, alpha})
+	end
+end
+
+function smudge_clr(clr_a, clr_b, factor)
+	local a_hsv = argb2hsv(clr_a)
+	local b_hsv = argb2hsv(clr_b)
+	local c_hsv = {h=0, s=0, v=0, a=0}
+
+	if math.abs(a_hsv.h - b_hsv.h) > 180 then
+		local angle = (360 - math.abs(a_hsv.h - b_hsv.h)) * factor
+		if a_hsv.h < b_hsv.h then
+			c_hsv.h = math.floor(a_hsv.h - angle)
+			if c_hsv.h < 0 then
+				c_hsv.h = 360 + c_hsv.h
+			end
+		else
+			c_hsv.h = math.floor(a_hsv.h + angle)
+			if c_hsv.h > 360 then 
+				c_hsv.h = c_hsv.h - 360
+			end
+		end
+	else
+		c_hsv.h = math.floor(a_hsv.h - (a_hsv.h - b_hsv.h) * factor)
+	end
+	c_hsv.s = lerp(a_hsv.s, b_hsv.s, factor)
+	c_hsv.v = lerp(a_hsv.v, b_hsv.v, factor)
+	c_hsv.a = lerp(a_hsv.a, b_hsv.a, factor)
+	return hsv2argb(c_hsv)
+end
+
+function get_steps(limit)
+	local steps = {}
+	for i=1, limit do
+		steps[i] = (1 / limit) * i
+	end
+	return steps
+end
+
+function linear_gradient_str(str, colours)
+	local chars = get_chars(str)
+	local whitespace_count = count_whitespace(str)
+	local num_chars = size_table(chars)
+	local steps = get_steps(num_chars - whitespace_count)
+
+	local colour_amt = size_table(colours)
+	local div_clrs = colour_amt - 1
+	local distribution = 1 / div_clrs
+	local curr_distrib = distribution
+
+	local gradient_str = ""
+	local clr_idx = 1
+	local step_idx = 1
+	local start_clr = colours[clr_idx]
+	local end_clr = colours[clr_idx + 1]
+	for idx, char in pairs(chars) do
+		if not is_whitespace(char) then
+			local step = steps[step_idx]
+			
+			-- Switch out colours
+			if step >= curr_distrib then
+				start_clr = colours[clr_idx + 1]
+				end_clr = clr_idx + 2 <= colour_amt and colours[clr_idx + 2] or colours[#colours]
+				curr_distrib = distribution * (clr_idx + 1) 
+				clr_idx = clr_idx + 1
+			end
+
+			local step_clr = smudge_clr(start_clr, end_clr, step)
+			local clr_str = get_clr_str(step_clr, char)
+			gradient_str = gradient_str .. clr_str
+			step_idx = step_idx + 1
+		else
+			gradient_str = gradient_str .. char
+		end
+	end
+	return gradient_str
+end
+
 
 -- Converting default_rgb to colorblind safe default_rgb
 -- Sourced from https://create.roblox.com/store/asset/6219049766/rgbToColorblindRgb?assetType=Model&externalSource=www
@@ -272,6 +473,13 @@ function get_colourblind_clr(clr, colourblind_type, as_table)
     return GetARGB(alpha, rgb.r, rgb.g, rgb.b)
 end
 
+function get_clr_str(clr, str)
+	if not str then
+		return strformat("%c[%s,%s,%s,%s]", clr.a, clr.r, clr.g, clr.b)
+	end
+	return strformat("%c[%s,%s,%s,%s]%s", clr.a, clr.r, clr.g, clr.b, str)
+end
+
 -- HSL + HSV Conversion to and from rgb
 -- Sourced from https://github.com/EmmanuelOga/columns/blob/master/utils/color.lua
 -- Modified to accept alpha channel
@@ -279,28 +487,28 @@ end
 ---Table of <string, table<r, g, b>> values taken from utils_xml
 vanilla_clr_tbl = {
     -- Additional COLOURS
-    ["black"]       = {r=0,  g=0, b=0},
-    ["blue"]        = {r=34, g=106, b=226},
-    ["magenta"]     = {r=209, g=74, b=169},
+    ["black"]       = {r=0,  g=0, b=0, a=255},
+    ["blue"]        = {r=34, g=106, b=226, a=255},
+    ["magenta"]     = {r=209, g=74, b=169, a=255},
 
     -- Base Game COLOURS
-	["white"]       = {r=255,g=255,b=255},
-	["green"]       = {r=0,g=255,b=0},
-	["yellow"]      = {r=255,g=255,b=0},
-	["red"]         = {r=255,g=0,b=0},
-	["orange"]      = {r=250,g=150,b=0},
-	["d_orange"]    = {r=238,g=153,b=26},
-	["d_red"]       = {r=204,g=0,b=51},
-	["d_cyan"]      = {r=153,g=255,b=255},
-	["d_purple"]    = {r=93,g=0,b=116},
-	["d_green"]     = {r=51,g=255,b=102},
-	["d_blue"]      = {r=100,g=100,b=255},	
-	["ui_gray_1"]   = {r=170,g=170,b=170},
-	["ui_gray_2"]   = {r=140,g=140,b=140},
-	["pda_green"]   = {r=56,g=209,b=115},
-	["pda_blue"]    = {r=56,g=166,b=209},
-	["pda_yellow"]  = {r=209,g=209,b=56},
-	["pda_white"]   = {r=250,g=250,b=250},
+	["white"]       = {r=255,g=255,b=255, a=255},
+	["green"]       = {r=0,g=255,b=0, a=255},
+	["yellow"]      = {r=255,g=255,b=0, a=255},
+	["red"]         = {r=255,g=0,b=0, a=255},
+	["orange"]      = {r=250,g=150,b=0, a=255},
+	["d_orange"]    = {r=238,g=153,b=26, a=255},
+	["d_red"]       = {r=204,g=0,b=51, a=255},
+	["d_cyan"]      = {r=153,g=255,b=255, a=255},
+	["d_purple"]    = {r=93,g=0,b=116, a=255},
+	["d_green"]     = {r=51,g=255,b=102, a=255},
+	["d_blue"]      = {r=100,g=100,b=255, a=255},	
+	["ui_gray_1"]   = {r=170,g=170,b=170, a=255},
+	["ui_gray_2"]   = {r=140,g=140,b=140, a=255},
+	["pda_green"]   = {r=56,g=209,b=115, a=255},
+	["pda_blue"]    = {r=56,g=166,b=209, a=255},
+	["pda_yellow"]  = {r=209,g=209,b=56, a=255},
+	["pda_white"]   = {r=250,g=250,b=250, a=255},
 }
 
 ---Set the opacity of a colour from clr_table
@@ -367,5 +575,5 @@ faction_to_colour = {
 }
 
 misc_clr_tbl = {
-	["graphite"] = {r=107,g=107,b=107} -- 92,98,116
+	["graphite"] = {r=107,g=107,b=107, a=255} -- 92,98,116
 }

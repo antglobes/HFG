@@ -285,6 +285,18 @@ function sum(tbl)
  end
 
 
+ function splice(tbl, start_index, end_index)
+    local tmp = {}
+    if is_empty(tbl) then return tmp end
+    start_index = start_index > 0 and start_index or 1
+    end_index = end_index <= #tbl and end_index or #tbl
+    for i=start_index, end_index do
+        tmp[#tmp + 1] = tbl[i]
+    end
+    return tmp
+end
+
+
 -- Logging
 
 --- Returns printable format for table, visualised as either a string or a table

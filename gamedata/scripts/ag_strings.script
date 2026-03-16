@@ -71,7 +71,7 @@ end
 ---@type fun(str: string): string
 function sentence_case(str)
     local sentence = ""
-     for word in string.gmatch(str, "[^\n]%a+") do -- %S+
+     for word in string.gmatch(str, "%a+") do -- %S+
         sentence = sentence.." ".. capitalise(word)
      end
     return sentence
@@ -286,4 +286,35 @@ function remove_char(str, char)
         end
     end
     return tmp
+end
+
+function is_whitespace(str)
+	return str:match("%s") ~= nil
+end
+
+function count_chars(str, only_whitespace)
+    local count = 0
+    for char in str:gmatch"." do
+        if 
+            only_whitespace and is_whitespace(char) 
+            or not is_whitespace(char) 
+        then 
+            count = count + 1 
+        end
+    end
+    return count
+end
+
+function get_chars(str)
+    local chars = {}
+    local idx = 1
+    for c in str:gmatch(".") do
+		chars[idx] = c
+		idx = idx + 1
+	end
+    return chars
+end
+
+function count_whitespace(str)
+    return count_chars(str, true)
 end

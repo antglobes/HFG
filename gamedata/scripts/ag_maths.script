@@ -369,3 +369,16 @@ function get_max_size_within_rect(tile_count, height, width)
     
     return max_size
 end
+
+function todegrees(x)
+    return math.deg(math.abs(math.acos(x)))
+end
+
+function build_range(max, min)
+    local mn = not min and 1 or min
+    local tmp = {}
+    for i=mn, max do
+        tmp[i] = i
+    end
+    return tmp
+end
