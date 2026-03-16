@@ -88,6 +88,7 @@ cost = 6000
 inv_weight = 5.2
 placeable_type = breaker
 placeable_section = placeable_breaker
+startup_animation = idle_close
 
 [placeable_breaker]:physic_object
 visual = dynamics\hfg_breaker.ogf
@@ -97,7 +98,7 @@ script_binding = bind_breaker.init
 item_section = hfg_breaker
 placeable_type = breaker
 
-; ui_on_interaction                        = ui_diesel_generator.start_ui
+ui_on_interaction                        = ui_breaker.start_ui
 ui_on_simple_interaction                 = bind_breaker.toggle_power
 
 bounding_box_origin = 0, 0, 0
