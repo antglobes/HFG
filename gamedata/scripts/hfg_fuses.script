@@ -1,0 +1,445 @@
+-- Lib Imports
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
+gts = get_translation
+
+-- Script Imports
+add_functor = custom_functor_autoinject.add_functor
+
+-- Utils
+get_config = hfg_mcm.get_config
+
+-- Constants
+LOG_HEADER = "[HFG|Fuses]"
+FUSE_LOOSE = "hfg_fuse"
+FUSE_PACK = strformat("%_pack", FUSE_LOOSE)
+FUSE_CASE = strformat("%s_case", FUSE_LOOSE)
+FUSE_BROKEN_SECT = "hfg_fuse_broken"
+FUSE_CASE_STICKER_SUBMESH_ID = 1
+FUSE_CASE_SUBMESH_NUM = 3
+STICKER_MODEL = "dynamics\\hfg_sticker.ogf"
+STICKER_TEXTURE_PREFIX = "ui\\ag_colours\\ag_colour_block_%s"
+
+-- Tables
+bags = {
+    actor_bag = true,
+    actor_trade_bag = true,
+    npc_bag = true,
+    npc_trade_bag = true
+}
+discharge_factor = {
+    normal = 1,
+    moist = 0.8,
+    damp = 0.6,
+    homemade = 0.35,
+    broken = 0
+}
+fuse_types = {
+    "normal",
+    "moist",
+    "damp",
+    "homemade",
+    "broken"
+}
+
+fuse_type_order = {
+    normal = 5,
+    moist = 4,
+    damp = 3,
+    homemade = 2,
+    broken = 1,
+}
+fuse_order_type = {
+     [5] = "normal",
+     [4] = "moist",
+     [3] = "damp",
+     [2] = "homemade",
+     [1] = "broken",
+}
+fuse_loose_info = {}
+fuse_pack_info = {}
+fuse_case_info = {}
+
+-- Locals
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
+    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function is_fuse_loose(sect)
+    return sect:find(FUSE_LOOSE) and not is_fuse_pack(sect) and not is_fuse_case(sect)
+end
+
+function is_fuse_pack(sect)
+    return sect:find(FUSE_PACK)
+end
+
+function is_fuse_case(sect)
+    return sect == FUSE_CASE
+end
+
+function is_fuse_broken(sect)
+    local fuse_typ = get_fuse_type(sect)
+    return fuse_typ and is_fuse_loose(sect) and fuse_typ == "broken"
+end
+
+function is_fuse_pack_empty(sect)
+    return is_fuse_pack(sect) and sect:match("empty$")
+end
+
+function is_fuse_item(sect)
+    return is_fuse_loose(sect) or is_fuse_pack(sect) or is_fuse_case(sect)
+end
+
+function get_fuse_type(sect)
+    return replace(sect, {"hfg_fuse", "pack", "empty", "_"})
+end
+
+function get_fuse_info(id)
+    return contains(fuse_loose_info, id, true) and fuse_loose_info[id]
+           or contains(fuse_pack_info, id, true) and fuse_pack_info[id]
+           or contains(fuse_case_info, id, true) and fuse_case_info[id]
+           or {}
+end
+
+function init_fuse_loose_info(id, sect)
+    local fuse_typ = get_fuse_type(sect)
+    return {
+        id = id,
+        sect = sect,
+        typ = fuse_typ,
+        dis_fac = discharge_factor[fuse_typ],
+        clr_name = "",
+        order = fuse_type_order[fuse_typ]
+    }
+end
+
+function replace_fuse_loose_info(old_id, new_id, fuse_info)
+    if 
+        old_id and not contains(fuse_loose_info, old_id, true) 
+        or new_id and contains(fuse_loose_info, new_id, true) 
+    then 
+        return
+    elseif not old_id or not contains(fuse_loose_info, old_id) then
+        fuse_loose_info[new_id] = init_fuse_loose_info(new_id, fuse_info.sect)
+        return
+    end
+    fuse_loose_info[old_id] = nil
+    fuse_loose_info[new_id] = fuse_info
+end
+
+function update_fuse_case_info(id, fuse_loose_info)
+    local info = fuse_case_info[id]
+    if is_empty(info) then
+        fuse_case_info[id] = fuse_loose_info
+    else
+        for k, v in pairs(fuse_loose_info) do
+            fuse_case_info[id][k] = k == "clr_name" and v == "" and fuse_case_info[id][k] or v
+        end
+    end
+end
+
+function replace_fuse_case_info(old_id, new_id, fuse_info)
+    local info = fuse_info or fuse_case_info[old_id]
+    fuse_case_info[old_id] = nil
+    fuse_case_info[new_id] = info
+end
+
+-- Unpack functor
+-- Fuse Pack
+function unpack_fuse_pack_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    return is_fuse_pack(sect) 
+        and contains(fuse_pack_info, obj:id(), true)
+end
+
+function unpack_fuse_pack_menu(obj)
+    return gts("st_unpack")
+end
+
+function unpack_fuse_pack_func(obj)
+    local id = get_unknown_id(obj)
+    local sect = get_unknown_sect(obj)
+    local info = fuse_pack_info[id]
+    
+    for idx, fuse_info in pairs(info["fuses"]) do
+        local se_obj = alife_create_item(fuse_info.sect, db.actor)
+        replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
+        fuse_pack_info[id]["fuses"][idx] = nil
+        fuse_pack_info[id].amount_stored = fuse_pack_info[id].amount_stored - 1
+    end
+    if fuse_pack_info[id].amount_stored == 0 and ini_sys:line_exist(sect, "empty_sect") then
+        local empty_sect = ini_sys:r_string_ex(sect, "empty_sect")
+        alife_create_item(empty_sect, db.actor)
+    end
+    alife_release(alife_object(id))
+end
+-- Fuse Case
+function unpack_fuse_case_cond(obj)
+    local p = obj:parent()
+	if not (p and p:id() == AC_ID) then return end
+    local sect = obj:section()
+    return is_fuse_case(sect) 
+        and contains(fuse_case_info, obj:id(), true) 
+        and contains(fuse_case_info[obj:id()], "sect", true)
+end
+
+function unpack_fuse_case_menu(obj)
+    return gts("st_unpack")
+end
+
+function unpack_fuse_case_func(obj)
+    local id = obj:id()
+    local fuse_info = fuse_case_info[id]
+    local fuse_sect = fuse_info.sect
+    local se_obj = alife_create_item(fuse_sect, db.actor)
+    replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
+    for k, v in pairs(fuse_case_info[id]) do
+        if k == "clr_name" and v == "" then
+            fuse_case_info[id][k] = nil
+        elseif k ~= "clr_name" then
+            fuse_case_info[id][k] = nil
+        end
+    end
+    if is_empty(fuse_case_info[id]) then fuse_case_info[id] = nil end
+end
+
+-- Callbacks
+function on_fuse_pack_take(obj)
+    local sect = obj:section()
+    if not is_fuse_pack(sect) then return end
+    dbg("dev", "on fuse pack take: %s", sect)
+    local id = obj:id()
+    local is_empty_pack =  is_fuse_pack_empty(sect)
+    dbg("dev", "is empty: %s", is_empty_pack)
+    if not contains(fuse_pack_info, id, true) then
+        fuse_pack_info[id] = {
+            sect = sect,
+            typ = get_fuse_type(sect),
+            max_amount = not is_empty_pack and ini_sys:r_float_ex(sect, "max_amount", 10) or 0,
+            amount_stored = 0,
+        }
+        dbg("dev", "inital fuse pack info: %s", fuse_pack_info[id])
+        if is_empty_pack then 
+            fuse_pack_info[id]["fuses"] = {}
+            return 
+        end
+        local order = fuse_type_order[fuse_pack_info[id].typ]
+        local max_amount = fuse_pack_info[id].max_amount
+        local rand_amount = math.random(1, max_amount)
+        if rand_amount < max_amount and max_amount - rand_amount > 0 then
+            local rand_amount_additional = max_amount - rand_amount
+            for i=1, rand_amount_additional do
+                local rand_fuse_typ = fuse_types[math.random(1, #fuse_types)]
+                local rand_order = fuse_type_order[rand_fuse_typ]
+                if rand_order > order then
+                    math.randomseed(time_continual())
+                    local tries = 1
+                    repeat
+                        rand_fuse_typ = fuse_types[math.random(1, #fuse_types)]
+                        rand_order = fuse_type_order[rand_fuse_typ]
+                        tries = tries + 1
+                    until rand_fuse_typ ~= "homemade" and (tries >= 100 or rand_order <= order)
+                end
+                local rand_fuse_sect = strformat("%s_%s", FUSE_LOOSE, rand_fuse_typ)
+                fuse_pack_info[id]["fuses"] = fuse_pack_info[id].fuses or {}
+                fuse_pack_info[id]["fuses"][#fuse_pack_info[id]["fuses"] + 1] = init_fuse_loose_info(nil, rand_fuse_sect)
+                fuse_pack_info[id].amount_stored = fuse_pack_info[id].amount_stored + 1
+            end
+        end
+
+        local fuse_sect = strformat("%s_%s", FUSE_LOOSE, fuse_pack_info[id].typ)
+        for i=1, rand_amount do
+            fuse_pack_info[id]["fuses"] = fuse_pack_info[id].fuses or {}
+            fuse_pack_info[id]["fuses"][#fuse_pack_info[id]["fuses"] + 1] = init_fuse_loose_info(nil, fuse_sect)
+            fuse_pack_info[id].amount_stored = fuse_pack_info[id].amount_stored + 1
+        end
+    end
+end
+
+function init_fuse_loose(obj)
+    local sect = get_unknown_sect(obj)
+    if not is_fuse_loose(sect) then return end
+    local id = get_unknown_id(obj)
+    if not contains(fuse_loose_info, id, true) then
+        fuse_loose_info[id] = init_fuse_loose_info(id, sect)
+    end
+end
+
+function on_drag_drop(obj_dropped, obj_target, slot_from, slot_to)
+    if not (slot_from == EDDListType.iActorBag and (slot_to == EDDListType.iActorBag or slot_to == EDDListType.iActorSlot)) then
+        return
+    end
+    
+    local item_1 = obj_target
+    local item_2 = obj_dropped 
+
+    local item_1_sect = item_1:section()
+    local item_2_sect = item_2:section()
+    if not is_fuse_item(item_1_sect) and not is_fuse_item(item_2_sect) then return end
+    local fuse = is_fuse_loose(item_1_sect) and item_1 or is_fuse_loose(item_2_sect) and item_2
+    local fuse_pack = is_fuse_pack(item_1_sect) and item_1 or is_fuse_pack(item_2_sect) and item_2
+    
+    if 
+        fuse and fuse_pack
+        and contains(fuse_pack_info, fuse_pack:id(), true)
+    then
+       
+        local fuse_id = fuse:id()
+        local fuse_sect = fuse:section()
+        local fuse_typ = get_fuse_type(fuse_sect)
+
+        local fuse_pack_id = fuse_pack:id()
+        local fuse_pack_sect = fuse_pack:section()
+        local fuse_pack_typ = fuse_pack_info[fuse_pack_id].typ
+        local amount_stored = fuse_pack_info[fuse_pack_id].amount_stored
+        dbg("dev", "fuse args: %s, %s, %s", fuse_id, fuse_sect, fuse_typ)
+        dbg("dev", "fuse pack args: %s, %s, %s", fuse_pack_id, fuse_pack_sect, fuse_pack_info[fuse_pack_id])
+        if
+            -- Add fuses back to pack that have at least 1
+            not is_fuse_pack_empty(fuse_pack_sect)
+            and is_not_empty(fuse_pack_info[fuse_pack_id]["fuses"])
+            and amount_stored > 0
+            and amount_stored < fuse_pack_info[fuse_pack_id].max_amount
+        then
+            dbg("dev", "filling up %s with %s, amount stored: %s", fuse_pack_sect, fuse_sect, amount_stored)
+            fuse_pack_info[fuse_pack_id].amount_stored = fuse_pack_info[fuse_pack_id].amount_stored + 1
+            fuse_pack_info[fuse_pack_id]["fuses"][#fuse_pack_info[fuse_pack_id]["fuses"] + 1] = fuse_loose_info[fuse_id]
+            fuse_loose_info[fuse_id] = nil
+            alife_release(alife_object(fuse_id))
+        
+        elseif 
+            -- fill up empty fuse packs with fuses
+            is_fuse_pack_empty(fuse_pack_sect)
+            and is_empty(fuse_pack_info[fuse_pack_id]["fuses"]) 
+            and amount_stored == 0 
+        then
+            dbg("dev", "empty fuse pack")
+            dbg("dev", "filling up %s with %s, amount stored: %s", fuse_pack_sect, fuse_sect, amount_stored)
+            fuse_pack_info[fuse_pack_id]["fuses"][#fuse_pack_info[fuse_pack_id]["fuses"] + 1] = fuse_loose_info[fuse_id]
+            fuse_pack_info[fuse_pack_id].amount_stored = 1
+            
+            local new_fuse_pack_sect = replace(fuse_pack_sect, "_empty")
+            local se_obj = alife_create_item(new_fuse_pack_sect, db.actor)
+            dbg("dev", "replacing fuse pack info for %s with %s", fuse_pack_id, se_obj.id)
+            fuse_pack_info[se_obj.id] = fuse_pack_info[fuse_pack_id]
+            fuse_pack_info[se_obj.id].max_amount = ini_sys:r_float_ex(new_fuse_pack_sect, "max_amount", 10)
+            fuse_pack_info[fuse_pack_id] = nil
+            alife_release(alife_object(fuse_pack_id))
+
+            dbg("dev", "removing %s from fuse loose info", fuse_id)
+            fuse_loose_info[fuse_id] = nil
+            alife_release(alife_object(fuse_id))
+        end
+    end
+
+    local fuse_case = is_fuse_case(item_1_sect) and item_1 or is_fuse_case(item_2_sect) and item_2
+        dbg("dev", "fuse case args: %s, %s, %s", fuse_case:id(), fuse_case:section(), fuse_case_info[fuse_case:id()])
+    if
+        fuse and fuse_case
+        and not is_fuse_broken(fuse:section())
+        and (
+            not contains(fuse_case_info, fuse_case:id(), true)
+            or size_table(fuse_case_info[fuse_case:id()]) == 1 and contains(fuse_case_info[fuse_case:id()], "clr_name", true)
+        )
+    then
+        local fuse_id = fuse:id()
+        local fuse_sect = fuse:section()
+        local fuse_case_id = fuse_case:id()
+        update_fuse_case_info(fuse_case_id, fuse_loose_info[fuse_id])
+        alife_release(alife_object(fuse_id))
+        rax_stacking_control.register(
+            function(sect) return is_fuse_case(sect) end,
+            function(obj) 
+                return not contains(fuse_case_info, obj:id(), true)
+                    or not contains(fuse_case_info[obj:id()], "clr_name", true)
+            end
+        )
+    end
+end
+
+function on_save(mdata)
+    mdata.fuse_loose_info =  fuse_loose_info
+    mdata.fuse_case_info  =  fuse_case_info
+    mdata.fuse_pack_info  =  fuse_pack_info
+end
+
+function on_load(mdata)
+    fuse_loose_info = mdata.fuse_loose_info or {}
+    fuse_case_info  = mdata.fuse_case_info or {}
+    fuse_pack_info  = mdata.fuse_pack_info or {}
+end
+
+function icon_fuse_case_sticker(cell, obj, sect)
+    if 
+        bags[cell.container.ID] 
+        and is_fuse_case(sect) 
+        and contains(fuse_case_info, obj:id(), true) 
+        and contains(fuse_case_info[obj:id()], "clr_name", true) 
+        and fuse_case_info[obj:id()].clr_name ~= ""
+    then
+        local itm_path, itm_pos, itm_size = get_obj_icon(nil, sect)
+        local sticker_w = 15
+        local sticker_h = sticker_w
+        local sticker_x = itm_size.w - sticker_w
+        local sticker_y = itm_size.h - sticker_h
+        local texture_name = strformat("ui\\sticker_icons\\hfg_sticker_icon_%s", fuse_case_info[obj:id()].clr_name)
+        return {texture=texture_name, x=sticker_x, y=sticker_y, w=sticker_w, h=sticker_h}
+    end
+end
+
+function icon_fuse_case_fuse(cell, obj, sect)
+        if 
+        bags[cell.container.ID] 
+        and is_fuse_case(sect) 
+        and contains(fuse_case_info, obj:id(), true) 
+        and contains(fuse_case_info[obj:id()], "sect", true)
+    then
+        local icon_layer=fuse_case_info[obj:id()].sect
+        local icon_layer_x=0
+        local icon_layer_y=1
+        local icon_layer_scale=0.5
+        return {icon_layer=icon_layer, icon_layer_x=icon_layer_x, icon_layer_y=icon_layer_y, icon_layer_scale=icon_layer_scale}
+    end
+end
+
+function on_option_change(options)
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    dbg("debug", "Received options")
+end
+
+function on_game_start()
+    rax_icon_layers.register("icon_fuse_case_sticker", icon_fuse_case_sticker)
+    rax_icon_layers.register("icon_fuse_case_fuse", icon_fuse_case_fuse)
+    add_functor("hfg_unpack_fuse_pack", unpack_fuse_pack_cond, unpack_fuse_pack_menu, nil, unpack_fuse_pack_func)
+    add_functor("hfg_unpack_fuse_case", unpack_fuse_case_cond, unpack_fuse_case_menu, nil, unpack_fuse_case_func)
+    RegisterScriptCallback("actor_on_item_take", on_fuse_pack_take)
+    RegisterScriptCallback("actor_on_item_take", init_fuse_loose)
+    RegisterScriptCallback("ActorMenu_on_item_drag_drop", on_drag_drop)
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("save_state", on_save)
+    RegisterScriptCallback("load_state", on_load)
+
+end
