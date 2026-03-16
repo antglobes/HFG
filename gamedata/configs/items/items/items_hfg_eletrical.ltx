@@ -2,9 +2,9 @@
 ; Fuses
 [hfg_fuse_base]:tch_junk,identity_immunities
 kind = i_tool
-visual = dynamics\equipments\trade\battery.ogf
+visual = dynamics\hfg_fuse.ogf
 icons_texture = ui\ui_hfg_icons
-inv_weight = 0.3
+inv_weight = 0.01
 inv_grid_height = 1
 inv_grid_width = 1
 
@@ -52,9 +52,9 @@ cost = 32
 
 [hfg_fuse_pack_base]:tch_junk,identity_immunities
 kind = i_tool
-visual = dynamics\weapons\wpn_ammo\ammo_12x70_buck.ogf
+visual = dynamics\hfg_fuse_pack_normal.ogf
 icons_texture = ui\ui_hfg_icons
-inv_weight = 0.01
+inv_weight = 0.3
 inv_grid_height = 1
 inv_grid_width = 2
 
@@ -66,8 +66,10 @@ inv_grid_x = 4
 inv_grid_y = 0
 cost = 6200
 max_amount = 10
+empty_sect = hfg_fuse_pack_normal_empty
 
 [hfg_fuse_pack_moist]:hfg_fuse_pack_base
+visual = dynamics\hfg_fuse_pack_moist.ogf
 inv_name = st_fuse_pack_moist
 inv_name_short = st_fuse_pack_moist
 description = st_fuse_pack_moist_descr
@@ -75,8 +77,10 @@ inv_grid_x = 4
 inv_grid_y = 1
 cost = 5400
 max_amount = 5
+empty_sect = hfg_fuse_pack_moist_empty
 
 [hfg_fuse_pack_damp]:hfg_fuse_pack_base
+visual = dynamics\hfg_fuse_pack_damp.ogf
 inv_name = st_fuse_pack_damp
 inv_name_short = st_fuse_pack_damp
 description = st_fuse_pack_damp_descr
@@ -84,6 +88,7 @@ inv_grid_x = 4
 inv_grid_y = 2
 cost = 4800
 max_amount = 3
+empty_sect = hfg_fuse_pack_damp_empty
 
 [hfg_fuse_pack_homemade]:hfg_fuse_base
 inv_name = st_fuse_pack_homemade
@@ -93,3 +98,52 @@ inv_grid_x = 4
 inv_grid_y = 4
 cost = 300
 max_amount = 10
+
+[hfg_fuse_pack_empty_base]:tch_junk,identity_immunities
+cost = 50
+max_amount = 0
+inv_grid_width = 2
+inv_grid_height = 1
+kind = i_tool
+visual = dynamics\hfg_fuse_pack_normal.ogf
+icons_texture = ui\ui_hfg_icons
+inv_weight = 0.2
+
+[hfg_fuse_pack_normal_empty]:hfg_fuse_pack_empty_base
+inv_name = st_fuse_pack_normal_empty
+inv_name_short = st_fuse_pack_normal_empty
+description = st_fuse_pack_normal_empty_descr
+visual = dynamics\hfg_fuse_pack_normal_empty.ogf
+inv_grid_x = 15
+inv_grid_y = 2
+
+[hfg_fuse_pack_moist_empty]:hfg_fuse_pack_empty_base
+inv_name = st_fuse_pack_moist_empty
+inv_name_short = st_fuse_pack_moist_empty
+description = st_fuse_pack_moist_empty_descr
+visual = dynamics\hfg_fuse_pack_moist_empty.ogf
+inv_grid_x = 15
+inv_grid_y = 3
+
+[hfg_fuse_pack_damp_empty]:hfg_fuse_pack_empty_base
+inv_name = st_fuse_pack_damp_empty
+inv_name_short = st_fuse_pack_damp_empty
+description = st_fuse_pack_damp_empty_descr
+visual = dynamics\hfg_fuse_pack_damp_empty.ogf
+inv_grid_x = 16
+inv_grid_y = 6
+
+;Fuse case
+[hfg_fuse_case]:tch_junk,identity_immunities
+kind = i_tool
+visual = dynamics\hfg_fuse_case.ogf
+icons_texture = ui\ui_hfg_icons
+inv_weight = 0.15
+inv_grid_height = 2
+inv_grid_width = 1
+inv_name = st_fuse_case
+inv_name_short = st_fuse_case
+description = st_fuse_case_descr
+inv_grid_x = 18
+inv_grid_y = 3
+cost = 8000
