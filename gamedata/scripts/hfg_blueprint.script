@@ -46,6 +46,7 @@ TOGGLE_PREVIEW_KEYBIND       = get_config("blueprint", "toggle_preview_keybind")
 SCROLL_LIST_UP_KEYBIND       = get_config("blueprint", "scroll_up_keybind")
 SCROLL_LIST_DOWN_KEYBIND     = get_config("blueprint", "scroll_down_keybind")
 SCROLL_LIST_STEP             = get_config("blueprint", "scroll_step")
+HIGHLIGHT_CLR                = get_config("blueprint", "highlight_colour")
 
 -- Globals
 HUD = nil
@@ -175,6 +176,7 @@ function place_blueprint(obj_id)
     blueprint_info.att_bone_to_submesh = get_ltx_pairs(ini_blueprints, manual_sect, "bone_to_submesh", tonumber)
     blueprint_info.att_blueprint_shader = "models_xdistortinv"
     blueprint_info.att_highlight_shader = "models_pautina"
+    blueprint_info.att_highlight_texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, HIGHLIGHT_CLR)
     blueprint_info.att_placed_submeshes = {}
 
     dbg("dev", "init attachment")
@@ -182,6 +184,8 @@ function place_blueprint(obj_id)
     blueprint_info.att:set_parent_bone(blueprint_info.att_parent_bone)
     blueprint_info.att:set_type(script_attachment_type.World)
     blueprint_info.att:set_shader(-1, blueprint_info.att_blueprint_shader)
+
+    blueprint_info.att_def_shaders = blueprint_info.att:get_default_shaders()
 
     dbg("dev", "init extra args")
     blueprint_info.within_range = within_range(db.actor:position(), blueprint_info.hf_loc["pos"], blueprint_info.att_highlight_radius)
@@ -239,7 +243,7 @@ actor_on_update = throttle(
                             then
                                 -- dbg("dev", "target bone: %s, submesh id: %s", target_bone, submesh_id)
                                 dbg("dev", "highlighting %s with: %s", submesh_id, info.att_highlight_shader)
-                                info.att:set_shader(submesh_id, info.att_highlight_shader)
+                                info.att:set_shader(submesh_id, info.att_highlight_shader, info.att_highlight_texture)
                                 info.highlighted_submesh_id = submesh_id
                                 info.current_shader = info.att_highlight_shader
                             elseif 
@@ -248,7 +252,8 @@ actor_on_update = throttle(
                                 and submesh_id ~= info.highlighted_submesh_id 
                             then
                                 dbg("dev", "unhighlighting %s with: %s", info.highlighted_submesh_id, info.att_blueprint_shader)
-                                info.att:set_shader(info.highlighted_submesh_id, info.att_blueprint_shader)
+                                local texture = contains(info.att_def_shaders, info.highlighted_submesh_id, true) and info.att_def_shaders[info.highlighted_submesh_id].texture or nil
+                                info.att:set_shader(info.highlighted_submesh_id, info.att_blueprint_shader, texture)
                                 info.highlighted_submesh_id = nil
                                 info.current_shader = info.att_blueprint_shader
                             end
@@ -290,7 +295,8 @@ actor_on_update = throttle(
                             for name, id in pairs(info.att_bone_to_submesh) do
                                 if not contains(info.att_placed_submeshes, id) then
                                     dbg("dev", "setting %s to %s", id, info.att_blueprint_shader)
-                                    info.att:set_shader(id, info.att_blueprint_shader)
+                                    local texture = contains(info.att_def_shaders, info.highlighted_submesh_id, true) and info.att_def_shaders[info.highlighted_submesh_id].texture or nil
+                                    info.att:set_shader(id, info.att_blueprint_shader, texture)
                                 end
                             end
                             info.current_shader = info.att_blueprint_shader
@@ -1238,6 +1244,7 @@ function on_option_change(options)
     TOGGLE_PREVIEW_ANIM_DURATION = options["blueprint"]["toggle_preview_anim_duration"]
     KEY_TRIGGER_TIME = options["main"]["key_trigger_time"]
     HIGHLIGHT_RADIUS = options["blueprint"]["highlight_radius"]
+    HIGHLIGHT_CLR = options["blueprint"]["highlight_colour"]
 end
 
 function on_game_start()

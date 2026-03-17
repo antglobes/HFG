@@ -89,6 +89,9 @@
 	<string id="ui_mcm_hfg_blueprint_highlight_radius">
 		<text>Highlight Radius</text>
 	</string>
+	<string id="ui_mcm_hfg_blueprint_highlight_colour">
+		<text>Highlight Colour</text>
+	</string>
 
 	<!-- Breaker -->
 	<string id="ui_mcm_hfg_breaker_toggle_panel_anim_style">
@@ -193,6 +196,58 @@
 	<string id="ui_mcm_lst_Bounce">
         <text>Bounce</text>
     </string>
+	<!-- Highlight Colours -->
+	<string id="ui_mcm_lst_royal_purple">
+		<text>Royal Purple</text>
+	</string>
+	<string id="ui_mcm_lst_cardinal_pink">
+		<text>Cardinal Pink</text>
+	</string>
+	<string id="ui_mcm_lst_red_ribbon">
+		<text>Red Ribbon</text>
+	</string>
+	<string id="ui_mcm_lst_tango">
+		<text>Tango</text>
+	</string>
+	<string id="ui_mcm_lst_golden_dream">
+		<text>Golden Dream</text>
+	</string>
+	<string id="ui_mcm_lst_electric_lime">
+		<text>Electric Lime</text>
+	</string>
+	<string id="ui_mcm_lst_ocean_dream">
+		<text>Ocean Dream</text>
+	</string>
+	<string id="ui_mcm_lst_venice_blue">
+		<text>Venice Blue</text>
+	</string>
+	<string id="ui_mcm_lst_black">
+		<text>Black</text>
+	</string>
+	<string id="ui_mcm_lst_dark_blue">
+		<text>Dark Blue</text>
+	</string>
+	<string id="ui_mcm_lst_cerulean">
+		<text>Cerulean</text>
+	</string>
+	<string id="ui_mcm_lst_caribbean_green">
+		<text>Caribbean Green</text>
+	</string>
+	<string id="ui_mcm_lst_linen">
+		<text>Linen</text>
+	</string>
+	<string id="ui_mcm_lst_silver_sand">
+		<text>Silver Sand</text>
+	</string>
+	<string id="ui_mcm_lst_brown_rust">
+		<text>Brown Rust</text>
+	</string>
+	<string id="ui_mcm_lst_fuscous_gray">
+		<text>Fuscous Gray</text>
+	</string>
+	<string id="ui_mcm_lst_white">
+		<text>White</text>
+	</string>
 	
 	<!-- Hideout Furniture  -->
     <string id="st_disel_generator_descr">

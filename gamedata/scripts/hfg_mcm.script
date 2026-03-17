@@ -20,6 +20,7 @@ defaults = {
         scroll_down_keybind = DIK_keys.DIK_NUMPAD6,
         scroll_step = 20,
         highlight_radius = 3,
+        highlight_colour = "cerulean",
     },
     breaker = {
         toggle_panel_anim_style = "Back",
@@ -137,6 +138,27 @@ function on_mcm_load()
                     {id="scroll_down_keybind", type="key_bind", val=2, def=DIK_keys.DIK_NUMPAD6, precondition={has_mcm_keybinds}},
                     {id="scroll_step", type="track", val=2, def=20, min=1, max=100, step=1, precondition={has_mcm_keybinds}},
                     {id="highlight_radius", type="track", val=2, def=3, min=1, max=20, step=1.0},
+                    {id="highlight_colour", type="list", val=0, def="cerulean", 
+                        content={
+                            {"royal_purple", "Royal Purple"},
+                            {"cardinal_pink", "Cardinal Pink"},
+                            {"red_ribbon", "Red Ribbon"},
+                            {"tango", "Tango"},
+                            {"golden_dream", "Golden Dream"},
+                            {"electric_lime", "Electric Lime"},
+                            {"ocean_dream", "Ocean Dream"},
+                            {"venice_blue", "Venice Blue"},
+                            {"black", "Black"},
+                            {"dark_blue", "Dark Blue"},
+                            {"cerulean", "Cerulean"},
+                            {"caribbean_green", "Caribbean Green"},
+                            {"linen", "Linen"},
+                            {"silver_sand", "Silver Sand"},
+                            {"brown_rust", "Brown Rust"},
+                            {"fuscous_gray", "Fuscous Gray"},
+                            {"white", "White"},
+                        }
+                    },
                 }
             },
             {
