@@ -374,6 +374,7 @@ function placeable_disel_generator_wrapper:ProcessAnims()
             self.anim_in_progress = true
             self.anim_power_state = self.power_state
             self.anim_start_time = self.tg
+            self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
             self:CleanupParticles()
             dbg("dev", "anim power state: %s", self.anim_power_state)
         end
