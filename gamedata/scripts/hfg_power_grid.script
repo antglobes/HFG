@@ -3,7 +3,7 @@ ag_utils.import_metatable(this, ag_tables)
 ag_utils.import_metatable(this, ag_game_objects)
 ag_utils.import_metatable(this, ag_position)
 ag_utils.import_metatable(this, ag_npc)
-ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_maths)
 
 gts = get_translation
 
@@ -12,7 +12,7 @@ throttle = ag_utils.throttle
 
 -- Utils
 get_config = hfg_mcm.get_config
-within_range = hfg_utils.within_range
+within_radius = hfg_utils.within_radius
 bones_by_distance = hfg_utils.bones_by_distance
 bone_to_part_name = hfg_utils.bone_to_part_name
 get_hf_item_name = hfg_utils.get_hf_item_name
@@ -150,7 +150,6 @@ function get_power_data(obj, power_typ)
             power_state = "off",
             requires_power = true, -- power from a sources is needed before it is functional
             transmit_power = true, -- power can go from sources to consumers/storage if connected
-            connections = {},
         }
     }
 
@@ -169,6 +168,8 @@ function get_power_data(obj, power_typ)
     if power_typ ~= "power_logic" or power_obj_sect ~= "breaker" then
         data_fields["breaker_id"] = -1
         data_fields["fuse_protected"] = false
+        data_fields["slot_num"] = -1
+        data_fields["tripped"] = false
     end
 
     for field, val in pairs(data_fields) do
@@ -567,9 +568,11 @@ update_grids = throttle(
                     for id, data in pairs(grid_data["power_sources"]) do
                         local hf_data = hf_obj_manager.get_data(id)
                         -- Power Object Globals
-                        data["condition"] = hf_data["condition"]
-                        data["fuse_protected"] = hf_data["fuse_protected"]
-                        data["breaker_id"] = hf_data["breaker_id"]
+                        data["condition"]      = hf_data["condition"] == nil and data["condition"] or hf_data["condition"]
+                        data["fuse_protected"] = hf_data["fuse_protected"] == nil and data["fuse_protected"] or hf_data["fuse_protected"]
+                        data["breaker_id"]     = hf_data["breaker_id"] == nil and data["breaker_id"] or hf_data["breaker_id"]
+                        data["slot_num"]       = hf_data["slot_num"] == nil and data["slot_num"] or hf_data["slot_num"]
+                        data["tripped"]        = hf_data["tripped"] == nil and data["tripped"] or hf_data["tripped"]
                         
                         -- Disable power output if broken or off
                         data["power_state"] = hf_data["power_state"]
@@ -600,7 +603,7 @@ update_grids = throttle(
                                     local power_needed = pc_data["power_needed"]
                                     local pc_hf_data = hf_obj_manager.get_data(pc_id)
                                     -- dbg("dev", "id:%s, power available: %s", pc_id, power_remaining - power_needed >= 0)
-                                    -- dbg("dev", "inverter required:%s, transmit power:%s", breaker_attached, transmit_power)
+                                    -- dbg("dev", "breaker required:%s, transmit power:%s", breaker_attached, transmit_power)
                                     if 
                                         power_remaining - power_needed >= 0
                                         and (not breaker_attached or breaker_attached and transmit_power) 
@@ -658,7 +661,7 @@ update_grids = throttle(
                             or false
                         )
 
-                        -- Turn off consummers if trigger by power source (maybe inverter check)
+                        -- Turn off consummers if trigger by power source (maybe breaker check)
                         if data["power_off_consumers"] and contains(data, "consumers", true) and is_not_empty(data["consumers"]) then
                             dbg("debug", "turning off consumers: %s", data["power_off_consumers"])
                             for _, pc_id in pairs(data["consumers"]) do
@@ -683,9 +686,11 @@ update_grids = throttle(
                     for id, data in pairs(grid_data["power_consumers"]) do --TODO Check all possible sources for power, adjust which ones to draw from and their remaning power
                         local hf_data = hf_obj_manager.get_data(id)
                         -- Power Object Globals
-                        data["condition"] = hf_data["condition"]
-                        data["fuse_protected"] = hf_data["fuse_protected"]
-                        data["breaker_id"] = hf_data["breaker_id"]
+                        data["condition"]      = hf_data["condition"] == nil and data["condition"] or hf_data["condition"]
+                        data["fuse_protected"] = hf_data["fuse_protected"] == nil and data["fuse_protected"] or hf_data["fuse_protected"]
+                        data["breaker_id"]     = hf_data["breaker_id"] == nil and data["breaker_id"] or hf_data["breaker_id"]
+                        data["slot_num"]       = hf_data["slot_num"] == nil and data["slot_num"] or hf_data["slot_num"]
+                        data["tripped"]        = hf_data["tripped"] == nil and data["tripped"] or hf_data["tripped"]
 
                         data["power_state"] = data["condition"] <= BROKEN_COND and "broken" or hf_data["is_on"] and "on" or "off"
                         local power_satisfied = data["power_satisfied"]
@@ -721,7 +726,7 @@ update_grids = throttle(
                                         local power_needed = data["power_needed"]
                                         local ps_data = grid_data["power_sources"][ps_id]
                                         local power_remaining = ps_data["power_remaining"]
-                                        -- Check that power source if inverter required is switched on and connected
+                                        -- Check that power source if breaker required is switched on and connected
                                         local breaker_attached = data["breaker_id"] > 0
                                         local transmit_power = breaker_attached and (
                                             can_transmit_power(grid_data, data.breaker_id)
@@ -771,16 +776,11 @@ update_grids = throttle(
                         local hf_data = hf_obj_manager.get_data(id)
                         -- Power Object Globals
                         data["condition"] = hf_data["condition"]
-                        data["connections"] = hf_data["connections"]
                         data["power_state"] = hf_data["power_state"]
                         data["transmit_power"] = hf_data["transmit_power"]
 
                         if data.sect == bind_breaker.BREAKER_SECT then
 
-                            for id, info in pairs(data["connections"]) do
-                                local breaker_id = grid_data[info.typ][info.id].breaker_id
-
-                            end
                         end
                     end
                 end
@@ -807,7 +807,8 @@ update_grids = throttle(
                         for id, data in pairs(grid_data[power_typ]) do
                             local hf_data = hf_obj_manager.get_data(id)
                             if 
-                                data.condition > BROKEN_COND 
+                                data.condition > BROKEN_COND
+                                and not data.tripped
                                 and data.power_state == "on"
                                 and (contains(hf_data, "anim_in_progress", true) and not hf_data["anim_in_progress"] or true) 
                             then
@@ -818,11 +819,12 @@ update_grids = throttle(
                                         local power_consumed = total_power_demand
                                         local percentage_over = math.fmod(power_consumed, power_available) / power_available
                                         if data.sect ~= bind_breaker.BREAKER_SECT and data.breaker_id > 0 then
+                                            local breaker_data = hf_obj_manager.get_data(data.breaker_id)
                                             local args = {
                                                 grid_id=grid_id,
                                                 event_id=trip_events.power_surge,
                                                 percent_over=percentage_over,
-                                                info=grid_data["power_logic"][data.breaker_id]["connections"][id]
+                                                info=breaker_data["slot_info"][data.slot_num]
                                             }
                                             add_trip_event(args)
                                         else
@@ -847,10 +849,11 @@ update_grids = throttle(
                                         and data.sect ~= bind_breaker.BREAKER_SECT 
                                     then
                                         if data.breaker_id > 0 then
+                                            local breaker_data = hf_obj_manager.get_data(data.breaker_id)
                                             local args = {
                                                 grid_id=grid_id,
                                                 event_id=trip_events.emission_occuring,
-                                                info=grid_data["power_logic"][data.breaker_id]["connections"][id]
+                                                info=breaker_data["slot_info"][data.slot_num]
                                             }
                                             add_trip_event(args)
                                         else
@@ -867,11 +870,12 @@ update_grids = throttle(
                                 if data.condition <= COND_THRESHOLD then
                                     if not in_trip_event_queue(id, trip_events.condition_threshold) and data.sect ~= bind_breaker.BREAKER_SECT then
                                         if data.breaker_id > 0 then
+                                            local breaker_data = hf_obj_manager.get_data(data.breaker_id)
                                             local args = {
                                                 grid_id=grid_id,
                                                 event_id=trip_events.condition_threshold,
                                                 cond=data.condition,
-                                                info=grid_data["power_logic"][data.breaker_id]["connections"][id]
+                                                info=breaker_data["slot_info"][data.slot_num]
                                             }
                                             add_trip_event(args)
                                         else
@@ -906,7 +910,6 @@ end
 function add_trip_event(args)
     dbg("dev", "add trip event:%s", args)
     local trip_event_args = {init = false, next_damage_time = 0}
-    local time_curr = get_time_elapsed()
     if args.event_id == trip_events.power_surge then
         local has_fuse_info = contains(args["info"], "fuse_info", true)
         local discharge_factor = has_fuse_info and args["info"]["fuse_info"].dis_fac or 0
@@ -914,7 +917,9 @@ function add_trip_event(args)
         if 
             not surge_manager.get_surge_manager():pos_in_cover(
                 grids[args.grid_id][args["info"]["power_obj"].typ][args["info"]["power_obj"].id].pos) 
-            then damage = damage * 3 end
+        then 
+            damage = damage * 3 
+        end
         trip_event_args = {
             grid_id=args.grid_id,
             id=args["info"]["power_obj"].id,
@@ -922,8 +927,8 @@ function add_trip_event(args)
             damage=damage,
             duration = 100,
             tick=0,
-            chance_to_trip=0,
-            chance_to_damage=0,
+            chance_to_trip=args.percent_over * 100,
+            chance_to_damage=80,
         }
 
     elseif args.event_id == trip_events.emission_occuring then
@@ -968,7 +973,7 @@ function add_trip_event(args)
             damage=damage,
             duration=60,
             tick = 6,
-            chance_to_trip=math.random(min. max) * 100,
+            chance_to_trip=math.random(min, max) * 100,
             chance_to_damage=math.random(min, max) * 100,
         }
     end
@@ -1029,7 +1034,7 @@ update_trip_events = throttle(function()
                     local damage_chance = math.random(0, 100)
                     local condition = hf_data["condition"]
                     local tick_ms = event_info.tick * 1000 
-                    dbg("dev", "damage chance:%s, condition:%s", damage_chance, condition)
+                    dbg("dev", "damage chance:%s, chance to damage:%s", damage_chance, event_info.chance_to_damage)
                     if damage_chance < event_info.chance_to_damage then
                         local time_diff = time_curr_ms - event_info.start_time
                         dbg("dev", "current time:%s, current time ms:%s diff time: %s", time_curr, time_curr_ms, time_diff)
@@ -1049,7 +1054,7 @@ update_trip_events = throttle(function()
                         condition == BROKEN_COND 
                         or power_state == "on" and trip_chance < event_info.chance_to_trip
                     then
-                        dbg("dev", "%s is higher than %s", trip_chance, event_info.damage)
+                        dbg("dev", "%s is higher than %s", trip_chance, event_info.chance_to_trip)
                         new_hf_data.power_state = "off"
                         if contains(hf_data, "anim_due", true) then new_hf_data.anim_due = true end
 
@@ -1057,14 +1062,25 @@ update_trip_events = throttle(function()
                         if power_obj then
                             dbg("dev", "attempting trip event for power object")
                             on_trip_event(power_obj)
+                            new_hf_data.tripped = true
                         end
                         local breaker_id = grids[grid_id][event_info.typ][power_obj_id].breaker_id
                         if breaker_id > 0 then
                             local breaker = get_unknown_object({id=breaker_id}, "game")
                             if breaker then
                                 dbg("dev", "attempting trip event for breaker")
-                                CreateTimeEvent("trip_event", "delay_breaker"..math.random(), 0,
-                                    on_trip_event, breaker)
+                                CreateTimeEvent("trip_event", "delay_breaker"..math.random(), 0, function()
+                                    on_trip_event(breaker)
+                                    local slot_num = grids[grid_id][event_info.typ][power_obj_id].slot_num
+                                    local breaker_data = hf_obj_manager.get_data(breaker_id)
+                                    local fuse_id = breaker_data["slot_info"][slot_num]["fuse_info"].id
+                                    local fuse_clr_name = breaker_data["slot_info"][slot_num]["fuse_info"].clr_name
+                                    breaker_data["slot_info"][slot_num]["fuse_info"] = hfg_fuses.init_fuse_loose_info(fuse_id, hfg_fuses.FUSE_BROKEN_SECT)
+                                    breaker_data["slot_info"][slot_num]["fuse_info"].cond = 0
+                                    breaker_data["slot_info"][slot_num]["fuse_info"].clr_name = fuse_clr_name
+                                    hf_obj_manager.update_data(breaker_id, breaker_data)
+                                    return true
+                                end)
                             end
                         end
                         hf_obj_manager.update_data(power_obj_id, new_hf_data)
@@ -1090,60 +1106,100 @@ function on_trip_event(obj)
     local bbox = obj:bounding_box()
     local dist_to_center = (bbox.max.y - bbox.min.y) / 2
     local pos = vec_set(obj:position()):mad(obj:position(), VEC_Y, dist_to_center)
-    local actor_pos = db.actor:position()
     local timeout = sound_object(hfg_utils.ELECTRA_SND):length()
-    local obj_p_id = thial_particles.add(hfg_utils.ELECTRA_PARTICLE, pos, timeout)
-    local obj_s_id = ag_sounds.add(obj, hfg_utils.ELECTRA_SND, pos, 0.7, sound_object.s3d)
-    dbg("dev", "adding electra to %s for %s on %s", sect, timeout, pos)
+    local obj_s_id, obj_p_id = give_shock_effect(obj, pos, timeout)
     CreateTimeEvent("on_trip_event", "remove"..obj_p_id..obj_s_id, timeout, function()
-        dbg("dev", "removing: %s, %s", obj_p_id, obj_s_id)
-        thial_particles.remove(obj_p_id)
-        ag_sound.remove(obj_s_id)
+        remove_effect(obj_s_id, obj_p_id)
         return true
     end)
+    give_actor_shock(obj, pos)
+    return true
+end
+
+function give_shock_effect(obj, pos, timeout)
+    dbg("dev", "adding electra to %s for %s on %s", obj:section(), timeout, pos)
+    local snd_id = ag_sounds.add(obj, hfg_utils.ELECTRA_SND, pos, 0.7, sound_object.s3d)
+    local part_id = thial_particles.add(hfg_utils.ELECTRA_PARTICLE, pos, timeout)
+    return snd_id, part_id
+end
+
+function remove_effect(snd_id, part_id)
+    dbg("dev", "removing: %s, %s", snd_id, part_id)
+    ag_sounds.remove(snd_id)
+    thial_particles.remove(part_id)
+end
+
+function give_actor_shock(shocked_obj, shocked_pos)
+    if not shocked_obj then return end
+    shocked_pos = not shocked_pos and shocked_obj:position() or shocked_pos
+        local actor_pos = db.actor:position()
+    local dist_to_shocked_pos = distance_2d(actor_pos, shocked_pos)
+    dbg("dev", "dist to shocked pos:%s", dist_to_shocked_pos)
     if 
         not has_alife_info("shocking_actor") 
-        and distance_2d(db.actor:position(), pos) <= 1
+        and dist_to_shocked_pos <= 2
     then
         give_info("shocking_actor")
         dbg("dev", "actor within a meter of shock position, shocking")
-        local targ_obj = db.actor
-        local dir_to_pobj = vec_sub(pos, actor_pos):normalize()
-        local h = hit()
-        h.type = hit.shock
-        h.impluse = 0
-        h.direction = dir_to_pobj
-        h.draftsman = obj
-        h.power = math.random(0.01, 0.4)
-        db.actor:hit(h)
-        dbg("dev", "applied shock")
-        local item = db.actor:active_item()
-        if item then
-            dbg("dev", "actor holding %s droping", item:section())
-            targ_obj = item
-            db.actor:drop_item(item)
-            local look_dir = vec_set(device().cam_dir)
-            local angle = todegrees(vector():set(look_dir):dotproduct(dir_to_pobj))
-            local rand_angle = clamp(math.random(0, 360 - angle) + angle, 0, 360)
-            local rand_dir = vec_set(vector_rotate_xyz(look_dir, rand_angle))
-            dbg("dev", "look dir:%s, dir_to_pobj:%s, angle:%s, rand angle:%s, rand_dir:%s", look_dir, dir_to_pobj, angle, rand_angle, rand_dir)
-            item:get_physics_shell():apply_force(rand_dir.x, rand_dir.y, rand_dir.z)
-        end
-        local targ_bbox = targ_obj:bounding_box()
-        local targ_dist_to_center =(targ_bbox.max.y - targ_bbox.min.y) / 2
-        local targ_pos = vec_set(targ_obj:position()):mad(targ_obj:position(), VEC_Y, targ_dist_to_center)
-        dbg("dev", "adding electra to %s for %s on %s", targ_obj:section(), timeout, targ_pos)
-        local targ_p_id = thial_particles.add(hfg_utils.ELECTRA_PARTICLE, targ_pos, timeout)
-        local targ_s_id = ag_sounds.add(targ_obj, hfg_utils.ELECTRA_SND, targ_pos, 0.7, sound_object.s3d)
+        local dir_to_pobj = vec_sub(actor_pos, shocked_pos):normalize()
+        local hit_args = {
+            from = shocked_obj,
+            type = hit.shock,
+            direction = dir_to_pobj,
+            power = math.random(0.01, 0.4),
+        }
+        give_hit(hit_args)
+        drop_item()
+        local timeout = sound_object(hfg_utils.ELECTRA_SND):length()
+        local bbox = db.actor:bounding_box()
+        local dist_to_center = (bbox.max.y - bbox.min.y) / 2
+        local pos = vec_set(actor_pos):mad(actor_pos, VEC_Y, dist_to_center)
+        local snd_id, part_id = give_shock_effect(db.actor, pos, timeout)
         CreateTimeEvent("on_trip_event", "reset_shocking_actor", timeout, function()
-            dbg("dev", "reseting shocking actor, removing: %s, %s", targ_p_id, targ_s_id)
+            dbg("dev", "reseting shocking actor, removing: %s, %s", snd_id, part_id)
             disable_info("shocking_actor")
-            thial_particles.remove(targ_p_id)
-            ag_sounds.remove(targ_s_id)
+            remove_effect(snd_id, part_id)
             return true
         end)
+        dbg("dev", "applied shock")
     end
-    return true
+end
+
+function give_hit(args)
+    local from = args.from or db.actor
+    local to = args.to or db.actor    
+    local h = hit()
+    h.type = args.type or hit.fire_wound
+    h.impluse = args.impluse or 0
+    h.direction = args.dir or VEC_Z
+    h.draftsman = from
+    h.power = args.power or math.random(0.01, 1)  
+    to:hit(h)
+    dbg("dev", "give hit: from %s to %s", from:section(), to:section())
+end
+
+function drop_item(npc)
+    npc = not npc and db.actor or npc
+    local item = npc:active_item()
+    if not item then return end
+    dbg("dev", "dropping:%s",item:section())
+    npc:drop_item(item)
+    local is_actor = npc:id() == 0
+    local look_dir = is_actor and vec_set(device().cam_dir) or vec_set(npc:direction())
+    dbg("dev", "look dir:%s", look_dir)
+    local rand_angle_x = 270 + math.random(0, 180)
+    local rand_angle_z = -90 + math.random(0, 180)
+    dbg("dev", "rand angle|x:%s, z:%s", rand_angle_x, rand_angle_z)
+    local rand_dir = vector():set(
+        vector_rotate_x(look_dir, rand_angle_x).x * 1000,
+        look_dir.y * 100, 
+        vector_rotate_z(look_dir, rand_angle_z).z * 1000
+    )
+    dbg("dev", "rand dir:%s", rand_dir)
+    local ph_shell = item:get_physics_shell()
+    if ph_shell then
+        ph_shell:apply_force(rand_dir.x, rand_dir.y, rand_dir.z)
+    end
 end
 
 function patch_obj_binder(obj, power_typ)
@@ -1293,7 +1349,7 @@ function ui_furniture_light.toggle_light(obj_id)
                 local ps_data = closest_grid["power_sources"][ps_id]
                 local ps_power_state = ps_data["power_state"]
 
-                local breaker_attached = ps_data["requires_inverter"]
+                local breaker_attached = ps_data["breaker_id"] > 0
                 local transmit_power = breaker_attached and (
                     ps_data["breaker_id"] > 0 
                     and closest_grid["power_logic"][ps_data.breaker_id]["transmit_power"] 
@@ -1318,7 +1374,7 @@ function ui_furniture_light.toggle_light(obj_id)
                 if is_on then
                     base_toggle_light(id)
                 end
-                dbg("dev", "not enough power/inverter not transmitting for: %s", id)
+                dbg("dev", "not enough power/breaker not transmitting for: %s", id)
                 local msg = gts("st_requires_power_short", light_name)
                 actor_menu.set_msg(1, msg, 3)
             end 

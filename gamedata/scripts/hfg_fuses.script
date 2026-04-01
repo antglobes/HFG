@@ -130,7 +130,8 @@ function init_fuse_loose_info(id, sect)
         typ = fuse_typ,
         dis_fac = discharge_factor[fuse_typ],
         clr_name = "",
-        order = fuse_type_order[fuse_typ]
+        order = fuse_type_order[fuse_typ],
+        cond = fuse_typ == "broken" and 0 or 1,
     }
 end
 
@@ -213,7 +214,7 @@ end
 function unpack_fuse_case_func(obj)
     local id = obj:id()
     local fuse_info = fuse_case_info[id]
-    local fuse_sect = fuse_info.sect
+    local fuse_sect = fuse_info.cond == 0 and hfg_fuses.FUSE_BROKEN_SECT or fuse_info.sect
     local se_obj = alife_create_item(fuse_sect, db.actor)
     replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
     for k, v in pairs(fuse_case_info[id]) do

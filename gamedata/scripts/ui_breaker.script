@@ -369,6 +369,7 @@ function UICircuitBreaker:Close()
 	end
     self:RemoveLabelSlotAtt()
     slot_info[self.object:id()] = self.slot_info
+    hf_obj_manager.update_data(self.object:id(), {slot_info=self.slot_info})
     self.object:play_cycle("idle_close", true)
     level.remove_cam_custom_position_direction()
     Unregister_UI("UICircuitBreaker")
@@ -501,7 +502,9 @@ end
 function UICircuitBreaker:SetupFuseArgs()
     dbg("dev", "setup fuse args")
     self.curr_slot = self.curr_slot or 1
-    self.slot_info = contains(slot_info, self.object:id(), true) and slot_info[self.object:id()] or {}
+    local hf_data = hf_obj_manager.get_data(self.object:id())
+    self.slot_info = hf_data["slot_info"] or {}
+    dbg("dev", "slot info:%s",self.slot_info)
     self.slot_attachments = self.slot_attachments or {}
     self.fuse_case_model = ini_sys:r_string_ex(hfg_fuses.FUSE_CASE, "visual")
     self.fuse_action = nil
@@ -915,13 +918,6 @@ function UICircuitBreaker:LoadSlotInfo()
     self.fm_slot_list:AddExistingItem(item)
 end
 
-function UICircuitBreaker:InitSlot(slot_num)
-    dbg("dev", "init slot %s", slot_num)
-    self:InitSlotInfo(slot_num)
-    self:InitSlotAtt(slot_num)
-    self:SetFuseCaseShader(slot_num)
-end
-
 function UICircuitBreaker:InitSlotInfo(slot_num)
     local slot_name = strformat("slot_%s", slot_num)
     if not contains(self.slot_info, slot_num, true) then
@@ -932,7 +928,8 @@ function UICircuitBreaker:InitSlotInfo(slot_num)
             fuse_info = {},
             name  = slot_name,
             sticker_texture = "",
-            power_obj = {}
+            power_obj = {},
+            num = slot_num
         }
     end
 end
@@ -1043,7 +1040,6 @@ function UICircuitBreaker:SetAttShader(slot_num, shader_name, texture_name)
 end
 
 function UICircuitBreaker:SetFuseCaseShader(slot_num)
-    local att_name = strformat("slot_%s_attachment", slot_num)
     if self.curr_menu == "fuses_menu" then
         if slot_num == self.curr_slot and self.slot_info[slot_num].has_fuse_case then
             dbg("dev", "setting slot %s shader to highlight", slot_num)
@@ -1109,7 +1105,7 @@ function UICircuitBreaker:SetFuseAction()
         self.fm_action_btn:TextControl():SetText(gts("st_hfg_remove", "Fuse"))
         self.fuse_action = "remove_fuse"
     end
-    dbg("dev", "fuse action %s", self.fuse_action)
+    dbg("dev", "setting fuse action to %s", self.fuse_action)
 end
 
 -- Label Menu
@@ -1128,11 +1124,12 @@ end
 
 function UICircuitBreaker:SetPowerObjAction()
     if self.curr_menu ~= "label_menu" then return end
+    local is_fuse_broken = self.slot_info[self.curr_slot]["fuse_info"].sect == hfg_fuses.FUSE_BROKEN_SECT
     local itm = self.lm_power_obj_list:GetSelectedItem()
     if not itm and is_not_empty(self.slot_info[self.curr_slot].power_obj) then
         self.pobj_action = "remove_pobj"
         self.lm_power_obj_btn:TextControl():SetText(gts("st_hfg_remove", "Power Object"))
-    elseif itm and is_empty(self.slot_info[self.curr_slot].power_obj) then
+    elseif itm and not is_fuse_broken and is_empty(self.slot_info[self.curr_slot].power_obj) then
         self.pobj_action = "add_pobj"
         self.lm_power_obj_btn:TextControl():SetText(gts("st_hfg_add", "Power Object"))
     elseif itm and is_not_empty(self.slot_info[self.curr_slot].power_obj) then
@@ -1153,8 +1150,8 @@ function UICircuitBreaker:GetPowerObjInfo()
     dbg("dev", "get power obj info")
     local power_obj_info = {}
     local breaker_id = self.object:id()
-    local data = hf_obj_manager.get_data(breaker_id)
-    local grid_id = data.grid_id
+    local hf_data = hf_obj_manager.get_data(breaker_id)
+    local grid_id = hf_data.grid_id
     if not grid_id or grid_id <= 0 then
         return power_obj_info
     end
@@ -1167,7 +1164,7 @@ function UICircuitBreaker:GetPowerObjInfo()
                     data.sect ~= bind_breaker.PLACEABLE_BREAKER_SECT
                     and contains(closest_grid, "power_logic", true)
                     and contains(closest_grid["power_logic"], breaker_id, true)
-                    and not contains(closest_grid["power_logic"][breaker_id]["connections"], id, true) 
+                    and data["breaker_id"] < 0
                 then
                     power_obj_info[#power_obj_info + 1] = {id=data.id, sect=data.sect, typ=power_typ}
                 end
@@ -1192,8 +1189,7 @@ end
 function UICircuitBreaker:AnimLabelAtt()
     if not self.anim_label then return end
     if not contains(self.label_atts, "label", true) or not self.label_atts["label"] then return end
-    local tg = time_global()
-    
+
     local curr_state = self.label_args["state"]
     local end_state = self.swap_panel_state[curr_state]
     if not self.label_args["init"] then
@@ -1203,11 +1199,13 @@ function UICircuitBreaker:AnimLabelAtt()
         if end_state == "hide" then 
             self:ShowLabelUI(false)
             self:SetPowerObjAction()
+            self.lm_label_btn:Enable(true)
         elseif end_state == "show" then
             local label_att = self.object:get_attachment("label")
             if label_att then
                 label_att:set_bone_visible("link", false, false)
             end
+            self.lm_label_btn:Enable(false)
         end
 
         dbg("dev", "state|curr: %s end: %s", curr_state, end_state)
@@ -1239,7 +1237,7 @@ function UICircuitBreaker:AnimLabelAtt()
             self:InitLabelUI()
             self:ShowLabelUI(true)
             self:SetStickerShader(self.curr_slot)
-        elseif end_state == "hide" then 
+        elseif end_state == "hide" then
             self:RemoveLabelSlotAtt()
             local label_att = self.object:get_attachment("label")
             if label_att then
@@ -1325,7 +1323,6 @@ function UICircuitBreaker:InitLabelSlotAtt()
         self.label_atts["slots"][i]:set_type(script_attachment_type.CamAttached)
         self.label_atts["slots"][i]:set_scale(0.555)
         local slot_info = self.slot_info[i]
-        local fuse_info = slot_info.fuse_info
         if 
             slot_info 
             and contains(slot_info, "sticker_texture", true) 
@@ -1548,8 +1545,12 @@ end
 function UICircuitBreaker:UpdateClrSelector()
     if not self.clr_selector["bg"]:IsShown() then return end
     local curr_track_val = self.clr_selector["track"]:GetIValue()
-    if curr_track_val and curr_track_val ~= self.clr_selector_args["track_val"] then
-        dbg("dev", "update clr selector")
+    if 
+        curr_track_val 
+        and curr_track_val ~= self.clr_selector_args["track_val"] 
+        and contains(order_to_fc_sticker_clr_name, curr_track_val, true)
+    then
+        dbg("dev", "update clr selector: %s", curr_track_val)
         local clr_name = order_to_fc_sticker_clr_name[curr_track_val]
         local texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, clr_name)
         dbg("dev", "clr name: %s", clr_name)
@@ -1574,6 +1575,7 @@ end
 function UICircuitBreaker:UpdateSlotInfo()
     if self.curr_menu == "main_menu" and time_global() < self.save_info_tmr then return end
     slot_info[self.object:id()] = self.slot_info
+    hf_obj_manager.update_data(self.object:id(), {slot_info=self.slot_info})
     self.save_info_tmr = time_global() + (5 * 1000)
 end
 
@@ -1606,6 +1608,7 @@ function UICircuitBreaker:OnFuseMenuBtn()
     self:InitSlotAtt(self.curr_slot)
     self:SetFuseCaseShader(self.curr_slot)
     self:MoveCamera(self.camera_positions[self.slot_info[self.curr_slot].name])
+    self:SetFuseAction()
 end
 
 function UICircuitBreaker:OnLabelMenuBtn()
@@ -1625,9 +1628,9 @@ function UICircuitBreaker:OnCloseBtn()
 end
 
 function UICircuitBreaker:OnActionBtn()
-    if not self.fuse_action then return end
     dbg("dev", "on action btn")
     dbg("dev", "fuse action: %s", self.fuse_action)
+    if not self.fuse_action then return end
     local itm = self.fm_inv_list:GetSelectedItem()
     if itm then
         dbg("dev", "fuse info: %s", itm.fuse_infos)
@@ -1688,7 +1691,7 @@ function UICircuitBreaker:OnActionBtn()
             local texture = ""
             local clr_name = ""
             if is_not_empty(new_fuse_info) and new_fuse_info.clr_name and new_fuse_info.clr_name ~= "" then
-                texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, fuse_info.clr_name)
+                texture = strformat(hfg_fuses.STICKER_TEXTURE_PREFIX, new_fuse_info.clr_name)
                 clr_name = new_fuse_info.clr_name
                 dbg("dev", "replacement fuse case: %s, %s", texture, clr_name)
             end
@@ -1708,7 +1711,8 @@ function UICircuitBreaker:OnActionBtn()
         elseif self.fuse_action == "replace_fuse" then
             alife_release(alife_object(id))
             local fuse_info = itm.fuse_infos[id]
-            local se_obj = alife_create_item(fuse_info.sect, db.actor)
+            local fuse_sect = fuse_info.sect
+            local se_obj = alife_create_item(fuse_sect, db.actor)
             replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
             self.slot_info[self.curr_slot].fuse_info = fuse_info
         end
@@ -1719,27 +1723,33 @@ function UICircuitBreaker:OnActionBtn()
             self:RemoveSlotAtt(self.curr_slot)
             local has_fuse = self.slot_info[self.curr_slot]["has_fuse"]
             local fuse_info = self.slot_info[self.curr_slot]["fuse_info"]
-            if has_fuse then                
-                local se_obj = alife_create_item(fuse_info.sect, db.actor)
+            if has_fuse then     
+                local fuse_sect = fuse_info.sect
+                local se_obj = alife_create_item(fuse_sect, db.actor)
                 replace_fuse_case_info(fuse_info.id, se_obj.id, fuse_info)
                 self.slot_info[self.curr_slot]["has_fuse"] = false
+                 local pobj_id = self.slot_info[self.curr_slot]["power_obj"].id
+                hf_obj_manager.update_data(pobj_id, {breaker_id=-1})
             else
                 hfg_fuses.fuse_case_info[se_fuse.id] = fuse_info
             end
             self.slot_info[self.curr_slot]["fuse_info"] = {}
             self.slot_info[self.curr_slot].sticker_texture = ""
+            self.slot_info[self.curr_slot].power_obj = {}
 
         elseif self.fuse_action == "remove_fuse" then
             local fuse_info = self.slot_info[self.curr_slot]["fuse_info"]
-            local se_obj = alife_create_item(fuse_info.sect, db.actor)
+            local fuse_sect = fuse_info.sect
+            local se_obj = alife_create_item(fuse_sect, db.actor)
             replace_fuse_loose_info(fuse_info.id, se_obj.id, fuse_info)
             self.slot_info[self.curr_slot]["has_fuse"] = false
-            self.slot_info[self.curr_slot].fuse_info = {}
+            self.slot_info[self.curr_slot]["fuse_info"] = {}
             self.slot_info[self.curr_slot]["fuse_info"].clr_name = fuse_info.clr_name
+            self.slot_info[self.curr_slot].power_obj = {}
         end
     end
 
-    self.delay_load_info = true -- load slot clr for sticker
+    self.delay_load_info = true
 end
 
 function UICircuitBreaker:OnChangeSlot()
@@ -1749,7 +1759,6 @@ function UICircuitBreaker:OnChangeSlot()
     local prev_slot = self.curr_slot
     self.curr_slot = next_slot
 
-    local att_name = strformat("slot_%s_attachment", self.curr_slot)
     if not self.slot_info[prev_slot].has_fuse_case then
         self:RemoveSlotAtt(prev_slot)
     else
@@ -1885,11 +1894,7 @@ function UICircuitBreaker:OnPowerObjBtn()
         local info = itm.info
         dbg("dev", "For breaker:%s setting fuse protected to true and adding %s", info)
         self.slot_info[self.curr_slot].power_obj = info
-        hf_obj_manager.update_data(info.id, {fuse_protected=true, breaker_id=breaker_id})
-        local breaker_hf_data = hf_obj_manager.get_data(breaker_id) or {}
-        breaker_hf_data["connections"] = breaker_hf_data["connections"] or {}
-        breaker_hf_data["connections"][info.id] = self.slot_info[self.curr_slot]
-        hf_obj_manager.update_data(breaker_id, {connections=breaker_hf_data["connections"]})
+        hf_obj_manager.update_data(info.id, {fuse_protected=true, breaker_id=breaker_id, slot_num=self.curr_slot})
 
     elseif itm and self.pobj_action == "replace_pobj" then
         local curr_info = self.slot_info[self.curr_slot].power_obj
@@ -1899,25 +1904,15 @@ function UICircuitBreaker:OnPowerObjBtn()
         local curr_fuse_protected = hf_data["fuse_protected"]
         local curr_breaker_id = hf_data["breaker_id"]
 
-        hf_obj_manager.update_data(new_info.id, {fuse_protected=curr_fuse_protected, breaker_id=curr_breaker_id})
-        hf_obj_manager.update_data(curr_info.id, {fuse_protected=false, breaker_id=-1})
-        local breaker_hf_data = hf_obj_manager.get_data(breaker_id) or {}
-        breaker_hf_data["connections"] = breaker_hf_data["connections"] or {}
-        breaker_hf_data["connections"][curr_info.id] = nil
-        breaker_hf_data["connections"][new_info.id] = self.slot_info[self.curr_slot]
-        hf_obj_manager.update_data(breaker_id, {connections=breaker_hf_data["connections"]})
+        hf_obj_manager.update_data(new_info.id, {fuse_protected=curr_fuse_protected, breaker_id=curr_breaker_id, slot_num=self.curr_slot})
+        hf_obj_manager.update_data(curr_info.id, {fuse_protected=false, breaker_id=-1, slot_num=-1})
 
     elseif not itm and self.pobj_action == "remove_pobj" then
         local info = self.slot_info[self.curr_slot].power_obj
         self.slot_info[self.curr_slot].power_obj = {}
-        hf_obj_manager.update_data(info.id, {fuse_protected=false, breaker_id=-1})
-        local breaker_hf_data = hf_obj_manager.get_data(breaker_id) or {}
-        breaker_hf_data["connections"] = breaker_hf_data["connections"] or {}
-        breaker_hf_data["connections"][info.id] = nil
-        hf_obj_manager.update_data(breaker_id, {connections=breaker_hf_data["connections"]})
+        hf_obj_manager.update_data(info.id, {fuse_protected=false, breaker_id=-1, slot_num=-1})
         dbg("dev", "For breaker:%s setting fuse protected to false and removing %s", info)
     end
-    dbg("dev", "breaker connections for %s:%s", breaker_id, hfg_power_grid.grids[grid_id]["power_logic"][breaker_id]["connections"])
     self:SetLabelUI(self.curr_slot)
     self.delay_load_info = true
 end
@@ -2028,8 +2023,6 @@ function slot_info_item:__init(slot_num, slot_info) super(slot_num, slot_info)
 
     local slot_name_str = strformat("Slot %s", slot_num)
     
-    dbg("dev", "%s, %s, %s", has_fuse_case_str, has_fuse_str, slot_name_str)
-    
     self.slot_name = self:AddTextField(slot_name_str, 1)
     self.slot_name:SetTextAlignment(CGameFont.alLeft)
     self.slot_name:SetWndSize(vector2():set(txt_w, txt_h))
@@ -2063,22 +2056,25 @@ function slot_info_item:__init(slot_num, slot_info) super(slot_num, slot_info)
     self.sticker_clr:SetWndPos(vector2():set(padding_w, (txt_h * 3) + padding_h))
     self.sticker_clr:SetTextComplexMode(true)
     
-    if is_not_empty(fuse_info) then
-        if contains(fuse_info, "typ", true) then
-            local fuse_type_str = strformat("Fuse Type: %s", capitalise(fuse_info.typ))
-            self.fuse_type = self:AddTextField(fuse_type_str, 1)
-            self.fuse_type:SetTextAlignment(CGameFont.alLeft)
-            self.fuse_type:SetWndSize(vector2():set(txt_w, txt_h))
-            self.fuse_type:SetWndPos(vector2():set(padding_w, (txt_h * 4) + padding_h))
-            self.fuse_type:SetTextComplexMode(true)
-        end
+    if is_not_empty(fuse_info) and contains(fuse_info, "typ", true) then
+        local fuse_typ_txt = fuse_info.typ
+        local fuse_type_str = strformat("Fuse Type: %s", capitalise(fuse_typ_txt))
+        self.fuse_type = self:AddTextField(fuse_type_str, 1)
+        self.fuse_type:SetTextAlignment(CGameFont.alLeft)
+        self.fuse_type:SetWndSize(vector2():set(txt_w, txt_h))
+        self.fuse_type:SetWndPos(vector2():set(padding_w, (txt_h * 4) + padding_h))
+        self.fuse_type:SetTextComplexMode(true)
     end
 
     if is_not_empty(slot_info.power_obj) then
         local sect = slot_info.power_obj["sect"]
         local item_section = ini_sys:r_string_ex(sect, "item_section", sect)
         local pobj_name = get_item_name(item_section)
-        local pobj_str = strformat("Protecting: %s", pobj_name)
+        local pobj_txt = (is_not_empty(fuse_info) and fuse_info.sect == hfg_fuses.FUSE_BROKEN_SECT)
+            and get_clr_str(clr_blind_red,  pobj_name) 
+            or get_clr_str(clr_blind_green,  pobj_name)
+        local protect_txt = (is_not_empty(fuse_info) and fuse_info.sect == hfg_fuses.FUSE_BROKEN_SECT) and "Not Protecting" or "Protecting"
+        local pobj_str = strformat("%s: %s", protect_txt, pobj_txt)
         self.fuse_type = self:AddTextField(pobj_str, 1)
         self.fuse_type:SetTextAlignment(CGameFont.alLeft)
         self.fuse_type:SetWndSize(vector2():set(txt_w, txt_h))

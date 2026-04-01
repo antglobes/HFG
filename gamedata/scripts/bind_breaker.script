@@ -116,7 +116,6 @@ function placeable_breaker_wrapper:__init(obj) super(obj)
     -- Breaker Connections
     --self.power_off_consumers = true
     self.grid_id = data["grid_id"] or -1
-    self.connections = data["connections"] or {} -- get_consumers(self.object:position())
     self.max_slots = data["max_slots"] or MAX_BREAKER_SLOTS 
     self.label_attached = data["label_attached"]  or false
     self.slot_info = data["slot_info"] or {}
@@ -334,7 +333,7 @@ function placeable_breaker_wrapper:save_data()
         parts                  = self.parts,
         power_state            = self.power_state,
         grid_id                = self.grid_id,
-        connections            = self.connections,
+        slot_info              = self.slot_info,
         label_attached         = self.label_attached,
         max_slots              = self.max_slots,
         anim_due               = self.anim_due,
@@ -364,7 +363,7 @@ function placeable_breaker_wrapper:load_data()
     self.parts                  = data["parts"]
     self.power_state            = data["power_state"]
     self.grid_id                = data["grid_id"]
-    self.connections            = data["connections"]
+    self.slot_info              = data["slot_info"]
     self.label_attached         = data["label_attached"]
     self.max_slots              = data["max_slots"]
     self.anim_due               = data["anim_due"] 
