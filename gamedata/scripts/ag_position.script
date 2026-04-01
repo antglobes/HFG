@@ -10,6 +10,43 @@ LEVEL_NAMES = {}
 LEVEL_INFO = {}
 SMART_POINTS = {}
 
+
+level_to_name = {
+    jupiter = "jupiter",
+    jupiter_underground = "jupiter_underground",
+    k00_marsh = "great_swamps",
+    k01_darkscape = "darkspace",
+    k02_trucks_cemetery = "truck_cemetery",
+    l01_escape = "cordon",
+    l02_garbage = "garbage",
+    l03_agroprom = "agroprom",
+    l03u_agr_underground = "agroprom_underground",
+    l04_darkvalley = "dark_valley",
+    l04u_labx18 = "lab_x18",
+    l05_bar = "rostok",
+    l06_rostok = "wild_territory",
+    l07_military = "military_warehouses",
+    l08_yantar = "yantar",
+    l08u_brainlab = "lab_x16", -- yantar
+    l09_deadcity = "dead_city",
+    l10_limansk = "limansk",
+    l10_radar = "radar",
+    l10_red_forest = "red_forest",
+    l10u_bunker = "lab_x19",
+    l11_hospital = "deserted_hospital",
+    l11_pripyat = "pripyat",
+    l12_stancia = "chernobyl_npp_north",
+    l12_stancia_2 = "chernobyl_npp_south",
+    l12u_control_monolith = "monolith_control_center",
+    l12u_sarcofag = "sarcophagus",
+    l13_generators = "generators",
+    l13u_warlab = "monolith_war_lab",
+    labx8 = "lab_x8",
+    pripyat = "outskirts",
+    zaton = "zaton",
+    y04_pole = "meadow",
+}
+
 ---Get the difference in distance between two position vectors
 ---@author antglobes
 ---@param a vector

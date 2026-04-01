@@ -17,6 +17,7 @@ NEG_Z = vector():set(0,  0, -1)
 
 PI_SQR = math.pi * 2.0
 PI_D180 = math.pi / 180.0
+PI_HALF = math.pi / 2
 
 -- Boolean Functions
 
@@ -43,10 +44,13 @@ end
 ---@param max number
 ---@return boolean
 function within_range(val, min, max)
-    return val >= min or val <= max
+    return val >= min and val <= max
 end
 
 -- Vectors
+function is_vector_zero(v)
+    return v.x == 0 and v.y == 0 and v.z == 0
+end
 
 ---Rotate a vector on the X axis by an angle
 ---@author antglobes
@@ -251,6 +255,10 @@ function get_direction(pos_1, pos_2)
     return norm_dir
 end
 
+function vec_length(pos)
+    return math.sqrt(math.pow(pos.x, 2) + math.pow(pos.y, 2) + math.pow(pos.z, 2))
+end
+
 ---Linear Interpolation
 ---@author antglobes
 ---@param a number
@@ -381,4 +389,50 @@ function build_range(max, min)
         tmp[i] = i
     end
     return tmp
+end
+
+function get_heading(dir_vec, to_degrees)
+    local heading = 0
+    if dir_vec.x == 0 and dir_vec.z == 0 then return heading end
+    if dir_vec.z == 0 then
+        heading = (dir_vec.x > 0) and -PI_HALF or PI_HALF
+    elseif dir_vec.z < 0 then
+        heading = math.atan(dir_vec.x / dir_vec.z) - math.pi
+    else 
+        heading = -math.atan(dir_vec.x / dir_vec.z)
+    end
+    return to_degrees and math.deg(heading) or heading
+end
+
+function get_pitch(dir_vec, to_degrees)
+    local pitch = 0
+    if dir_vec.x == 0 and dir_vec.z == 0 then 
+        if dir_vec.y ~= 0 then
+            pitch = dir_vec.y > 0 and PI_HALF or -PI_HALF
+            return to_degrees and math.deg(pitch) or pitch
+        end
+        return pitch
+    end
+    local hyp = math.sqrt(dir_vec.x * dir_vec.x + dir_vec.z * dir_vec.z)
+    if hyp == 0 then 
+        pitch = dir_vec.y > 0 and PI_HALF or -PI_HALF
+    else
+        pitch = math.atan(dir_vec.y / hyp)
+    end
+    return to_degrees and math.deg(pitch) or pitch
+end
+
+function get_bank(dir_vec, to_degrees)
+    local w_vec = vector():set(-dir_vec.z, dir_vec.x, 0)
+    local u_vec = vec_set(w_vec):mul(dir_vec)
+    local bank = math.atan2(vec_set(w_vec):dotproduct(VEC_Y), vec_set(u_vec):dotproduct(VEC_Y))
+    return to_degrees and math.deg(bank) or bank
+end
+
+function get_hpb(dir_vec)
+    return vector():set(
+        get_heading(dir_vec),
+        get_pitch(dir_vec),
+        get_bank(dir_vec)
+    )
 end

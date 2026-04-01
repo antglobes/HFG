@@ -1,0 +1,201 @@
+<w>
+    <dialog x="704" y="10" width="310"  height="610" stretch="1">
+        <texture>ui_inGame2_hint_wnd_main_window</texture>
+    </dialog>
+
+    <frame x="10" y="10" width="290" height="590" stretch="1" />
+
+    <titles>
+        <main x="70" y="0" width="140" height="30" stretch="1" complex_desc="1">
+            <text font="letterica25" complex_mode="1" align="c" vert_align="c">AREA SELECTOR</text>
+        </main>
+        
+        <move_area x="70" y="85" width="140" height="30" stretch="1" complex_desc="1">
+            <text font="letterica25" complex_mode="1" align="c" vert_align="c">Move Area</text>
+        </move_area>
+
+        <area_size x="70" y="210" width="140" height="30" stretch="1" complex_desc="1">
+            <text font="letterica25" complex_mode="1" align="c" vert_align="c">Area Size</text>
+        </area_size>
+
+        <set_plane_clr x="70" y="315" width="140" height="30" stretch="1" complex_desc="1">
+            <text font="letterica25" complex_mode="1" align="c" vert_align="c">Set Plane Colour</text>
+        </set_plane_clr>
+    </titles>
+
+    <ui_btns>
+        <!-- Top Row -->
+        <create_gizmos x="0" y="35" width="80" height="20" stretch="1">
+            <text font="letterica16">Create Gizmos</text>
+            <texture>ui_button_ordinary</texture>
+        </create_gizmos>
+
+        <reset_gizmos x="100" y="35" width="80" height="20" stretch="1">
+            <text font="letterica16">Reset Gizmos</text>
+            <texture>ui_button_ordinary</texture>
+        </reset_gizmos>
+
+        <cancel_gizmos x="200" y="35" width="80" height="20" stretch="1">
+            <text font="letterica16">Cancel Gizmos</text>
+            <texture>ui_button_ordinary</texture>
+        </cancel_gizmos>
+
+        <!-- Bottom Row -->
+        <show_ui x="0" y="60" width="55" height="20" stretch="1">
+            <text font="letterica16">Show UI</text>
+            <texture>ui_button_ordinary</texture>
+        </show_ui>
+
+        <close_ui x="75" y="60" width="55" height="20" stretch="1">
+            <text font="letterica16">Close UI</text>
+            <texture>ui_button_ordinary</texture>
+        </close_ui>
+
+        <end_ui x="150" y="60" width="55" height="20" stretch="1">
+            <text font="letterica16">End UI</text>
+            <texture>ui_button_ordinary</texture>
+        </end_ui>
+
+        <save_area x="225" y="60" width="55" height="20" stretch="1">
+            <text font="letterica16">Save Area</text>
+            <texture>ui_button_ordinary</texture>
+        </save_area>
+    </ui_btns>
+
+    <move_area>
+        <x>
+            <title x="0" y="115" width="10" height="10" stretch="1" complex_desc="1">
+                <text font="letterica25" complex_mode="1" align="c" vert_align="c">X</text>
+            </title>
+
+            <pos_track x="15" y="115" width="112" height="20" stretch="1" step="0.1" />
+            <pos_box x="15" y="185" width="37" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </pos_box>
+
+            <rot_track x="130" y="115" width="112" height="20" stretch="1" step="0.1" />          
+            <rot_box x="130" y="185" width="37" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </rot_box>
+
+            <reset_btn x="255" y="115" width="25" height="20" stretch="1">
+                <text font="letterica16">Reset</text>
+                <texture>ui_button_ordinary</texture>
+            </reset_btn>
+        </x>
+
+        <y>
+            <title x="0" y="140" width="10" height="10" stretch="1" complex_desc="1">
+                <text font="letterica25" complex_mode="1" align="c" vert_align="c">Y</text>
+            </title>
+
+            <pos_track x="15" y="140" width="112" height="20" stretch="1" step="0.1" />
+            <pos_box x="52" y="185" width="37" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </pos_box>
+
+            <rot_track x="130" y="140" width="112" height="20" stretch="1" step="0.1" />          
+            <rot_box x="167" y="185" width="37" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </rot_box>
+
+            <reset_btn x="255" y="140" width="25" height="20" stretch="1">
+                <text font="letterica16">Reset</text>
+                <texture>ui_button_ordinary</texture>
+            </reset_btn>
+        </y>
+
+        <z>
+            <title x="0" y="165" width="10" height="10" stretch="1" complex_desc="1">
+                <text font="letterica25" complex_mode="1" align="c" vert_align="c">Z</text>
+            </title>
+
+            <pos_track x="15" y="165" width="112" height="20" stretch="1" step="0.1" />
+            <pos_box x="89" y="185" width="37" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </pos_box>
+
+            <rot_track x="130" y="165" width="112" height="20" stretch="1" step="0.1" />          
+            <rot_box x="204" y="185" width="37" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </rot_box>
+
+            <reset_btn x="255" y="165" width="25" height="20" stretch="1">
+                <text font="letterica16">Reset</text>
+                <texture>ui_button_ordinary</texture>
+            </reset_btn>
+        </z>
+    </move_area>
+
+    <area_size>
+        <height>
+            <title x="0" y="230" width="35" height="20" stretch="1" complex_desc="1">
+                <text font="letterica18" complex_mode="1" align="l" vert_align="c">Height</text>
+            </title>            
+            <value_track x="40" y="230" width="150" height="20" stretch="1" step="0.1"/>
+            <value_box x="195" y="230" width="80" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </value_box>
+        </height>
+
+        <width>
+            <title x="0" y="265" width="35" height="20" stretch="1" complex_desc="1">
+                <text font="letterica18" complex_mode="1" align="l" vert_align="c">Width</text>
+            </title>            
+            <value_track x="40" y="265" width="150" height="20" stretch="1" step="0.1"/>
+            <value_box x="195" y="265" width="80" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </value_box>
+        </width>
+
+        <select_face>
+            <title x="0" y="290" width="35" height="20" stretch="1" complex_desc="1">
+                <text font="letterica18" complex_mode="1" align="l" vert_align="c">Face</text>
+            </title>            
+            <value_track x="40" y="290" width="150" height="20" stretch="1" is_interger="1" step="1"/>
+            <value_box x="195" y="290" width="80" height="20" stretch="1">
+                <text x="1" font="letterica16" vert_align="c" align="l" />
+                <texture>ui_inGame2_edit_box_2</texture>
+            </value_box>
+        </select_face>
+    </area_size>
+
+    <set_plane_clr>
+        <clr_type>
+            <rgb_checkbox x="210" y="315" width="30" height="30" stretch="1">
+                <text x="-73" font="letterica16" vert_align="c" align="c">RGB</text>
+                <texture>ui_inGame2_checkbox</texture>
+            </rgb_checkbox>
+
+            <hsv_checkbox x="245" y="315" width="30" height="30" stretch="1">
+                <text x="-73" font="letterica16" vert_align="c" align="c">HSV</text>
+                <texture>ui_inGame2_checkbox</texture>
+            </hsv_checkbox>
+        </clr_type>
+
+        <group_type>
+            <same_checkbox x="140" y="340" width="30" height="30" stretch="1">
+                <text x="-67" font="letterica16" vert_align="c" align="c">Same</text>
+                <texture>ui_inGame2_checkbox</texture>
+            </same_checkbox>
+            
+            <opposite_checkbox x="183" y="340" width="30" height="30" stretch="1">
+                <text x="-63" font="letterica16" vert_align="c" align="c">Opposite</text>
+                <texture>ui_inGame2_checkbox</texture>
+            </opposite_checkbox>
+            
+            <each_checkbox x="235" y="340" width="30" height="30" stretch="1">
+                <text x="-70" font="letterica16" vert_align="c" align="c">Each</text>
+                <texture>ui_inGame2_checkbox</texture>
+            </each_checkbox>
+        </group_type>
+    </set_plane_clr>
+</w>
