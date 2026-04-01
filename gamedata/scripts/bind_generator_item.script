@@ -103,7 +103,7 @@ function placeable_generator_item_wrapper:update(delta)
     bind_hf_base.hf_binder_wrapper.update(self, delta)
     self:load_data()
 
-    local tg = time_global()
+    -- local tg = time_global()
 
     if is_fuel_source(self.item_section) then
         if self.uses > 0 then
@@ -303,19 +303,19 @@ function take_fuel_cond(obj)
     end
 
     local gen = level.get_target_obj()
-    if gen and gen:section() == "placeable_disel_generator" then
-
-        if distance_between(db.actor, gen) > 2 then
-            hide_hud_inventory()
-            actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
-            return false
-        end
-
-        local uses = hf_obj_manager.get_data(obj:id()).uses
-        local power_state = hf_obj_manager.get_data(gen:id()).power_state
-        return not uses or (uses and uses == 0) and power_state ~= "broken"
+    if not gen or gen:section() ~= "placeable_disel_generator" then
+        return false
     end
-    return false
+
+    if distance_between(db.actor, gen) > 2 then
+        hide_hud_inventory()
+        actor_menu.set_msg(1, gts("st_no_gen_nearby"), 3)
+        return false
+    end
+
+    local uses = hf_obj_manager.get_data(obj:id()).uses
+    local power_state = hf_obj_manager.get_data(gen:id()).power_state
+    return not uses or (uses and uses <= 10) and power_state ~= "broken"
 end
 
 function take_fuel_func(obj)
@@ -602,7 +602,7 @@ function set_cond_on_impact_npc(npc, wpn, target)
 end
 
 function on_npc_fired(bullet)
-    local sect = bullet.section
+    -- local sect = bullet.section
     local wpn_id = bullet.weapon_id
     local p_id = bullet.parent_id
     local t_id = bullet.target_id
