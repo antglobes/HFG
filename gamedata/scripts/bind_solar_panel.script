@@ -195,7 +195,7 @@ function placeable_solar_panel_wrapper:__init(obj) super(obj)
     self.power_input_tmr = data["power_input_tmr"] or 0
 
     -- Object State
-    self.power_state = self.condition <= BROKEN_COND and "broken" or within_range(self.chour, AVG_LIGHT_HRS[self.chour]["start"], AVG_LIGHT_HRS[self.chour]["end"]) and "on" or "off"
+    self.power_state = self.condition <= BROKEN_COND and "broken" or within_radius(self.chour, AVG_LIGHT_HRS[self.chour]["start"], AVG_LIGHT_HRS[self.chour]["end"]) and "on" or "off"
     -- self.object:set_tip_text(gts("st_power_state_" .. SWAP_POWER_STATE[self.power_state], get_hf_item_name(self.section)))
     self.powerable_device_tmr = 0
 
@@ -400,7 +400,7 @@ function placeable_solar_panel_wrapper:ProcessTime()
         self.update_hr_tmr = tg + (next_update / level.get_time_factor())
 
         local avg_light_hrs = AVG_LIGHT_HRS[self.cmonth]
-        self.power_state = self.condition <= BROKEN_COND and "broken" or within_range(self.chour, avg_light_hrs["start"], avg_light_hrs["end"]) and "on" or "off"
+        self.power_state = self.condition <= BROKEN_COND and "broken" or within_radius(self.chour, avg_light_hrs["start"], avg_light_hrs["end"]) and "on" or "off"
         self:save_data()
     end
 end

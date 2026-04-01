@@ -205,7 +205,7 @@ function get_bone_pos(obj, bone_name)
     return utils_obj.safe_bone_pos(obj, bone_name)
 end
 
-function within_range(pos_a, pos_b, radius)
+function within_radius(pos_a, pos_b, radius)
     return pos_a:distance_to(pos_b) <= radius
 end
 

@@ -24,7 +24,7 @@ dik_to_str = hfg_utils.dik_to_str
 simple_press = hfg_utils.simple_press
 double_tap = hfg_utils.double_tap
 get_anim_offset = hfg_utils.get_anim_offset
-within_range = hfg_utils.within_range
+within_radius = hfg_utils.within_radius
 is_key_held = hfg_utils.is_key_held
 
 -- Constants
@@ -188,7 +188,7 @@ function place_blueprint(obj_id)
     blueprint_info.att_def_shaders = blueprint_info.att:get_default_shaders()
 
     dbg("dev", "init extra args")
-    blueprint_info.within_range = within_range(db.actor:position(), blueprint_info.hf_loc["pos"], blueprint_info.att_highlight_radius)
+    blueprint_info.within_radius = within_radius(db.actor:position(), blueprint_info.hf_loc["pos"], blueprint_info.att_highlight_radius)
 
     placed_blueprints[id] = blueprint_info
     alife_create_item("hfg_empty_blueprint", db.actor)
@@ -221,8 +221,8 @@ actor_on_update = throttle(
                     local actor_pos = db.actor:position()
                     local highlight_radius = info.att_highlight_radius
                     -- dbg("dev", "actor looking at: %s, standing at: %s", targ_pos, actor_pos)
-                    if within_range(actor_pos, obj_pos, highlight_radius) then --within_range(obj_pos, targ_pos, highlight_radius)
-                        info.within_range = true
+                    if within_radius(actor_pos, obj_pos, highlight_radius) then --within_radius(obj_pos, targ_pos, highlight_radius)
+                        info.within_radius = true
                         restore_shown_state()
                         -- (Un)/Highlight targeted parts on a model
                         local target_bone = get_target_bone(targ_pos, info)
@@ -288,7 +288,7 @@ actor_on_update = throttle(
                             hfg_power_grid.delay_init_grid(se_obj.id)
                         end
                     else
-                        info.within_range = false
+                        info.within_radius = false
                         -- No Blueprint is being targeted so reset to default state
                         if info.current_shader ~= info.att_blueprint_shader then
                             dbg("dev", "outside of highlight radius")
@@ -305,7 +305,7 @@ actor_on_update = throttle(
                         local at_least_one_in_range = false
                         local blueprint_tbl_size = size_table(placed_blueprints)
                         for tmp_id, tmp_info in pairs(placed_blueprints) do
-                            if (blueprint_tbl_size == 1 or tmp_id ~= id) and tmp_info.within_range then
+                            if (blueprint_tbl_size == 1 or tmp_id ~= id) and tmp_info.within_radius then
                                 at_least_one_in_range = true
                             end
                         end
@@ -821,7 +821,7 @@ function get_closest_blueprint(pos)
         local obj = get_unknown_object({id=id}, "game")
         if obj then
             local obj_pos = obj:position()
-            if within_range(pos, obj_pos, info.att_highlight_radius) then
+            if within_radius(pos, obj_pos, info.att_highlight_radius) then
                 local dist = pos:distance_to(obj_pos)
                 if not closest_blueprint_id or closest_dist > dist then
                     closest_blueprint_id = id
@@ -1142,7 +1142,7 @@ function on_first_update()
             if is_on_screen(obj_pos) then
                 local actor_pos = db.actor:position()
                 local highlight_radius = info.att_highlight_radius
-                if within_range(actor_pos, obj_pos, highlight_radius) then
+                if within_radius(actor_pos, obj_pos, highlight_radius) then
                     start_hud()
                     break
                 end
