@@ -327,44 +327,44 @@ end
 function on_save(mdata)
     mdata.level_names = LEVEL_NAMES
 
-    local tmp_lvl_info = LEVEL_INFO
-    local tmp_smart_points = SMART_POINTS
-    for _, level_name in pairs(LEVEL_NAMES) do
-        for idx, info in pairs(tmp_lvl_info[level_name]) do
-            tmp_lvl_info[level_name][idx].pos = utils_data.vector_to_string(tmp_lvl_info[level_name][idx].pos)
-        end
-        for smart_name, points in pairs(tmp_smart_points[level_name]) do
-            for idx, info in pairs(points) do
-                tmp_smart_points[level_name][smart_name][idx].pos = utils_data.vector_to_string(tmp_smart_points[level_name][smart_name][idx].pos)
-            end
-        end
-    end
-    mdata.level_info = tmp_lvl_info
-    mdata.smart_points = tmp_smart_points
+    -- local tmp_lvl_info = LEVEL_INFO
+    -- local tmp_smart_points = SMART_POINTS
+    -- for _, level_name in pairs(LEVEL_NAMES) do
+        -- for idx, info in pairs(tmp_lvl_info[level_name]) do
+            -- tmp_lvl_info[level_name][idx].pos = utils_data.vector_to_string(tmp_lvl_info[level_name][idx].pos)
+        -- end
+        -- for smart_name, points in pairs(tmp_smart_points[level_name]) do
+            -- for idx, info in pairs(points) do
+                -- tmp_smart_points[level_name][smart_name][idx].pos = utils_data.vector_to_string(tmp_smart_points[level_name][smart_name][idx].pos)
+            -- end
+        -- end
+    -- end
+    -- mdata.level_info = tmp_lvl_info
+    -- mdata.smart_points = tmp_smart_points
 end
 
 function on_load(mdata)
     LEVEL_NAMES = mdata.level_names or {}
-    local tmp_lvl_info = mdata.level_info or {}
-    local tmp_smart_points = mdata.smart_points or {}
-    for _, level_name in pairs(LEVEL_NAMES) do
-        for idx, info in pairs(tmp_lvl_info[level_name]) do
-            tmp_lvl_info[level_name][idx].pos = utils_data.string_to_vector(tmp_lvl_info[level_name][idx].pos)
-        end
-        for smart_name, points in pairs(tmp_smart_points[level_name]) do
-            for idx, info in pairs(points) do
-                tmp_smart_points[level_name][smart_name][idx].pos = utils_data.string_to_vector(tmp_smart_points[level_name][smart_name][idx].pos)
-            end
-        end
-    end
-    LEVEL_INFO = tmp_lvl_info
-    SMART_POINTS = tmp_smart_points
+    -- local tmp_lvl_info = mdata.level_info or {}
+    -- local tmp_smart_points = mdata.smart_points or {}
+    -- for _, level_name in pairs(LEVEL_NAMES) do
+        -- for idx, info in pairs(tmp_lvl_info[level_name]) do
+            -- tmp_lvl_info[level_name][idx].pos = utils_data.string_to_vector(tmp_lvl_info[level_name][idx].pos)
+        -- end
+        -- for smart_name, points in pairs(tmp_smart_points[level_name]) do
+            -- for idx, info in pairs(points) do
+                -- tmp_smart_points[level_name][smart_name][idx].pos = utils_data.string_to_vector(tmp_smart_points[level_name][smart_name][idx].pos)
+            -- end
+        -- end
+    -- end
+    -- LEVEL_INFO = tmp_lvl_info
+    -- SMART_POINTS = tmp_smart_points
 end
 
 function on_game_start()
     RegisterScriptCallback("on_game_load", collect_level_names)
-    RegisterScriptCallback("on_game_load", gather_level_info)
-    RegisterScriptCallback("on_game_load", gather_smart_points)
+    -- RegisterScriptCallback("on_game_load", gather_level_info)
+    -- RegisterScriptCallback("on_game_load", gather_smart_points)
     RegisterScriptCallback("save_state", on_save)
     RegisterScriptCallback("load_state", on_load)
 end
