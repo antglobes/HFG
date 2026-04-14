@@ -378,6 +378,22 @@ function get_max_size_within_rect(tile_count, height, width)
     return max_size
 end
 
+function vec_in_deg(v)
+    return vector():set(
+        math.deg(v.x),
+        math.deg(v.y),
+        math.deg(v.z)
+    )
+end
+
+function vec_in_rad(v)
+    return vector():set(
+        math.rad(v.x),
+        math.rad(v.y),
+        math.rad(v.z)
+    )
+end
+
 function todegrees(x)
     return math.deg(math.abs(math.acos(x)))
 end
