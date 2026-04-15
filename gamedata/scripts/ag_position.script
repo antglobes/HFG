@@ -113,6 +113,46 @@ function get_bone_pos(obj, bone_name)
     return utils_obj.safe_bone_pos(obj, bone_name)
 end
 
+function get_lvid(pos)
+    local lvid = level.vertex_id(pos)
+    if lvid ~= 4294967295 then printf("got lvid from init pos") return lvid end
+    
+    local dist = 100
+    local up_dir = vec_set(VEC_Y)
+    local down_dir = vec_set(up_dir):invert()
+    local contact_points = {}
+    -- Try to get new positions from surfaces above and below init pos
+    for idx, dir in pairs({up_dir, down_dir}) do
+        local ray = ray_pick(pos, dir, dist, 3, db.actor)
+        if ray:query() then
+            contact_points[#contact_points + 1] = vector():mad(pos, dir, ray:get_distance())
+            printf("contact point: %s from %s dir", contact_points[#contact_points], idx == 1 and "up" or "down")
+        end
+    end
+
+    -- get point closest to init pos
+    if is_not_empty(contact_points) then
+        local closest_dist
+        local closest_point
+        for _, point in pairs(contact_points) do
+            local dist = point:distance_to(pos)
+            if not closest_dist or dist < closest_dist then
+                closest_dist = dist
+                closest_point = point
+            end
+        end
+        if closest_point then
+            lvid = level.vertex_id(closest_point)
+            if lvid ~= 4294967295 then
+                printf("got lvid from closest point: %s to init pos, dist: %s", closest_point, closest_dist)
+                return lvid
+            end
+        end
+    end
+    printf("got lvid from actor")
+    return db.actor:level_vertex_id()
+end
+
 function is_pos_behind_npc(pos, npc)
     npc = not npc and db.actor or npc
     local npc_pos = vector():set(npc:position())

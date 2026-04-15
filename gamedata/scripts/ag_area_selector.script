@@ -1,36 +1,18 @@
 -- Library Imports
-ag_utils.import_metatable(this, ag_colours)
 ag_utils.import_metatable(this, ag_tables)
-ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_position)
 ag_utils.import_metatable(this, ag_maths)
-
--- Script Imports
-viz_ray = demonized_geometry_ray.VisualizeRay
-
+ag_utils.import_metatable(this, ag_configs)
 -- Utils
 get_config = hfg_mcm.get_config
-
 -- Constants
 LOG_HEADER = "[AG | Area Selector UI]"
-DBG_WPN_SECT = "wpn_beretta"
-UI_KEY = DIK_keys.DIK_NUMPAD7
-BUILD_AREA_KEY = DIK_keys.DIK_NUMPAD5
-DRAW_AREA_KEY = DIK_keys.DIK_NUMPAD8
-TOGGLE_UI_KEYBIND = get_config("main", "toggle_ui_keybind")
-QUIT_UI_KEYBIND = get_config("main", "ui_quit_keybind")
-NORTH = VEC_Z
-SOUTH = NEG_Z
-EAST = vector():set(0, 0, 0.5)
-WEST = vector():set(0, 0, -0.5)
-
--- Globals
-enable_ui = false
-GUI = nil
-reinit_ui = false
-
 -- Locals
 local dbg_pr = nil
 
+-- Globals
+GUI = nil
 
 -- DEBUGGING
 function setup_log(level, header, enabled)
@@ -53,542 +35,333 @@ function dbg(level, fmt, ...)
     dbg_pr:Log(level, fmt, ...)
 end
 
-function start_ui()
-    dbg("dev", "start area selector ui")
+
+local corner_pos = {}
+local corner_selected = 1
+local corner_gizmos = {}
+local sphere_scale_mat = matrix():identity(0.001, 0.001, 0.001, 0.001)
+local corner_colour = {
+    [1] = fcolor():set(1, 0, 0, 1),
+    [2] = fcolor():set(0, 1, 0, 1)
+}
+local toggle_rot = false
+local att_bank = 0
+local att_name = "area_selector_att"
+local att_vis = "dynamics\\cube_one_meter.ogf"
+local min_dim, max_dim = 0.1, 50
+local ini_areas = ini_file_ex("plugins\\ag_areas.ltx", true)
+local saved_areas = {}
+local area_attachments = {}
+
+RESET_CORNERS = DIK_keys.DIK_NUMPAD7
+CHANGE_CORNER = DIK_keys.DIK_NUMPAD8
+IN_AREA       = DIK_keys.DIK_NUMPAD9
+SHIFT_X       = DIK_keys.DIK_NUMPAD4
+SHIFT_Y       = DIK_keys.DIK_NUMPAD5
+SHIFT_Z       = DIK_keys.DIK_NUMPAD6
+SAVE_AREA     = DIK_keys.DIK_NUMPAD1
+BUILD_AREA    = DIK_keys.DIK_NUMPAD2
+TOGGLE_ROT    = DIK_keys.DIK_NUMPAD3
+SHIFT_WIDTH   = DIK_keys.DIK_ADD
+SHIFT_HEIGHT  = DIK_keys.DIK_SUBTRACT
+SHIFT_DEPTH   = DIK_keys.DIK_NUMLOCK
+SHIFT_BANK    = DIK_keys.DIK_NUMPADENTER
+
+local vertices = {
+    A = vec_set(VEC_ZERO),
+    B = vec_set(VEC_ZERO),
+    C = vec_set(VEC_ZERO),
+    D = vec_set(VEC_ZERO),
+    E = vec_set(VEC_ZERO),
+    F = vec_set(VEC_ZERO),
+    G = vec_set(VEC_ZERO),
+    H = vec_set(VEC_ZERO),
+}
+
+function on_key_press(dik)
+    -- dbg("dev", "on key press:%s", hfg_utils.dik_to_str(dik))
+    local shift_pressed = key_state(DIK_keys.DIK_LSHIFT) == 1
+    if dik == RESET_CORNERS then
+        kill_area_gizmos()
+        clear_corners()
+        remove_att()
+        att_bank = 0
+
+    elseif dik == CHANGE_CORNER then
+        corner_selected = corner_selected == 1 and 2 or 1
+        dbg("dev", "switching corner to %s", corner_selected)
+
+    elseif dik == IN_AREA then
+        for name, _ in pairs(area_attachments[level.name()]) do
+            dbg("dev", "%s is %s area:%s", level.get_target_pos(), look_in_area(name, true) and "in" or "not in", name)
+        end
+
+    -- Increase X
+    elseif dik == SHIFT_X and not shift_pressed then
+        shift_x()
+    -- Decrease X
+    elseif dik == SHIFT_X and shift_pressed then
+        shift_x(shift_pressed)
+
+    -- Increase Y
+    elseif dik == SHIFT_Y and not shift_pressed then
+        shift_y()
+    -- Decrease Y
+    elseif dik == SHIFT_Y and shift_pressed then
+        shift_y(shift_pressed)
+    
+    -- Increase Z
+    elseif dik == SHIFT_Z and not shift_pressed then
+        shift_z()
+    -- Decrease z
+    elseif dik == SHIFT_Z and shift_pressed then
+        shift_z(shift_pressed)
+
+    elseif dik == SHIFT_WIDTH and not shift_pressed then
+        shift_width()
+    elseif dik == SHIFT_WIDTH and shift_pressed then
+        shift_width(shift_pressed)
+
+    elseif dik == SHIFT_HEIGHT and not shift_pressed then
+        shift_height()
+    elseif dik == SHIFT_HEIGHT and shift_pressed then
+        shift_height(shift_pressed)
+
+    elseif dik == SHIFT_DEPTH and not shift_pressed then
+        shift_depth()
+    elseif dik == SHIFT_DEPTH and shift_pressed then
+        shift_depth(shift_pressed)
+
+    elseif dik == SHIFT_BANK and not shift_pressed then
+        shift_bank()
+    elseif dik == SHIFT_BANK and shift_pressed then
+        shift_bank(shift_pressed)
+
+    elseif dik == SAVE_AREA then
+        save_area_prompt()
+
+    elseif dik == BUILD_AREA then
+        build_area()
+
+    elseif dik == TOGGLE_ROT then
+        toggle_rot = not toggle_rot
+        dbg("dev", "toggle rot to: %s", toggle_rot)
+    end
+end
+
+-- Key Funcs
+function kill_area_gizmos()
+    dbg("dev", "killin gizmos")
+    for idx, gizmo in pairs(corner_gizmos) do
+        toggle_corner_gizmo_vis(idx, false)
+        corner_gizmos[idx] = nil
+    end
+end
+
+function clear_corners()
+    dbg("dev", "clearing corner pos'")
+    for idx, pos in pairs(corner_pos) do
+        corner_pos[idx] = nil
+    end
+end
+
+function look_in_area(name, visualize)
+    local level_name = level.name()
+    if 
+        not contains(area_attachments[level_name], name, true) 
+        or not area_attachments[level_name][name]
+    then 
+        return
+    end
+    dbg("dev", "checking if look pos is in area for %s", name)
+    local look_pos = vec_set(level.get_target_pos())
+    local att = area_attachments[level_name][name]
+    local att_pos = vec_set(att:get_transform().c)
+    dbg("dev", "look pos: %s, att pos: %s", look_pos, att_pos)
+    local att_rot = vec_set(att:get_rotation())
+    local att_scale = vec_set(att:get_scale())
+    local x_vec = vector():set(att_pos.x, 0, 0)
+    local y_vec = vector():set(0, att_pos.y, 0)
+    local z_vec = vector():set(0, 0, att_pos.z)
+    dbg("dev", "axis vecs| x:%s, y:%s, z:%s", x_vec, y_vec, z_vec)
+    local up_dir = vector_rotate_y(VEC_Y, math.deg(att_rot.y)):normalize()
+    local right_dir = vector_rotate_x(VEC_X, math.deg(att_rot.x)):normalize()
+    local forward_dir = vector():crossproduct(up_dir, right_dir):normalize()
+    dbg("dev", "direction| right %s, forward %s", right_dir, forward_dir)
+    local max_pos = vector():set(
+        vector():mad(x_vec, right_dir, att_scale.x / 2).x,
+        vector():mad(y_vec, up_dir, att_scale.y / 2).y,
+        vector():mad(z_vec, forward_dir, att_scale.z / 2).z
+    )
+    local min_pos = vector():set(
+        vector():mad(x_vec, vec_set(right_dir):invert(), att_scale.x / 2).x,
+        vector():mad(y_vec, vec_set(VEC_Y):invert(), att_scale.y / 2).y,
+        vector():mad(z_vec, vec_set(forward_dir):invert(), att_scale.z / 2).z
+    )
+    if visualize then
+        local timeout = 6 * 1000
+        demonized_geometry_ray.VisualizeRay(device().cam_pos, att_pos, 0.02, timeout)
+        thial_particles.add("amik\\hit_fx\\metal\\hit_sparks_glow", min_pos, timeout)
+        thial_particles.add("amik\\hit_fx\\metal\\hit_sparks_glow", max_pos, timeout)
+    end
+
+    dbg("dev", "corner position|: min:%s, max:%s", min_pos, max_pos)
+    return (look_pos.x > min_pos.x and look_pos.z < min_pos.z)
+        and (look_pos.z > max_pos.z and look_pos.y < max_pos.y)
+end
+
+-- Position, Dimensions
+
+function shift_x(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "shift x")
+    local att = level.get_attachment(att_name)
+    local step = 0.1
+    local pos = vec_set(att:get_position())
+    local pos_x = shift_pressed and pos.x - step or pos.x + step
+    att:set_position(vector():set(pos_x, pos.y, pos.z))
+end
+
+function shift_y(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "shift y")
+    local att = level.get_attachment(att_name)
+    local step = 0.1
+    local pos = vec_set(att:get_position())
+    local pos_y = shift_pressed and pos.y - step or pos.y + step
+    att:set_position(vector():set(pos.x, pos_y, pos.z))
+end
+
+
+function shift_z(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "shift z")
+    local att = level.get_attachment(att_name)
+    local step = 0.1
+    local pos = vec_set(att:get_position())
+    local pos_z = shift_pressed and pos.z - step or pos.z + step
+    att:set_position(vector():set(pos.x, pos.y, pos_z))
+end
+
+function shift_width(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "shift width")
+    local att = level.get_attachment(att_name)
+    local step = 0.1
+    local scale = vec_set(att:get_scale())
+    local new_width = shift_pressed and scale.x - step or scale.x + step
+    local new_scale = vector():set(
+        clamp(new_width, min_dim, max_dim),
+        scale.y,
+        scale.z
+    )
+    att:set_scale(new_scale)
+end
+
+function shift_height(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "shift height")
+    local att = level.get_attachment(att_name)
+    local step = 0.1
+    local scale = vec_set(att:get_scale())
+    local new_height = shift_pressed and scale.y - step or scale.y + step
+    local new_scale = vector():set(
+        scale.x,
+        clamp(new_height, min_dim, max_dim),
+        scale.z
+    )
+    att:set_scale(new_scale)
+end
+
+function shift_depth(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "shift depth")
+    local att = level.get_attachment(att_name)
+    local step = 0.1
+    local scale = vec_set(att:get_scale())
+    local new_depth = shift_pressed and scale.z - step or scale.z + step
+    local new_scale = vector():set(
+        scale.x,
+        scale.y,
+        clamp(new_depth, min_dim, max_dim)
+    )
+    att:set_scale(new_scale)
+end
+
+function shift_bank(shift_pressed)
+    if not level.get_attachment(att_name) then return end
+    local step = 0.1
+    local new_bank = shift_pressed and att_bank - step or att_bank + step
+    att_bank = clamp(new_bank, -math.pi, math.pi)
+end
+
+function set_vertices()
+    local pos_a, pos_b = determine_corners()
+    vertices.D = vector():set(pos_a.x, pos_a.y, pos_a.z) --0
+    vertices.C = vector():set(pos_a.x, pos_a.y, pos_b.z) --1
+    vertices.B = vector():set(pos_b.x, pos_a.y, pos_b.z) --2
+    vertices.A = vector():set(pos_b.x, pos_a.y, pos_a.z) --3
+    vertices.G = vector():set(pos_a.x, pos_b.y, pos_a.z) --4
+    vertices.H = vector():set(pos_a.x, pos_b.y, pos_b.z) --5
+    vertices.E = vector():set(pos_b.x, pos_b.y, pos_b.z) --6
+    vertices.F = vector():set(pos_b.x, pos_b.y, pos_a.z) --7
+    dbg("dev", "vertices:%s", vertices)
+end
+
+
+function build_area()
+    if size_table(corner_pos) < 2 then dbg("dev", "need 2 corners to build") return end
+    if level.get_attachment(att_name) then return end
+    dbg("dev", "building area")
+    kill_area_gizmos()
+    set_vertices()
+    init_att()
+    update_att()
+end
+
+function save_area_prompt()
     if not GUI then
-        GUI = UIAreaSelector()
+        GUI = UISaveArea()
     end
 
-    if GUI then
-        GUI:Reset()
+    if GUI and not GUI:IsShown() then
         GUI:ShowDialog(true)
-        Register_UI("UIAreaSelector")
+        GUI:Reset()
+        Register_UI("UISaveArea")
     end
 end
 
-class "UIAreaSelector" (CUIScriptWnd)
-function UIAreaSelector:__init() super()
-    self.init = false
-    self:AllowMovement(true)
-    self:InitControls()
-    self:InitCallbacks()
-    dbg("dev", "end init")
-end
-
-
-function UIAreaSelector:InitControls()
-    dbg("dev", "init controls")
-    self:SetWndRect(Frect():set(0, 0, 1024, 768))
-    self:SetAutoDelete(true)
-
-    self.xml = CScriptXmlInit()
-    self.xml:ParseFile("ui_area_selector.xml")
-
-    self.dialog = self.xml:InitFrame("dialog", self)
-    self.frame = self.xml:InitStatic("frame", self.dialog)
-    self.titles = {
-        main          = self.xml:InitTextWnd("titles:main", self.frame),
-        move_area     = self.xml:InitTextWnd("titles:move_area", self.frame),
-        area_size     = self.xml:InitTextWnd("titles:area_size", self.frame),
-        set_plane_clr = self.xml:InitTextWnd("titles:set_plane_clr", self.frame),
+function save_area_data(area_name)
+    if not level.get_attachment(att_name) then return end
+    dbg("dev", "saving area")
+    local att = level.get_attachment(att_name)
+    local xform = att:get_transform() --matrix
+    local level_name = level.name()
+    local name = area_name or os.date("%Y/%m/%d-%H:%M:%S")
+    local data = {
+        lvl_name = level_name,
+        pos = utils_data.vector_to_string(xform.c),
+        -- lvid = get_lvid(xform.c),
+        -- gvid = db.actor:game_vertex_id(),
+        rot = utils_data.vector_to_string(xform:getHPB()),
+        scale = utils_data.vector_to_string(att:get_scale()) -- dimensions
     }
-    self.ui_btns = {
-        create_gizmos  = self.xml:Init3tButton("ui_btns:create_gizmos", self.frame),
-        reset_gizmos   = self.xml:Init3tButton("ui_btns:reset_gizmos", self.frame),
-        cancel_gizmos  = self.xml:Init3tButton("ui_btns:cancel_gizmos", self.frame),
-        show_ui        = self.xml:Init3tButton("ui_btns:show_ui", self.frame),
-        close_ui       = self.xml:Init3tButton("ui_btns:close_ui", self.frame),
-        end_ui         = self.xml:Init3tButton("ui_btns:end_ui", self.frame),
-        save_area      = self.xml:Init3tButton("ui_btns:save_area", self.frame),
-    }
-
-    self.move_area = {
-        x = {
-            title     = self.xml:InitTextWnd("move_area:x:title", self.frame),
-            pos_track = self.xml:InitTrackBar("move_area:x:pos_track", self.frame),
-            pos_box = self.xml:InitEditBox("move_area:x:pos_box", self.frame),
-            rot_track = self.xml:InitTrackBar("move_area:x:rot_track", self.frame),
-            rot_box = self.xml:InitEditBox("move_area:x:rot_box", self.frame),
-            reset_btn = self.xml:Init3tButton("move_area:x:reset_btn", self.frame)
-        },
-        y = {
-            title     = self.xml:InitTextWnd("move_area:y:title", self.frame),
-            pos_track = self.xml:InitTrackBar("move_area:y:pos_track", self.frame),
-            pos_box = self.xml:InitEditBox("move_area:y:pos_box", self.frame),
-            rot_track = self.xml:InitTrackBar("move_area:y:rot_track", self.frame),
-            rot_box = self.xml:InitEditBox("move_area:y:rot_box", self.frame),
-            reset_btn = self.xml:Init3tButton("move_area:y:reset_btn", self.frame)
-        },
-        z = {
-            title     = self.xml:InitTextWnd("move_area:z:title", self.frame),
-            pos_track = self.xml:InitTrackBar("move_area:z:pos_track", self.frame),
-            pos_box = self.xml:InitEditBox("move_area:z:pos_box", self.frame),
-            rot_track = self.xml:InitTrackBar("move_area:z:rot_track", self.frame),
-            rot_box = self.xml:InitEditBox("move_area:z:rot_box", self.frame),
-            reset_btn = self.xml:Init3tButton("move_area:z:reset_btn", self.frame)
-        }
-    }
-    self.area_size = {
-        height =      {
-            title       = self.xml:InitTextWnd("area_size:height:title", self.frame),
-            value_track = self.xml:InitTrackBar("area_size:height:value_track", self.frame),
-            value_box   = self.xml:InitEditBox("area_size:height:value_box", self.frame)
-        },
-        width =       {
-            title       = self.xml:InitTextWnd("area_size:width:title", self.frame),
-            value_track = self.xml:InitTrackBar("area_size:width:value_track", self.frame),
-            value_box   = self.xml:InitEditBox("area_size:width:value_box", self.frame)
-        },
-        select_face = {
-            title       = self.xml:InitTextWnd("area_size:select_face:title", self.frame),
-            value_track = self.xml:InitTrackBar("area_size:select_face:value_track", self.frame),
-            value_box   = self.xml:InitEditBox("area_size:select_face:value_box", self.frame)
-        }
-    }
-    self.set_plane_clr = {
-        clr_type = {
-            rgb_checkbox = self.xml:InitCheck("set_plane_clr:clr_type:rgb_checkbox", self.frame),
-            hsv_checkbox = self.xml:InitCheck("set_plane_clr:clr_type:hsv_checkbox", self.frame),
-        },
-        group_type = {
-            same_checkbox     = self.xml:InitCheck("set_plane_clr:group_type:same_checkbox", self.frame),
-            opposite_checkbox = self.xml:InitCheck("set_plane_clr:group_type:opposite_checkbox", self.frame),
-            each_checkbox     = self.xml:InitCheck("set_plane_clr:group_type:each_checkbox", self.frame),
-        },
-        plane_clrs = {}
-    }
-
-    -- UI Btns
-    self:Register(self.ui_btns["create_gizmos"], "ui_btns_create_gizmos")
-    self:Register(self.ui_btns["reset_gizmos"], "ui_btns_reset_gizmos")
-    self:Register(self.ui_btns["cancel_gizmos"], "ui_btns_cancel_gizmos")
-    self:Register(self.ui_btns["show_ui"], "ui_btns_show_ui")
-    self:Register(self.ui_btns["close_ui"], "ui_btns_close_ui")
-    self:Register(self.ui_btns["end_ui"], "ui_btns_end_ui")
-    self:Register(self.ui_btns["save_area"], "ui_btns_save_area")
-
-    -- Move Area
-    self:Register(self.move_area["x"]["pos_track"], "move_area_x_pos_track")
-    self:Register(self.move_area["x"]["rot_track"], "move_area_x_rot_track")
-    self:Register(self.move_area["x"]["pos_box"], "move_area_x_pos_box")
-    self:Register(self.move_area["x"]["rot_box"], "move_area_x_rot_box")
-    self:Register(self.move_area["x"]["reset_btn"], "move_area_x_reset_btn")
-
-    self:Register(self.move_area["y"]["pos_track"], "move_area_y_pos_track")
-    self:Register(self.move_area["y"]["rot_track"], "move_area_y_rot_track")
-    self:Register(self.move_area["y"]["pos_box"], "move_area_y_pos_box")
-    self:Register(self.move_area["y"]["rot_box"], "move_area_y_rot_box")
-    self:Register(self.move_area["y"]["reset_btn"], "move_area_y_reset_btn")
-
-    self:Register(self.move_area["z"]["pos_track"], "move_area_z_pos_track")
-    self:Register(self.move_area["z"]["rot_track"], "move_area_z_rot_track")
-    self:Register(self.move_area["z"]["pos_box"], "move_area_z_pos_box")
-    self:Register(self.move_area["z"]["rot_box"], "move_area_z_rot_box")
-    self:Register(self.move_area["z"]["reset_btn"], "move_area_z_reset_btn")
-
-    -- Area Size
-    self:Register(self.area_size["height"]["value_track"], "area_size_height_value_track")
-    self:Register(self.area_size["height"]["value_box"], "area_size_height_value_box")
-
-    self:Register(self.area_size["width"]["value_track"], "area_size_width_value_track")
-    self:Register(self.area_size["width"]["value_box"], "area_size_width_value_box")
-
-    self:Register(self.area_size["select_face"]["value_track"], "area_size_select_face_value_track")
-    self:Register(self.area_size["select_face"]["value_box"], "area_size_select_face_value_box")
-
-    -- Set Plane Colour
-    self:Register(self.set_plane_clr["clr_type"]["rgb_checkbox"], "set_plane_clr_clr_type_rgb_checkbox")
-    self:Register(self.set_plane_clr["clr_type"]["hsv_checkbox"], "set_plane_clr_clr_type_hsv_checkbox")
-    self:Register(self.set_plane_clr["group_type"]["same_checkbox"], "set_plane_clr_group_type_same_checkbox")
-    self:Register(self.set_plane_clr["group_type"]["opposite_checkbox"], "set_plane_clr_group_type_opposite_checkbox")
-    self:Register(self.set_plane_clr["group_type"]["each_checkbox"], "set_plane_clr_group_type_each_checkbox")
-end
-
-function UIAreaSelector:InitCallbacks()
-    dbg("dev", "init callbacks")
-    -- UI Btns
-    self:AddCallback("ui_btns_create_gizmos", ui_events.BUTTON_CLICKED, self.OnCreateGizmosBtn ,self)
-    self:AddCallback("ui_btns_reset_gizmos", ui_events.BUTTON_CLICKED, self.OnResetGizmosBtn ,self)
-    self:AddCallback("ui_btns_cancel_gizmos", ui_events.BUTTON_CLICKED, self.OnCancelGizmosBtn ,self)
-    self:AddCallback("ui_btns_show_ui", ui_events.BUTTON_CLICKED, self.OnShowUIBtn ,self)
-    self:AddCallback("ui_btns_close_ui", ui_events.BUTTON_CLICKED, self.OnCloseUIBtn ,self)
-    self:AddCallback("ui_btns_end_ui", ui_events.BUTTON_CLICKED, self.OnEndUIBtn ,self)
-    self:AddCallback("ui_btns_save_area", ui_events.BUTTON_CLICKED, self.OnSaveAreaBtn ,self)
-
-    -- Move Area
-    self:AddCallback("move_area_x_pos_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditPosBoxX, self)
-    self:AddCallback("move_area_x_rot_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditRotBoxX, self)
-    self:AddCallback("move_area_x_reset_btn", ui_events.BUTTON_CLICKED, self.OnResetBtnX, self)
-
-    self:AddCallback("move_area_y_pos_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditPosBoxY, self)
-    self:AddCallback("move_area_y_rot_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditRotBoxY, self)
-    self:AddCallback("move_area_y_reset_btn", ui_events.BUTTON_CLICKED, self.OnResetBtnY, self)
-
-    self:AddCallback("move_area_z_pos_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditPosBoxZ, self)
-    self:AddCallback("move_area_z_rot_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditRotBoxZ, self)
-    self:AddCallback("move_area_z_reset_btn", ui_events.BUTTON_CLICKED, self.OnResetBtnZ, self)
-
-    -- Area Size
-    self:AddCallback("area_size_height_value_box",      ui_events.EDIT_TEXT_COMMIT, self.OnEditValueBoxHeight)
-    self:AddCallback("area_size_width_value_box",       ui_events.EDIT_TEXT_COMMIT, self.OnEditValueBoxWidth)
-    self:AddCallback("area_size_select_face_value_box", ui_events.EDIT_TEXT_COMMIT, self.OnEditValueBoxSelectFace)
-
-    -- Set Plane Colour
-    self:AddCallback("set_plane_clr_clr_type_rgb_checkbox", ui_events.BUTTON_CLICKED, self.OnClrTypeRGBCheck)
-    self:AddCallback("set_plane_clr_clr_type_hsv_checkbox", ui_events.BUTTON_CLICKED, self.OnClrTypeHSVCheck)
-    self:AddCallback("set_plane_clr_group_type_same_checkbox", ui_events.BUTTON_CLICKED, self.OnGroupTypeSameCheck)
-    self:AddCallback("set_plane_clr_group_type_opposite_checkbox", ui_events.BUTTON_CLICKED, self.OnGroupTypeOppCheck)
-    self:AddCallback("set_plane_clr_group_type_each_checkbox", ui_events.BUTTON_CLICKED, self.OnGroupTypeEachCheck)
-    
-
-    dbg("dev", "finished init callbacks")
-end
-
-function UIAreaSelector:Reset()
-    dbg("dev", "reset")
-    self:SetupAreaArgs()
-    self:SetupGizmoArgs()
-    self:SetupMoveAreaArgs()
-    self:SetupAreaSizeArgs()
-    if reinit_ui then
-        RegisterScriptCallback("bullet_on_impact", self)
+    dbg("dev", "saving %s to cache_dbg.ltx. data: %s", name, data)
+    local cfg = ui_debug_launcher.ini_cc
+    for key, value in pairs(data) do
+        cfg:w_value(name, key, value)
     end
-    self.init = true
-    reinit_ui = false
+    cfg:save()
+    att:set_name(name)
+    saved_areas[level_name][name] = data
+    area_attachments[level_name][name] = att
 end
 
-function UIAreaSelector:Update()
-    CUIScriptWnd.Update(self)
-    if not self.init then return end
-    self:UpdateMoveArea()
-    self:UpdateAreaPos()
-    self:UpdateAreaRot()
-    self:DrawArea()
-end
-
-function UIAreaSelector:Close(reinit)
-    self:HideDialog()
-    if reinit then
-        self:KillGizmos()
-        UnregisterScriptCallback("bullet_on_impact", self)
-        reinit_ui = true
-    end
-    Unregister_UI("UIAreaSelector")
-end
-
-function UIAreaSelector:OnKeyboard(dik, keyboard_action)
-    local res = CUIScriptWnd.OnKeyboard(self, dik, keyboard_action)
-    if (res == false) then
-        if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
-            if dik == DRAW_AREA_KEY then
-                self:ToggleDrawArea()
-            elseif dik == TOGGLE_UI_KEYBIND then
-                self:ToggleUI()
-            elseif dik == QUIT_UI_KEYBIND then
-                self:Close(true)
-            end
-        end
-    end
-end
-
-function UIAreaSelector:Show(state)
-    self.dialog:Show(state)
-end
-
-function UIAreaSelector:IsShown()
-    return self.dialog:IsShown()
-end
-
--- Setup
-function UIAreaSelector:SetupAreaArgs()
-    dbg("dev", "setup area args")
-    self.radius = 100
-    self.actor_pos = vec_set(db.actor:position())
-    self.actor_dir = vec_set(db.actor:direction())
-    self.pos_min = vector():set(self.actor_pos.x - self.radius, self.actor_pos.y - self.radius, self.actor_pos.z - self.radius)
-    self.pos_max = vector():set(self.actor_pos.x + self.radius, self.actor_pos.y + self.radius, self.actor_pos.z + self.radius)
-    self.rot_min = 0
-    self.rot_max = 359
-    self.prev_area_pos = not reinit_ui and self.prev_area_pos or vector():set(0, 0, 0)
-    self.curr_area_pos = not reinit_ui and self.curr_area_rot or vector():set(0, 0, 0)
-    self.prev_area_rot = not reinit_ui and self.prev_area_rot or vector():set(0, 0, 0)
-    self.curr_area_rot = not reinit_ui and self.curr_area_rot or vector():set(0, 0, 0)
-    dbg("dev", "radius:%s, pos_min:%s, pos_max:%s", self.radius, self.pos_min, self.pos_max)
-    self.vertices = not reinit_ui and self.vertices or {
-        A = vec_set(VEC_ZERO),
-        B = vec_set(VEC_ZERO),
-        C = vec_set(VEC_ZERO),
-        D = vec_set(VEC_ZERO),
-        E = vec_set(VEC_ZERO),
-        F = vec_set(VEC_ZERO),
-        G = vec_set(VEC_ZERO),
-        H = vec_set(VEC_ZERO),
-    }
-    self.faces = {
-        front  = {[1] = "B", [2] = "C", [3] = "H", [4] = "E"},
-        back   = {[1] = "A", [2] = "D", [3] = "G", [4] = "F"},
-        left   = {[1] = "C", [2] = "D", [3] = "G", [4] = "H"},
-        right  = {[1] = "B", [2] = "A", [3] = "F", [4] = "E"},
-        top    = {[1] = "E", [2] = "H", [3] = "G", [4] = "F"},
-        bottom = {[1] = "B", [2] = "C", [3] = "D", [4] = "A"}
-    }
-    self.face_order = get_keytable(self.faces)
-    self.draw_area = self.draw_area or false
-    dbg("dev", "finish setup area args")
-end
-
-function UIAreaSelector:SetupGizmoArgs()
-    dbg("dev", "Setup gizmo args")
-    self.gizmo_scale_mat = matrix():identity(0.001, 0.001, 0.001, 0.001)
-    self.gizmo_id = 0
-    self:SetupCornerGizmos()
-    self:SetupVertGizmos()
-    self:SetupFaceGizmos()
-    dbg("dev", "finished setup gizmo")
-end
-
-function UIAreaSelector:SetupCornerGizmos()
-    dbg("dev", "setup corner gizmos")
-    self.corner_gizmos = not reinit_ui and self.corner_gizmos or {}
-    if is_empty(self.corner_gizmos) then
-        dbg("dev", "init corner gizmos")
-        self.corner_gizmos[1] = {}
-        self.corner_gizmos[1]["obj"] = debug_render.add_object(1, DBG_ScriptObject.sphere):cast_dbg_sphere()
-        self.corner_gizmos[1]["obj"].visible = false
-        self.corner_gizmos[1]["obj"].color = fcolor():set(1, 0, 0, 1)
-        
-        self.corner_gizmos[2] = {}
-        self.corner_gizmos[2]["obj"] = debug_render.add_object(2, DBG_ScriptObject.sphere):cast_dbg_sphere()
-        self.corner_gizmos[2]["obj"].visible = false
-        self.corner_gizmos[2]["obj"].color = fcolor():set(0, 1, 0, 1)
-    end
-    dbg("dev", "finished setup corner gizmo")
-end
-
-function UIAreaSelector:SetupVertGizmos()
-    dbg("dev", "setup vert gizmos")
-    self.vert_gizmos = not reinit_ui and self.vert_gizmos or {}
-    if is_empty(self.vert_gizmos) then
-        dbg("dev", "init gizmos")
-        for id, _ in pairs(self.vertices) do
-            self.vert_gizmos[id] = {}
-            self.vert_gizmos[id].id = tonumber(id, 32) 
-            self.vert_gizmos[id]["obj"] = debug_render.add_object(self.vert_gizmos[id].id, DBG_ScriptObject.sphere):cast_dbg_sphere()
-            self.vert_gizmos[id]["obj"].visible = false
-            self.vert_gizmos[id]["obj"].color = fcolor():set(1, 1, 1, 1)
-        end
-    end
-    dbg("dev", "finished setup vert gizmo")
-end
-
-function UIAreaSelector:SetupFaceGizmos()
-    dbg("dev", "setup face gizmos")
-    self.face_gizmos = not reinit_ui and self.face_gizmos or {}
-    if is_empty(self.face_gizmos) then
-        dbg("dev", "init face gizmo")
-        for name, faces in pairs(self.faces) do
-            self.face_gizmos[name] = {}
-            local first_id = self:FacesToID(faces[1], faces[2])
-            self.face_gizmos[name][1] = debug_render.add_object(first_id, DBG_ScriptObject.line):cast_dbg_line()
-            self.face_gizmos[name][1].visible = false
-            self.face_gizmos[name][1].color = fcolor():set(1, 0.5, 0, 1)
-            self:DrawLine(name, 1, faces[1], faces[2])
-
-            local second_id = self:FacesToID(faces[2], faces[3])
-            self.face_gizmos[name][2] = debug_render.add_object(second_id, DBG_ScriptObject.line):cast_dbg_line()
-            self.face_gizmos[name][2].visible = false
-            self.face_gizmos[name][2].color = fcolor():set(0, 1, 0.5, 1)
-            self:DrawLine(name, 2, faces[2], faces[3])
-
-            local three_id = self:FacesToID(faces[3], faces[4])
-            self.face_gizmos[name][3] = debug_render.add_object(three_id, DBG_ScriptObject.line):cast_dbg_line()
-            self.face_gizmos[name][3].visible = false
-            self.face_gizmos[name][3].color = fcolor():set(0.5, 0, 1, 1)
-            self:DrawLine(name, 3, faces[3], faces[4])
-
-            local fourth_id = self:FacesToID(faces[4], faces[1])
-            self.face_gizmos[name][4] = debug_render.add_object(fourth_id, DBG_ScriptObject.line):cast_dbg_line()
-            self.face_gizmos[name][4].visible = false
-            self.face_gizmos[name][4].color = fcolor():set(0.5, 1, 0, 1)
-            self:DrawLine(name, 4, faces[4], faces[1])
-        end
-    end
-    dbg("dev", "finished setup face gizmo: %s", self.face_gizmos)
-end
-
-function UIAreaSelector:SetupMoveAreaArgs()
-    dbg("dev", "setup move area args")
-    self.move_area["x"]["pos_track"]:SetFValue(self.actor_pos.x)
-    self.move_area["x"]["pos_track"]:SetOptFBounds(self.pos_min.x, self.pos_max.x)
-    self.curr_area_pos.x = self.move_area["x"]["pos_track"]:GetFValue()
-    self.prev_area_pos.x = self.curr_area_pos.x
-    self.move_area["x"]["pos_box"]:SetText(tostring(round_idp(self.curr_area_pos.x, 2)))
-
-    self.move_area["x"]["rot_track"]:SetFValue(self:GetHeading(self.actor_dir, true))
-    self.move_area["x"]["rot_track"]:SetOptFBounds(self.rot_min, self.rot_max)
-    self.curr_area_rot.x = self.move_area["x"]["rot_track"]:GetFValue()
-    self.prev_area_rot.x = self.curr_area_rot.x
-    self.move_area["x"]["rot_box"]:SetText(tostring(round_idp(self.curr_area_rot.x, 2)))
-    
-    self.move_area["y"]["pos_track"]:SetFValue(self.actor_pos.y)
-    self.move_area["y"]["pos_track"]:SetOptFBounds(self.pos_min.y, self.pos_max.y)
-    self.curr_area_pos.y = self.move_area["y"]["pos_track"]:GetFValue()
-    self.prev_area_pos.y = self.curr_area_pos.y
-    self.move_area["y"]["pos_box"]:SetText(tostring(round_idp(self.curr_area_pos.y, 2)))
-    
-    self.move_area["y"]["rot_track"]:SetFValue(self:GetPitch(self.actor_dir, true))
-    self.move_area["y"]["rot_track"]:SetOptFBounds(self.rot_min, self.rot_max)
-    self.curr_area_rot.y = self.move_area["y"]["rot_track"]:GetFValue()
-    self.prev_area_rot.y = self.curr_area_rot.y
-    self.move_area["y"]["rot_box"]:SetText(tostring(round_idp(self.curr_area_rot.y, 2)))
-    
-    self.move_area["z"]["pos_track"]:SetFValue(self.actor_pos.z)
-    self.move_area["z"]["pos_track"]:SetOptFBounds(self.pos_min.z, self.pos_max.z)
-    self.curr_area_pos.z = self.move_area["z"]["pos_track"]:GetFValue()
-    self.prev_area_pos.z = self.curr_area_pos.z
-    self.move_area["z"]["pos_box"]:SetText(tostring(round_idp(self.curr_area_pos.z, 2)))
-
-    self.move_area["z"]["rot_track"]:SetFValue(self:GetBank(self.actor_dir, true))
-    self.move_area["z"]["rot_track"]:SetOptFBounds(self.rot_min, self.rot_max)
-    self.curr_area_rot.z = self.move_area["z"]["rot_track"]:GetFValue()
-    self.prev_area_rot.z = self.curr_area_rot.z
-    self.move_area["z"]["rot_box"]:SetText(tostring(round_idp(self.curr_area_rot.z, 2)))
-    
-    dbg("dev", "finish setup move area args")
-end
-
-function UIAreaSelector:SetupAreaSizeArgs()
-    self.curr_height = not reinit_ui and self.curr_height or 0
-    self.prev_height = not reinit_ui and self.prev_height or 0
-    self.curr_width =  not reinit_ui and self.curr_width or 0
-    self.prev_width =  not reinit_ui and self.prev_width or 0
-    self.curr_face = not reinit_ui and self.curr_face or "front"
-    self.curr_face_order = self.face_order[self.curr_face]
-    self.min_size = {w=1, h=1}
-    local half_radius = self.radius / 2
-    self.max_size = {w=half_radius, h=half_radius}
-
-    self.area_size["height"]["value_track"]:SetFValue(self.min_size.h)
-    self.area_size["height"]["value_track"]:SetOptFBounds(self.min_size.h, self.max_size.h)
-    self.curr_height = self.area_size["height"]["value_track"]:GetFValue()
-    self.prev_height = self.curr_height
-    self.area_size["height"]["value_box"]:SetText(tostring(round_idp(self.curr_height, 2)))
-
-    self.area_size["width"]["value_track"]:SetFValue(self.min_size.w)
-    self.area_size["width"]["value_track"]:SetOptFBounds(self.min_size.w, self.max_size.w)
-    self.curr_width = self.area_size["width"]["value_track"]:GetFValue()
-    self.prev_width = self.curr_width
-    self.area_size["width"]["value_box"]:SetText(tostring(round_idp(self.curr_width, 2)))
-    
-    self.area_size["select_face"]["value_track"]:SetIValue(self.curr_face_order)
-    self.area_size["select_face"]["value_track"]:SetOptIBounds(1, #self.faces)
-end
-
--- Update Funcs
-function UIAreaSelector:UpdateMoveArea()
-    local curr_area_pos = vector():set(
-        self.move_area["x"]["pos_track"]:GetFValue(),
-        self.move_area["y"]["pos_track"]:GetFValue(),
-        self.move_area["z"]["pos_track"]:GetFValue()
-    )
-    if curr_area_pos.x ~= self.prev_area_pos.x then
-        self:SetPosTrackX(curr_area_pos.x)
-        self:SetPosBoxX(curr_area_pos.x)
-        dbg("dev", "updating pos x to:%s from:%s", self.curr_area_pos.x, self.prev_area_pos.x)
-    end
-    if curr_area_pos.y ~= self.prev_area_pos.y then
-        self:SetPosTrackY(curr_area_pos.y)
-        self:SetPosBoxY(curr_area_pos.y)
-        dbg("dev", "updating pos y to:%s from:%s", self.curr_area_pos.y, self.prev_area_pos.y)
-    end
-    if curr_area_pos.z ~= self.prev_area_pos.z then
-        self:SetPosTrackZ(curr_area_pos.z)
-        self:SetPosBoxZ(curr_area_pos.z)
-        dbg("dev", "updating pos z to:%s from:%s", self.curr_area_pos.z, self.prev_area_pos.z)
-    end
-
-    local curr_area_rot = vector():set(
-        self.move_area["x"]["rot_track"]:GetFValue(),
-        self.move_area["y"]["rot_track"]:GetFValue(),
-        self.move_area["z"]["rot_track"]:GetFValue()
-    )
-    if curr_area_rot.x ~= self.prev_area_rot.x then
-        self:SetRotTrackX(curr_area_rot.x)
-        self:SetRotBoxX(curr_area_rot.x)
-        dbg("dev", "updating rot x to:%s from:%s", self.curr_area_rot.x, self.prev_area_rot.x)
-    end
-    if curr_area_rot.y ~= self.prev_area_rot.y then
-        self:SetRotTrackY(curr_area_rot.y)
-        self:SetRotBoxY(curr_area_rot.y)
-        dbg("dev", "updating rot y to:%s from:%s", self.curr_area_rot.y, self.prev_area_rot.y)
-    end
-    if curr_area_rot.z ~= self.prev_area_rot.z then
-        self:SetRotTrackZ(curr_area_rot.z)
-        self:SetRotBoxZ(curr_area_rot.z)
-        dbg("dev", "updating rot z to:%s from:%s", self.curr_area_rot.z, self.curr_area_rot.z)
-    end
-end
-
-function UIAreaSelector:UpdateAreaPos()
-    local targ_area_pos = vector():set(
-        self.move_area["x"]["pos_track"]:GetFValue(),
-        self.move_area["y"]["pos_track"]:GetFValue(),
-        self.move_area["z"]["pos_track"]:GetFValue()
-    )
-    local center_pos = self:GetCenterPos()
-    if targ_area_pos:distance_to(center_pos) <= 0.01 then return end
-    -- local new_area_pos = vec_set(targ_area_pos):mad(center_pos, dir, dist)
-    local new_area_pos = lerp_vec(center_pos, targ_area_pos, 0.01)
-    local dist = new_area_pos:distance_to_sqr(center_pos)
-    local dir = vec_sub(new_area_pos, center_pos):normalize()
-    self:UpdateVerts(dir, dist)
-end
-
-function UIAreaSelector:UpdateAreaRot()
-    local targ_area_rot = vector():set(
-        self.move_area["x"]["rot_track"]:GetFValue(),
-        self.move_area["y"]["rot_track"]:GetFValue(),
-        self.move_area["z"]["rot_track"]:GetFValue()
-    )
-    
-    local center_pos = self:GetCenterPos()
-    for name, pos in pairs(self.vertices) do
-        local dir = vec_sub(center_pos, pos):normalize()
-        local dist = center_pos:distance_to_sqr(pos)
-        local x_step = targ_area_rot.x - self.curr_area_rot.x
-        if math.abs(x_step) > 0 then
-            local new_dir = vector_rotate_y(dir, x_step)
-            local new_pos = vector():mad(center_pos, new_dir, dist)
-            dbg("dev", "targ:%s curr:%s", new_pos, pos)
-            if not pos:similar(new_pos, 0.01) then
-                self.vertices[name] = new_pos
-            end
-        end
-        local y_step = targ_area_rot.y - self.curr_area_rot.y
-        if math.abs(y_step) > 0 then
-            local new_dir = vector_rotate_z(dir, y_step)
-            local new_pos = vector():mad(center_pos, new_dir, dist)
-            dbg("dev", "targ:%s curr:%s", new_pos, pos)
-            if not pos:similar(new_pos, 0.01) then
-                self.vertices[name] = new_pos
-            end
-        end
-        local z_step = targ_area_rot.z - self.curr_area_rot.z
-        if math.abs(z_step) > 0 then
-            local new_dir = vector_rotate_x(dir, z_step)
-            local new_pos = vector():mad(center_pos, new_dir, dist)
-            dbg("dev", "targ:%s curr:%s", new_pos, pos)
-            if not pos:similar(new_pos, 0.01) then
-                self.vertices[name] = new_pos
-            end
-        end
-    end
-end
-
--- Factory/Service
-function UIAreaSelector:DetermineCorners()
-    local corner_one = vec_set(self.corner_gizmos[1]["obj"].matrix.c)
-    local corner_two = vec_set(self.corner_gizmos[2]["obj"].matrix.c)
+-- Helpers
+function determine_corners()
+    dbg("dev", "determining corners")
+    local corner_one = vec_set(corner_pos[1])
+    local corner_two = vec_set(corner_pos[2])
     if 
         corner_one.x < corner_two.x
         and corner_two.y < corner_two.y
@@ -599,34 +372,236 @@ function UIAreaSelector:DetermineCorners()
     return corner_two, corner_one
 end
 
-function UIAreaSelector:BuildArea()
-    dbg("dev", "build area")
-    local pos_a, pos_b = self:DetermineCorners()
-    dbg("dev", "corners: a:%s b:%s", pos_a, pos_b)
-    if is_vector_zero(pos_a) or is_vector_zero(pos_b) then return end
-    self:BuildVerts(pos_a, pos_b)
-    local center_pos = self:GetCenterPos()
-    self:SetPosTrack(center_pos)
-    self:SetPosBox(center_pos)
+function get_center_pos()
+    if is_empty(vertices) then return end
+    if is_vector_zero(vertices.D) or is_vector_zero(vertices.E) then return end
+    return vec_add(vertices.D, vertices.E):div(2)
 end
 
-function UIAreaSelector:BuildVerts(pos_a, pos_b)
-    dbg("dev", "building verts")
-    local height = clamp(pos_a:distance_to(pos_b), self.min_size.h, self.max_size.h)
-    local width = height
-    self:SetHeight(height)
-    self:SetWidth(width)
+-- 
+function bullet_on_impact(bullet)
+    local bullet_pos = bullet.position
+    local p_id = bullet.parent_id
+    local npc = get_unknown_object({id=p_id}, "game")
+    if not npc then dbg("dev", "no npc") return end
+    if npc:id() ~= db.actor:id() then dbg("dev", "not actor:%s", npc:id()) return end
+    if size_table(corner_pos) == 2 then dbg("dev", "reset corners already at 2") return end
+    dbg("dev", "setting corner %s to %s", corner_selected, bullet_pos)
+    corner_pos[corner_selected] = vec_set(bullet_pos)
+    create_corner_gizmo(corner_selected)
+    set_corner_gizmo_pos(corner_selected)
+end
 
-    dbg("dev", "set other verts")
-    self.vertices.D = vector():set(pos_a.x, pos_a.y, pos_a.z) --0
-    self.vertices.C = vector():set(pos_a.x, pos_a.y, pos_b.z) --1
-    self.vertices.B = vector():set(pos_b.x, pos_a.y, pos_b.z) --2
-    self.vertices.A = vector():set(pos_b.x, pos_a.y, pos_a.z) --3
-    self.vertices.G = vector():set(pos_a.x, pos_b.y, pos_a.z) --4
-    self.vertices.H = vector():set(pos_a.x, pos_b.y, pos_b.z) --5
-    self.vertices.E = vector():set(pos_b.x, pos_b.y, pos_b.z) --6
-    self.vertices.F = vector():set(pos_b.x, pos_b.y, pos_a.z) --7
-    dbg("dev", "vertices:%s", self.vertices)
+-- Gizmos
+
+function create_corner_gizmo(idx)
+    if contains(corner_gizmos, idx, true) then dbg("dev", "corner gizmo for %s", idx) return end
+    dbg("dev", "creating corner gizmo %s", idx)
+    corner_gizmos[idx] = debug_render.add_object(idx, DBG_ScriptObject.sphere):cast_dbg_sphere()
+    corner_gizmos[idx].color = corner_colour[idx]
+    corner_gizmos[idx].visible = true
+end
+
+function toggle_corner_gizmo_vis(idx, state)
+    corner_gizmos[idx].visible = state
+end
+
+function set_corner_gizmo_pos(idx)
+    local pos = corner_pos[idx]
+    local pos_mat = matrix():translate(pos)
+    corner_gizmos[idx].matrix = matrix():mul(pos_mat, sphere_scale_mat)
+end
+
+-- attahcment
+function init_att()
+    if not level.get_attachment(att_name) then
+        local att = level.add_attachment(att_name, att_vis)
+        local center_pos = get_center_pos()
+        if center_pos then att:set_position(center_pos) end
+
+        local height = vertices.D:distance_to(vertices.G)
+        local width = vertices.D:distance_to(vertices.A)
+        local depth = vertices.D:distance_to(vertices.C)
+        att:set_scale(width, height, depth)
+    end
+end
+
+function remove_att()
+    if level.get_attachment(att_name) then
+        level.remove_attachment(att_name)
+    end
+end
+
+function update_att()
+    if not level.get_attachment(att_name) then return end
+    local att = level.get_attachment(att_name)
+    if toggle_rot then
+        local heading = math.deg(device().cam_dir:getH())
+        local pitch = math.deg(device().cam_dir:getP() + math.rad(180))
+        att:set_rotation(vector():set(heading, pitch, math.deg(att_bank)))
+    end
+end
+
+function actor_on_update()
+    update_att()
+end
+
+function init_saved_areas()
+    local level_name = level.name()
+    dbg("dev", "init saved areas %s", level_name)
+    saved_areas[level_name] = saved_areas[level_name] or {}
+    for _, sect in pairs(ini_areas:get_sections()) do
+        if not contains(saved_areas[level_name], sect, true) then
+            local data = get_section_lines(ini_areas, sect)
+            if is_not_empty(data) and data.lvl_name == level_name then
+                saved_areas[level_name][sect] = data
+                dbg("dev", "sect:%s, data:%s", sect, data)
+            end
+        end
+    end
+    dbg("dev", "saved areas: %s", saved_areas)
+end
+
+function init_area_attachments()
+    if is_empty(saved_areas) then return end
+    local level_name = level.name()
+    dbg("dev", "init area attachments %s", level_name)
+    area_attachments[level_name] = area_attachments[level_name] or {}
+    for name, data in pairs(saved_areas[level_name]) do
+        if 
+            not contains(area_attachments[level_name], name, true)
+            and data.lvl_name == level_name and
+            not level.get_attachment(name) 
+        then
+            local tmp = {
+                lvl_name = data.level_name,
+                pos = utils_data.string_to_vector(data.pos),
+                rot = utils_data.string_to_vector(data.rot),
+                scale = utils_data.string_to_vector(data.scale)
+            }
+            local att = level.add_attachment(name, att_vis)
+            att:set_position(tmp.pos)
+            att:set_rotation(vec_in_deg(tmp.rot))
+            att:set_scale(tmp.scale)
+            area_attachments[level_name][name] = att
+            dbg("dev", "name:%s, data:%s", name, tmp)
+        end
+    end
+end
+
+function sanitize_tbl(tbl)
+    local tmp = {}
+    for k, v in pairs(tbl) do
+        if is_vector(k) then
+            k = utils_data.vector_to_string(k)
+        elseif is_vector(v) then
+            v = utils_data.vector_to_string(v)
+        end
+        tmp[k] = v
+    end
+    return tmp
+end
+
+function unsanitize_tbl(tbl)
+    local tmp = {}
+    for k, v in pairs(tbl) do
+        if is_vector(k) then
+            k = utils_data.string_to_vector(k)
+        elseif is_vector(v) then
+            v = utils_data.string_to_vector(v)
+        end
+        tmp[k] = v
+    end
+    return tmp
+end
+
+-- ui
+class "UISaveArea" (CUIScriptWnd)
+function UISaveArea:__init() super()
+    self:InitControls()
+    self:InitCallBacks()
+end
+
+function UISaveArea:__finalize()
+end
+
+function UISaveArea:InitControls()
+	self:SetWndRect(Frect():set(0,0,1024,768))
+	self:SetAutoDelete(true)
+
+    self.xml = CScriptXmlInit()
+    self.xml:ParseFile("ui_items_backpack.xml")
+
+    self.dialog = self.xml:InitStatic("backpack", self)
+    self.xml:InitStatic("backpack:background", self.dialog)
+
+	self.input = self.xml:InitEditBox("backpack:input",self.dialog)
+	self:Register(self.input,"fld_input")
+
+	self.cancel_btn = self.xml:Init3tButton("backpack:btn_cancel", self.dialog)
+	self:Register(self.cancel_btn,"btn_cancel")
+
+	self.ok_btn = self.xml:Init3tButton("backpack:btn_ok", self.dialog)
+	self:Register(self.ok_btn,"btn_ok")
+
+end
+
+function UISaveArea:InitCallBacks()
+	self:AddCallback("btn_ok", ui_events.BUTTON_CLICKED, self.OnAccept, self)
+	self:AddCallback("btn_cancel", ui_events.BUTTON_CLICKED, self.Close, self)
+end
+
+function UISaveArea:Reset()
+    self.input:SetText("")
+end
+
+function UISaveArea:Update()
+	CUIScriptWnd.Update(self)
+end
+
+function UISaveArea:OnKeyboard(dik, keyboard_action)
+	local res = CUIScriptWnd.OnKeyboard(self,dik,keyboard_action)
+	if (res == false) then
+		if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
+			if dik == DIK_keys.DIK_ESCAPE then
+				self:Close()
+			end
+		end
+	end
+	return res
+end
+
+function UISaveArea:Close()
+	self:HideDialog()
+	Unregister_UI("UISaveArea")
+end
+
+function UISaveArea:OnAccept()
+    local name = self.input:GetText()
+    if not name or name == "" then return end
+    save_area_data(name)
+    self:Close()
+end
+
+
+
+
+
+
+function on_option_change(options)
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    dbg("debug", "Received options")
+end
+
+function on_game_start()
+    if DEV_DEBUG then
+        RegisterScriptCallback("on_key_press", on_key_press)
+        RegisterScriptCallback("actor_on_update", actor_on_update)
+        RegisterScriptCallback("bullet_on_impact", bullet_on_impact)
+        RegisterScriptCallback("hfg_on_option_change", on_option_change)
+        RegisterScriptCallback("on_game_load", init_saved_areas)
+        RegisterScriptCallback("actor_on_first_update", init_area_attachments)
+    end
 end
 
 -- 		 	G       F
@@ -636,533 +611,3 @@ end
 --   	       \ |    \ |
 --    	    	\|_____\|
 --     			 C      B
-
-
-
-function UIAreaSelector:UpdateVerts(dir, dist)
-    for name, pos in pairs(self.vertices) do
-        self.vertices[name] = vector():mad(pos, dir, dist)
-    end
-end
-
-function UIAreaSelector:DrawArea()
-    if not self.draw_area then return end
-    -- dbg("dev", "drawing area")
-    for id, pos in pairs(self.vertices) do
-        -- dbg("dev", "drawing vert: %s at pos:%s", id, pos)
-        local pos_mat = matrix():translate(pos)
-        self.vert_gizmos[id]["obj"].matrix = matrix():mul(pos_mat, self.gizmo_scale_mat)
-    end
-
-    -- dbg("dev", "drawing faces")
-    for name, verts in pairs(self.faces) do
-        self:DrawLine(name, 1, verts[1], verts[2])
-        self:DrawLine(name, 2, verts[2], verts[3])
-        self:DrawLine(name, 3, verts[3], verts[4])
-        self:DrawLine(name, 4, verts[4], verts[1])
-    end
-end
-
-function UIAreaSelector:DrawLine(name, idx, vert_a, vert_b)
-    self.face_gizmos[name][idx].point_a = vec_set(self.vertices[vert_a])
-    self.face_gizmos[name][idx].point_b = vec_set(self.vertices[vert_b])
-end
-
-function UIAreaSelector:ToggleUI()
-    self:Show(not self:IsShown())
-end
-
--- UI Callbacks
-
--- UI Btns
-function UIAreaSelector:OnCreateGizmosBtn() -- rotate z for pitch, rotate y for heading rotate x for bank
-    local cam_pos = vec_set(device().cam_pos)
-    local cam_dir = vec_set(device().cam_dir)
-    local world_up = VEC_Y
-    local cam_right = vector():crossproduct(world_up, cam_dir):normalize()
-    local angle = 20
-    local angle_rad = math.rad(angle)
-    local cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
-    local dir_left  = vector():set(
-            cam_dir.x * cos_a + cam_right.x * sin_a,
-            cam_dir.y * cos_a + cam_right.y * sin_a,
-            cam_dir.z * cos_a + cam_right.z * sin_a
-    )
-    local dir_right = vector():set(
-            cam_dir.x * cos_a - cam_right.x * sin_a,
-            cam_dir.y * cos_a - cam_right.y * sin_a,
-            cam_dir.z * cos_a - cam_right.z * sin_a
-    )
-    local dist = 5
-    local quart_dist = dist / 4
-    local pos_args = {
-        [1] = {dir=dir_left,  x_offset=-quart_dist, y_offset=quart_dist, z_offset=-quart_dist},
-        [2] = {dir=dir_right, x_offset=quart_dist,  y_offset=-quart_dist, z_offset=quart_dist},
-    }
-    for idx, args in pairs(pos_args) do
-        local offset_pos = vec_set(cam_pos):add(0, args.y_offset, args.z_offset)
-        local new_pos = vector():mad(offset_pos, args.dir, dist)
-        self:SetGizmoPos(idx, new_pos)
-        self:ShowGizmo(idx, true)
-    end
-    self:BuildArea()
-end
-
-function UIAreaSelector:OnResetGizmosBtn()
-   
-end
-
-function UIAreaSelector:OnCloseUIBtn()
-    dbg("dev", "on close ui btn")
-    self:Close()
-end
-
-function UIAreaSelector:OnEndUIBtn()
-    dbg("dev", "on end ui btn")
-    self:Close(true)
-end
-
-function UIAreaSelector:OnShowUIBtn()
-    self:ToggleUI()
-end
-
--- Move Area
-function UIAreaSelector:OnEditPosBoxX()
-    dbg("dev", "on edit x pos box")
-    local new_pos_x = tonumber(self.move_area["x"]["pos_box"]:GetText())
-    dbg("dev", "new pos x:%s", new_pos_x)
-    if not within_range(new_pos_x, self.pos_min.x, self.pos_max.x) then
-        dbg("dev", "resetting %s to %s as not with range [%s-%s]", new_pos_x, self.prev_area_pos.x, self.pos_min.x, self.pos_max.x)
-        new_pos_x = self.curr_area_pos.x
-    else
-        dbg("dev", "using new pos")
-        self.move_area["x"]["pos_track"]:SetFValue(tonumber(new_pos_x))
-    end
-    dbg("dev", "setting pos x from:%s to:%s", self.prev_area_pos.x, new_pos_x)
-    self.prev_area_pos.x = self.curr_area_pos.x
-    self.curr_area_pos.x = new_pos_x
-    self.move_area["x"]["pos_box"]:SetText(tostring(round_idp(new_pos_x, 2)))
-end
-
-function UIAreaSelector:OnEditRotBoxX()
-    local new_rot_x = tonumber(self.move_area["x"]["rot_box"]:GetText())
-    if not within_range(new_rot_x, self.rot_min, self.rot_max) then
-        new_rot_x = self.curr_area_rot.x
-    else
-        self.move_area["x"]["rot_track"]:SetFValue(tonumber(new_rot_x))
-    end
-    self.prev_area_rot.x = self.curr_area_rot.x
-    self.curr_area_rot.x = new_rot_x
-    self.move_area["x"]["rot_box"]:SetText(tostring(round_idp(new_rot_x, 2)))
-end
-
-function UIAreaSelector:OnEditPosBoxY()
-    local new_pos_y = tonumber(self.move_area["y"]["pos_box"]:GetText())
-    if not within_range(new_pos_y, self.pos_min.y, self.pos_max.y) then
-        new_pos_y = self.curr_area_pos.y
-    else
-        self.move_area["y"]["pos_track"]:SetFValue(tonumber(new_pos_y))
-    end
-    self.prev_area_pos.y = self.curr_area_pos.y
-    self.curr_area_pos.y = new_pos_y
-    self.move_area["y"]["pos_box"]:SetText(tostring(round_idp(new_pos_y, 2)))
-end
-
-function UIAreaSelector:OnEditRotBoxY()
-    local new_rot_y = tonumber(self.move_area["y"]["rot_box"]:GetText())
-    if not within_range(new_rot_y, self.rot_min, self.rot_max) then
-        new_rot_y = self.curr_area_rot.y
-    else
-        self.move_area["y"]["rot_track"]:SetFValue(tonumber(new_rot_y))
-    end
-    self.prev_area_rot.y = self.curr_area_rot.y
-    self.curr_area_rot.y = new_rot_y
-    self.move_area["y"]["rot_box"]:SetText(tostring(round_idp(new_rot_y, 2)))
-end
-
-
-function UIAreaSelector:OnEditPosBoxZ()
-    local new_pos_z = tonumber(self.move_area["z"]["pos_box"]:GetText())
-    if not within_range(new_pos_z, self.pos_min.z, self.pos_max.z) then
-        new_pos_z = self.curr_area_pos.z
-    else
-        self.move_area["z"]["pos_track"]:SetFValue(tonumber(new_pos_z))
-    end
-    self.prev_area_pos.z = self.curr_area_pos.z
-    self.curr_area_pos.z = new_pos_z
-    self.move_area["z"]["pos_box"]:SetText(tostring(round_idp(new_pos_z, 2)))
-end
-
-function UIAreaSelector:OnEditRotBoxZ()
-    local new_rot_z = tonumber(self.move_area["z"]["rot_box"]:GetText())
-    if not within_range(new_rot_z, self.rot_min, self.rot_max) then
-        new_rot_z = self.curr_area_rot.z
-    else
-        self.move_area["z"]["rot_track"]:SetFValue(tonumber(new_rot_z))
-    end
-    self.prev_area_rot.z = self.curr_area_rot.z
-    self.curr_area_rot.z = new_rot_z
-    self.move_area["z"]["rot_box"]:SetText(tostring(round_idp(new_rot_z, 2)))
-end
-
-function UIAreaSelector:OnResetBtnX()
-    self.curr_area_pos.x = self.actor_pos.x
-    self.curr_area_rot.x = self:GetHeading(self.actor_dir, true)
-    self.prev_area_pos.x = self.curr_area_pos.x
-    self.prev_area_rot.x = self.curr_area_rot.x
-    self.move_area["x"]["pos_track"]:SetFValue(self.curr_area_pos.x)
-    self.move_area["x"]["rot_track"]:SetFValue(self.curr_area_rot.x)
-    self.move_area["x"]["pos_box"]:SetText(tostring(round_idp(self.curr_area_pos.x, 2)))
-    self.move_area["x"]["rot_box"]:SetText(tostring(round_idp(self.curr_area_rot.x, 2)))
-end
-
-function UIAreaSelector:OnResetBtnY()
-    self.curr_area_pos.y = self.actor_pos.y
-    self.curr_area_rot.y = self:GetPitch(self.actor_dir, true)
-    self.prev_area_pos.y = self.curr_area_pos.y
-    self.prev_area_rot.y = self.curr_area_rot.y
-    self.move_area["y"]["pos_track"]:SetFValue(self.curr_area_pos.y)
-    self.move_area["y"]["rot_track"]:SetFValue(self.curr_area_rot.y)
-    self.move_area["y"]["pos_box"]:SetText(tostring(round_idp(self.curr_area_pos.y, 2)))
-    self.move_area["y"]["rot_box"]:SetText(tostring(round_idp(self.curr_area_rot.y, 2)))
-end
-
-function UIAreaSelector:OnResetBtnZ()
-    self.curr_area_pos.z = self.actor_pos.z
-    self.curr_area_rot.z = self:GetBank(self.actor_dir, true)
-    self.prev_area_pos.z = self.curr_area_pos.z
-    self.prev_area_rot.z = self.curr_area_rot.z
-    self.move_area["z"]["pos_track"]:SetFValue(self.curr_area_pos.z)
-    self.move_area["z"]["rot_track"]:SetFValue(self.curr_area_rot.z)
-    self.move_area["z"]["pos_box"]:SetText(tostring(round_idp(self.curr_area_pos.z, 2)))
-    self.move_area["z"]["rot_box"]:SetText(tostring(round_idp(self.curr_area_rot.z, 2)))
-end
-
-function UIAreaSelector:OnEditValueBoxHeight()
-
-
-end
-
-function UIAreaSelector:OnEditValueBoxWidth()
-    
-
-end
-
-function UIAreaSelector:OnEditValueBoxSelectFace()
-    
-
-end
-
-function UIAreaSelector:bullet_on_impact(bullet)
-    local bullet_pos = bullet.position
-    local wpn_id = bullet.weapon_id
-    local p_id = bullet.parent_id
-    local npc = get_unknown_object({id=p_id}, "game")
-    local wpn = get_unknown_object({id=wpn_id}, "game")
-    if not (npc and wpn) then return end
-    if npc:id() ~= db.actor:id() then return end
-    if not self:HasGizmos() then return end
-    if self.gizmo_id == 2 then
-        self:ShowGizmo(self.gizmo_id, false)
-    end
-    self:IncreaseGizmoID()
-    self:SetGizmoPos(self.gizmo_id, bullet_pos)
-    self:ShowGizmo(self.gizmo_id, true)
-end
-
--- Helper
-function UIAreaSelector:SetPosTrack(pos)
-    dbg("dev", "setting pos track")
-    self:SetPosTrackX(pos.x)
-    self:SetPosTrackY(pos.y)
-    self:SetPosTrackZ(pos.z)
-end
-
-function UIAreaSelector:SetPosTrackX(val)
-    if not within_range(val, self.pos_min.x, self.pos_max.x) then return end
-    self.prev_area_pos.x = self.curr_area_pos.x
-    self.move_area["x"]["pos_track"]:SetFValue(val)
-    self.curr_area_pos.x = val
-end
-
-function UIAreaSelector:SetPosTrackY(val)
-    if not within_range(val, self.pos_min.y, self.pos_max.y) then return end
-    self.prev_area_pos.y = self.curr_area_pos.y
-    self.move_area["y"]["pos_track"]:SetFValue(val)
-    self.curr_area_pos.y = val
-end
-
-function UIAreaSelector:SetPosTrackZ(val)
-    if not within_range(val, self.pos_min.z, self.pos_max.z) then return end
-    self.prev_area_pos.z = self.curr_area_pos.z
-    self.move_area["z"]["pos_track"]:SetFValue(val)
-    self.curr_area_pos.z = val
-end
-
-function UIAreaSelector:SetPosBox(pos)
-    dbg("dev", "setting pos box")
-    self:SetPosBoxX(pos.x)
-    self:SetPosBoxY(pos.y)
-    self:SetPosBoxZ(pos.z)
-end
-
-function UIAreaSelector:SetPosBoxX(val)
-    if not within_range(val, self.pos_min.x, self.pos_max.x) then return end
-    self.move_area["x"]["pos_box"]:SetText(tostring(round_idp(val, 2)))
-end
-
-function UIAreaSelector:SetPosBoxY(val)
-    if not within_range(val, self.pos_min.y, self.pos_max.y) then return end
-    self.move_area["y"]["pos_box"]:SetText(tostring(round_idp(val, 2)))
-end
-
-function UIAreaSelector:SetPosBoxZ(val)
-    if not within_range(val, self.pos_min.z, self.pos_max.z) then return end
-    self.move_area["z"]["pos_box"]:SetText(tostring(round_idp(val, 2)))
-end
-
-function UIAreaSelector:SetRotTrack(rot)
-    self:SetRotTrackX(rot.x)
-    self:SetRotTrackY(rot.y)
-    self:SetRotTrackZ(rot.z)
-end
-
-function UIAreaSelector:SetRotTrackX(val)
-    if not within_range(val, self.rot_min, self.rot_max) then return end
-    self.prev_area_rot.x = self.curr_area_rot.x
-    self.move_area["x"]["rot_track"]:SetFValue(val)
-    self.curr_area_rot.x = val
-end
-
-function UIAreaSelector:SetRotTrackY(val)
-    if not within_range(val, self.rot_min, self.rot_max) then return end
-    self.prev_area_rot.y = self.curr_area_rot.y
-    self.move_area["y"]["rot_track"]:SetFValue(val)
-    self.curr_area_rot.y = val
-end
-
-function UIAreaSelector:SetRotTrackZ(val)
-    if not within_range(val, self.rot_min, self.rot_max) then return end
-    self.prev_area_rot.z = self.curr_area_rot.z
-    self.move_area["z"]["rot_track"]:SetFValue(val)
-    self.curr_area_rot.z = val
-end
-
-function UIAreaSelector:SetRotBox(rot)
-    self:SetRotBoxX(rot.x)
-    self:SetRotBoxY(rot.y)
-    self:SetRotBoxZ(rot.z)
-end
-
-function UIAreaSelector:SetRotBoxX(val)
-    if not within_range(val, self.rot_min, self.rot_max) then return end
-    self.move_area["x"]["rot_box"]:SetText(tostring(round_idp(val, 2)))
-end
-
-function UIAreaSelector:SetRotBoxY(val)
-    if not within_range(val, self.rot_min, self.rot_max) then return end
-    self.move_area["y"]["rot_box"]:SetText(tostring(round_idp(val, 2)))
-end
-
-function UIAreaSelector:SetRotBoxZ(val)
-    if not within_range(val, self.rot_min, self.rot_max) then return end
-    self.move_area["z"]["rot_box"]:SetText(tostring(round_idp(val, 2)))
-end
-
-function UIAreaSelector:SetHeight(val)
-    self.area_size["height"]["value_track"]:SetFValue(val)
-    self.area_size["height"]["value_box"]:SetText(tostring(round_idp(val, 2)))
-    self.prev_height = self.curr_height
-    self.curr_height = val
-end
-
-function UIAreaSelector:SetWidth(val)
-    self.area_size["width"]["value_track"]:SetFValue(val)
-    self.area_size["width"]["value_box"]:SetText(tostring(round_idp(val, 2)))
-    self.prev_width = self.curr_width
-    self.curr_width = val
-end
-
-function UIAreaSelector:KillGizmos()
-    self:HideGizmos()
-    empty_table(self.corner_gizmos)
-    empty_table(self.vert_gizmos)
-    empty_table(self.face_gizmos)
-end
-
-function UIAreaSelector:ShowGizmos(state)
-    dbg("dev", "setting gizmos to %s", state)
-    self:ShowCornerGizmos(state)
-    self:ShowVertGizmos(state)
-    self:ShowFaceGizmos(state)
-end
-
-function UIAreaSelector:HideGizmos()
-    self:ShowGizmos(false)
-end
-
-function UIAreaSelector:ShowCornerGizmos(state)
-    self.corner_gizmos[1]["obj"].visible = state
-    self.corner_gizmos[2]["obj"].visible = state
-end
-
-function UIAreaSelector:ShowVertGizmos(state)
-    for id, _ in pairs(self.vert_gizmos) do
-        self.vert_gizmos[id]["obj"].visible = state
-    end
-end
-
-function UIAreaSelector:ShowFaceGizmos(state)
-    for name, gizmo_tbl in pairs(self.face_gizmos) do
-        self.face_gizmos[name][1].visible = state
-        self.face_gizmos[name][2].visible = state
-        self.face_gizmos[name][3].visible = state
-        self.face_gizmos[name][4].visible = state
-    end
-end
-
-
--- HPB Vector
-function UIAreaSelector:GetHeading(dir_vec, in_degrees)
-    local heading = get_heading(dir_vec, in_degrees)
-    if heading < self.rot_min then
-        return heading + self.rot_max
-    end
-    return heading
-end
-
-function UIAreaSelector:GetPitch(dir_vec, in_degrees)
-    local pitch = get_pitch(dir_vec, in_degrees)
-    if pitch < self.rot_min then
-        return pitch + self.rot_max
-    end
-    return pitch
-end
-
-function UIAreaSelector:GetBank(dir_vec, in_degrees)
-    local bank = get_bank(dir_vec, in_degrees)
-    if bank < self.rot_min then
-        return bank + self.rot_max
-    end
-    return bank
-end
-
-function UIAreaSelector:HasGizmos()
-    for i=1, 2 do
-        self:HasGizmo(i)
-    end
-end
-
-function UIAreaSelector:HasGizmo(idx)
-    return contains(self.corner_gizmos, idx, true) 
-        or contains(self.corner_gizmos[idx], "obj", true) 
-end
-
-function UIAreaSelector:SetGizmoPos(idx, pos)
-    if not self:HasGizmo(idx) then return end
-    local pos_mat = matrix():translate(pos)
-    self.corner_gizmos[idx]["obj"].matrix = matrix():mul(pos_mat, self.gizmo_scale_mat)
-end
-
-function UIAreaSelector:ShowGizmo(idx, show)
-    if not self:HasGizmo(idx) then return end
-    self.corner_gizmos[idx]["obj"].visible = show
-end
-
-function UIAreaSelector:IncreaseGizmoID()
-    self.gizmo_id = clamp(self.gizmo_id + 1, 1, 2)
-end
-
-function UIAreaSelector:ToggleDrawArea()
-    self.draw_area = not self.draw_area
-    self:ShowGizmos(self.draw_area)
-end
-
-function UIAreaSelector:FacesToID(face_a, face_b)
-    return tonumber(strformat("%s%s", face_a, face_b), 32)
-end
-
-function UIAreaSelector:GetCenterPos()
-    local dist = self.vertices.E:distance_to_sqr(self.vertices.D)
-    local dir = vec_sub(self.vertices.D, self.vertices.E):normalize()
-    return vec_set(self.vertices.E):mad(self.vertices.E, dir, dist / 2)
-end
-
-function rotate_diagonal(angle, axis, pos)
-    local cos_a, sin_a = math.cos(angle), math.sin(angle)
-    dbg("dev", "cos:%s, sin:%s",cos_a, sin_a)
-    local w = vec_set(axis):normalize()
-    dbg("dev", "w:%s", w)
-    local align_vec = vec_set(VEC_X)
-    if math.abs(vector():dotproduct(align_vec, w)) > 0.75 then
-        align_vec = vec_set(VEC_Z)
-    end
-    dbg("dev", "align vec:%s", align_vec)
-    local u = vector():crossproduct(align_vec, w)
-    local v = vector():crossproduct(u, w)
-    local lx = vector():dotproduct(pos, u)
-    local ly = vector():dotproduct(pos, v)
-    local lz = vector():dotproduct(pos, w)
-    dbg("dev", "u:%s, v:%s, local|%s", u, v, vector():set(lx, ly, lz))
-    -- irony huh
-    local global_x = vec_set(u):mul(lx * cos_a - ly * sin_a)
-    local global_y = vec_set(v):mul(lx * sin_a + ly * cos_a)
-    local global_z = vec_set(w):mul(lz)
-    dbg("dev", "global|%s, %s, %s", global_x, global_y, global_z)
-    return vec_add(vec_add(global_x, global_y), global_z)
-end
-
--- Callbacks
-function on_key_press(dik)
-    dbg("dev", "on key press:%s", hfg_utils.dik_to_str(dik))
-    if dik == UI_KEY then
-        start_ui()
-    end
-end
-
-
-function on_option_change(options)
-    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
-    TOGGLE_UI_KEYBIND = options["main"]["toggle_ui_keybind"]
-    QUIT_UI_KEYBIND = options["main"]["ui_quit_keybind"]
-    dbg("debug", "Received options")
-end
-
-function on_game_start()
-    RegisterScriptCallback("hfg_on_option_change", on_option_change)
-    RegisterScriptCallback("on_key_press", on_key_press)
-end
---[[
-function UIAreaSelector:BuildVerts(pos_a, pos_b)
-    dbg("dev", "building verts")
-    local height = clamp(pos_a:distance_to(pos_b), self.min_size.h, self.max_size.h)
-    local width = height
-    self:SetHeight(height)
-    self:SetWidth(width)
-
-    dbg("dev", "set other verts")
-    local center_pos = vec_set(pos_a):add(pos_b):mul(0.5)
-    local half_diagonal = vec_sub(pos_a, center_pos)
-    local norm_half_diagonal = vec_set(half_diagonal):normalize()
-    local align_vec = VEC_X
-    if math.abs(vector():dotproduct(norm_half_diagonal, align_vec)) > 0.75 then
-        align_vec = VEC_Z
-    end
-    local opp_align_vec = vector():crossproduct(norm_half_diagonal, align_vec)
-    local opp_diagonal = rotate_diagonal(math.rad(70.5288), opp_align_vec, half_diagonal)
-    local full_align_vec = vec_sub(half_diagonal, opp_diagonal)
-    local full_diagonal = rotate_diagonal(math.rad(90), full_align_vec, half_diagonal)
-    local full_opp_diagonal = rotate_diagonal(math.rad(90), full_align_vec, opp_diagonal)
-
-    self.vertices.E = vec_sub(center_pos, half_diagonal)
-    self.vertices.D = vec_add(center_pos, half_diagonal)
-    self.vertices.C = vec_add(center_pos, opp_diagonal)
-    self.vertices.F = vec_sub(center_pos, opp_diagonal)
-    self.vertices.A = vec_add(center_pos, full_diagonal)
-    self.vertices.H = vec_sub(center_pos, full_diagonal)
-    self.vertices.B = vec_add(center_pos, full_opp_diagonal)
-    self.vertices.G = vec_sub(center_pos, full_opp_diagonal)
-    dbg("dev", "vertices:%s", self.vertices)
-end
-
-]]

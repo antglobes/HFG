@@ -28,7 +28,7 @@ function get_section_lines(ini, section)
 
     local length = ini:line_count(section)
     --printf("Reading section "..section.." Lines: "..length)
-    for i = 1,length do
+    for i = 0, length - 1 do
         local res,key,value = ini:r_line(section,i)
         if key ~= nil and key ~= "" and value ~= nil and value ~= "" then       
             result[key] = value
