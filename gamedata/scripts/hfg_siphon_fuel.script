@@ -1,0 +1,340 @@
+-- Library Imports
+ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_game_objects)
+ag_utils.import_metatable(this, ag_npc)
+ag_utils.import_metatable(this, ag_position)
+ag_utils.import_metatable(this, ag_maths)
+ag_utils.import_metatable(this, ag_configs)
+
+-- Utils
+get_config = hfg_mcm.get_config
+str2tbl = hfg_utils.str2tbl
+tbl2str = hfg_utils.tbl2str
+
+-- Constants
+LOG_HEADER = "[HFG|Siphon Fuel]"
+
+
+-- MCM
+FUEL_LIFETIME = str2tbl(hfg_mcm.defaults["siphon"]["fuel_lifetime"])
+FACTION_SEARCH_RADIUS = str2tbl(hfg_mcm.defaults["siphon"]["faction_search_radius"])
+GURANTEED_SPOT_AMOUNT = str2tbl(hfg_mcm.defaults["siphon"]["guranteed_spot_amount"])
+GURANTEED_SPOT_ZONE_PREF = hfg_mcm.defaults["siphon"]["guranteed_spot_zone_preference"]
+MAX_SPOT_DIMINISHER = hfg_mcm.defaults["siphon"]["max_spot_diminisher"]
+
+-- Globals
+ini_siphon_spots = ini_file_ex("plugins\\hfg_siphon_spots.ltx")
+ini_siphon_fuel = ini_file_ex("plugins\\hfg_siphon_fuel.ltx")
+siphon_spots = {}
+container_info = {}
+FUEL_EXPIRATION_DATE = 0
+-- Locals
+local dbg_pr = nil
+
+-- Tables
+faction_infrastructure_strength = {
+    stalker = 5,
+    csky = 4,
+    bandit = 6,
+    army = 12, 
+    killer = 8,
+    monolith = 11,
+    ecolog = 10,
+    dolg = 9, 
+    freedom = 7,
+    renegade = 1,
+    isg = 3,
+    sin = 2,
+}
+container_types = {
+    "civillian",
+    "service",
+    "military",
+    "industrial"
+}
+container_type_upper_limit = {
+    civillian = 0.8,
+    service = 0.5,
+    military = 0.275,
+    industrial = 0.15,
+}
+
+total_spots = {
+	['pripyat'] = 21,
+	['zaton'] = 23,
+	['k01_darkscape'] = 22,
+	['l07_military'] = 42,
+	['l11_pripyat'] = 73,
+	['l03_agroprom'] = 12,
+	['l10_radar'] = 33,
+	['l09_deadcity'] = 7,
+	['l02_garbage'] = 38,
+	['l10_limansk'] = 19,
+	['l13_generators'] = 7,
+	['l10_red_forest'] = 21,
+	['jupiter'] = 33,
+	['l06_rostok'] = 12,
+	['l12_stancia_2'] = 4,
+	['l01_escape'] = 32,
+	['k00_marsh'] = 23,
+	['l08_yantar'] = 9,
+	['y04_pole'] = 26,
+	['l05_bar'] = 12,
+	['l12_stancia'] = 38
+}
+max_spot_diminisher_vals  = {
+    [1] = 8,
+    [2] = 6,
+    [3] = 4,
+    [4] = 2,
+    [5] = 1,
+}
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+function init_siphon_spots()
+    local level_name = level.name()
+    if contains(siphon_spots, level_name, true) then return end
+    dbg("dev", "init siphon spots for: %s", level_name)
+    siphon_spots[level_name] = {}
+    for _, sect in pairs(ini_siphon_spots:get_sections()) do
+        if not contains(siphon_spots[level_name], sect, true) then
+            local data = get_section_lines(ini_siphon_spots, sect)
+            if is_not_empty(data) and data.lvl_name == level_name then
+                local info = get_container_info(sect)
+                siphon_spots[level_name][sect] = {
+                    name = sect,
+                    lvl_name = data.lvl_name,
+                    pos = utils_data.string_to_vector(data.pos),
+                    stored_fuel = 0,
+                    has_fuel = false,
+                    max_capacity = info.max_capacity,
+                    typ = info.typ
+                }
+                dbg("dev", "sect:%s, data:%s", sect, siphon_spots[level_name][sect])
+            end
+        end
+    end
+
+    local global_max_chance = calc_global_max_chance()
+    dbg("dev", "global max chance:%s", global_max_chance)
+    local i = 1
+    for name, spot in pairs(siphon_spots[level_name]) do
+        math.randomseed(time_continual() + i)
+        local rnd_chance = math.random(100)
+        dbg("dev", "spot: %s", spot)
+        local container_type_chance = container_type_upper_limit[spot.typ]
+        dbg("dev", "container typ chance:%s", container_type_chance)
+        local spawn_chance = ((container_type_chance + global_max_chance) / 2) * 100
+        dbg("dev", "rnd chance: %s, spawn chance: %s", rnd_chance, spawn_chance)
+        if rnd_chance <= spawn_chance then
+            siphon_spots[level_name][name].stored_fuel = determine_stored_fuel(spot)
+            siphon_spots[level_name][name].has_fuel = siphon_spots[level_name][name].stored_fuel > 0
+        end
+        i = i + 1
+    end
+end
+
+function get_fueled_spots(level_name)
+    local count = 0
+    if contains(siphon_spots, level_name, true) then
+        for name, data in pairs(siphon_spots[level_name]) do
+            if data.has_fuel then
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+function init_container_info()
+    for _, typ in pairs(container_types) do
+        container_info[typ] = {}
+        dbg("dev", "init container info for %s", typ)
+        local sect = strformat("%s_containers", typ)
+        local data = get_section_lines(ini_siphon_fuel, sect)
+        for k, v in pairs(data) do
+            container_info[typ][#container_info[typ] + 1] = {
+                name=k, 
+                max_capacity=tonumber(v),
+                typ=typ,
+            }
+        end
+        dbg("dev", "info: %s", container_info[typ])
+    end
+end
+
+function get_container_info(spot_name)
+    dbg("dev", "attempeting to get container info for %s", spot_name)
+    local tmp = {}
+    for typ, containers in pairs(container_info) do
+        for idx, info in pairs(containers) do
+            if found_within(spot_name, info.name) then
+               tmp = info
+            end
+        end
+    end
+    return tmp
+end
+
+function calc_container_population_chance()
+    local level_name = level.name()
+    dbg("dev", "calc cont pop chance: %s", level_name)
+    local total_level_spots = size_table(siphon_spots[level_name])
+    local max_level_spots = round(total_level_spots / max_spot_diminisher_vals[MAX_SPOT_DIMINISHER])
+    local fueled_spots = get_fueled_spots(level_name)
+    if fueled_spots < max_level_spots then
+        local guranteed_spots = clamp(GURANTEED_SPOT_AMOUNT[level_name], 1, max_level_spots)
+        local new_fueled_spots = fueled_spots + 1
+        dbg("dev", "level spots| total:%s, max:%s, fueled: %s, new: %s, guranteed: %s", total_level_spots, max_level_spots, fueled_spots, new_fueled_spots, guranteed_spots)
+        if fueled_spots < guranteed_spots then
+            return 1 - (new_fueled_spots / total_level_spots)
+        end
+        local excess_spots = new_fueled_spots - guranteed_spots
+        local max_excess_spots = max_level_spots - guranteed_spots
+        return demonized_randomizing_functions.ExponentialEaseOut(clamp(normalize(excess_spots, 1, max_excess_spots), 0, 1))
+    end
+    return 0
+   
+end
+
+function parse_base_faction(faction)
+    if faction ~= "neutral" and not found_within(faction, "_") then return faction end
+    if faction == "neutral" then return communities[math.random(1, #communities)] end
+    local fac_priority
+    local highest_faction
+    for faction_tkn in faction:gsub("_") do
+        local priority = faction_infrastructure_strength[faction_tkn]
+        if not fac_priority or priority > fac_priority then
+            fac_priority = priority
+            highest_faction = faction_tkn
+        end
+    end
+
+    return fac_priority and highest_faction or "stalker"
+end
+
+function calc_base_distance_chance(pos)
+    local level_name = level.name()
+    dbg("dev", "calc base distance chance: %s %s", level_name, pos)
+    local base_smarts = get_ltx_pairs(ini_siphon_fuel, "faction_base_smarts", level_name)
+    dbg("dev", "base smarts:%s", base_smarts)
+    local closest_dist
+    local closest_name
+    local closest_faction
+    local smarts_tbl = SIMBOARD.smarts_by_names
+    --dbg("dev", "smarts tbl: %s", smarts_tbl)
+    for name, faction in pairs(base_smarts) do
+        local comm = sanitize_faction(parse_base_faction(faction))
+        if 
+            contains(smarts_tbl, name, true) 
+            and contains(communities, comm) 
+        then
+            local dist = smarts_tbl[name].position:distance_to(pos)
+            dbg("dev", "dist to %s owned by (%s,%s): %s", name, faction, comm, dist)
+            if not closest_dist or dist < closest_dist then
+                closest_dist = dist
+                closest_name = name
+                closest_faction = comm
+            end
+        end
+    end
+
+    if closest_name then
+        dbg("dev", "closest| name:%s, dist:%s, faction:%s", closest_name, closest_dist, closest_faction)
+        local siphon_radius = FACTION_SEARCH_RADIUS[closest_faction]
+        dbg("dev", "siphon radius: %s", siphon_radius)
+        if closest_dist <= siphon_radius then
+            return 1 - closest_dist / siphon_radius
+        end
+        return siphon_radius / closest_dist
+    end
+    return 0
+end
+
+function determine_stored_fuel(spot)
+    dbg("dev", "determine stored fuel: %s", spot.name)
+    dbg("dev", "determine stored fuel for %s", spot.name)
+    local container_population_chance = calc_container_population_chance()
+    local faction_base_distance_chance = calc_base_distance_chance(spot.pos)
+    local fuel_chance = (container_population_chance + faction_base_distance_chance) / 2
+    dbg("dev", "container population chance:%s", container_population_chance)
+    dbg("dev", "faction base distance chance:%s", faction_base_distance_chance)
+    dbg("dev", "fuel chance:%s", fuel_chance)
+    local actual_fuel = round(spot.max_capacity * fuel_chance)
+    dbg("dev", "expected fuel:%s, actual fuel:%s", spot.max_capacity, actual_fuel)
+    return actual_fuel
+end
+
+function init_fuel_expiration_date()
+    dbg("dev", "init fuel expiration date")
+    local start_time = utils_data.CTimeToSec(level.get_start_time())
+    local fuel_lifetime = utils_data.CTimeToSec(utils_data.CTime_from_table(FUEL_LIFETIME))
+    dbg("dev", "start time:%s, fuel_lifetime:%s", start_time, fuel_lifetime)
+    FUEL_EXPIRATION_DATE = start_time + fuel_lifetime
+    dbg("dev", "fuel expiration date:%s", FUEL_EXPIRATION_DATE)
+end
+
+function calc_global_max_chance()
+    local time_in_zone = utils_obj.time_spent_in_zone(1)
+    return 1 - clamp(normalize(time_in_zone, 0, FUEL_EXPIRATION_DATE), 0, 1)
+end
+
+function setup_siphon_fuel_args()
+    init_fuel_expiration_date()
+    init_container_info()
+    init_siphon_spots()
+end
+
+function on_option_change(options)
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    FUEL_LIFETIME = str2tbl(options["siphon"]["fuel_lifetime"])
+    FACTION_SEARCH_RADIUS = str2tbl(options["siphon"]["faction_search_radius"])
+    GURANTEED_SPOT_AMOUNT = str2tbl(options["siphon"]["guranteed_spot_amount"])
+    GURANTEED_SPOT_ZONE_PREF = options["siphon"]["guranteed_spot_zone_preference"]
+    MAX_SPOT_DIMINISHER = options["siphon"]["max_spot_diminisher"]
+    dbg("debug", "Received options: %s", options)
+end
+
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("on_game_load", setup_siphon_fuel_args)
+    -- RegisterScriptCallback("on_game_load", print_total_spots)
+end
+
+function print_total_spots()
+    local tmp = {}
+    for lvl_name in pairs(level_to_name) do
+        local count = 0
+        for _, sect in pairs(ini_siphon_spots:get_sections()) do        
+            local data = get_section_lines(ini_siphon_spots, sect)
+            if is_not_empty(data) and data.lvl_name == lvl_name then
+                count = count + 1
+                tmp[lvl_name] = count
+            end
+        end
+    end
+    dbg("dev", "total spots:%s", tmp)
+end
+
+
+

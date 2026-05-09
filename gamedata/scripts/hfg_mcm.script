@@ -28,6 +28,11 @@ defaults = {
     },
     siphon = {
         activation_range = 3,
+        fuel_lifetime = "Y=2, M=0, D=0, h=0, m=0, s=0, ms=0",
+        faction_search_radius = "isg=10, ecolog=20, renegade=25, sin=30, csky=40, killer=45, stalker=50, dolg=55, bandit=65, freedom=70, monolith=80, army=100",
+        guranteed_spot_amount = "pripyat=21, zaton=23, k01_darkscape=22, l07_military=42, l11_pripyat=73, l03_agroprom=12, l10_radar=33, l09_deadcity=7, l02_garbage=38,l10_limansk=19,l13_generators=7, l10_red_forest=21,jupiter=33,l06_rostok=12, l12_stancia_2=4,l01_escape=32, k00_marsh=23, l08_yantar=9, y04_pole=26,l05_bar=12,l12_stancia=3",
+        guranteed_spot_zone_preference = "none", -- none, north, south
+        max_spot_diminisher = 2
     },
     misc = {
         colour_blind_type = 1,
@@ -79,6 +84,11 @@ end
 
 function has_mcm_keybinds()
     return ui_mcm and ui_mcm.key_hold
+end
+
+function time_order_func(t, a, b)
+    local order = {Y=1, M=2, D=3, h=4, m=5, s=6, ms=7}
+    return order[a] < order[b]
 end
 
 function on_mcm_load()
@@ -202,6 +212,55 @@ function on_mcm_load()
                 gr={
                     {id="title", type="slide", link="ui_options_slider_player", text="ui_mcm_hfg_title_siphon", size={512, 50}, spacing=20},
                     {id="activation_range", type="track", val=2, min=0.5, max=5, step=0.1, def=3},
+                    {id="fuel_lifetime", type="input", val=0, def="Y=2, M=0, D=0, h=0, m=0, s=0, ms=0", ui_hook_functor={ui_mcm_hfg_list_track.init_control},
+                        order={tbl={Y=1, M=2, D=3, h=4, m=5, s=6, ms=7}, priority="lower"},
+                        range={Y={min=0, max=4}, M={min=0, max=12}, D={min=0, max=28}, h={min=0, max=60}, m={min=0, max=60}, s={min=0, max=60}, ms={min=0, max=1000}},
+                        steps={Y=1, M=1, D=1, h=1, m=1, s=1, ms=10},
+                        margin=10,
+                        padding=5,
+                        align="left"
+                    },
+                    {id="faction_search_radius", type="input", val=0, def="isg=10, ecolog=20, renegade=25, sin=30, csky=40, killer=45, stalker=50, dolg=55, bandit=65, freedom=70, monolith=80, army=100",
+                        ui_hook_functor={ui_mcm_hfg_list_track.init_control},
+                        order={tbl={isg=1, ecolog=2, renegade=3, sin=4, csky=5, killer=6, stalker=7, dolg=8, bandit=9, freedom=10, monolith=11, army=12}, priority="lower"},
+                        range={isg={min=0, max=100}, ecolog={min=0, max=100}, renegade={min=0, max=100}, sin={min=0, max=100}, csky={min=0, max=100}, killer={min=0, max=100}, stalker={min=0, max=100}, dolg={min=0, max=100}, bandit={min=0, max=100}, freedom={min=0, max=100}, monolith={min=0, max=100}, army={min=0, max=100}},
+                        steps={isg=1, ecolog=1, renegade=1, sin=1, csky=1, killer=1, stalker=1, dolg=1, bandit=1, freedom=1, monolith=1, army=1},
+                        margin=10,
+                        padding=5,
+                        align="left"
+                    },
+                    {id="guranteed_spot_amount", type="input", val=0, def="pripyat=21, zaton=23, k01_darkscape=22, l07_military=42, l11_pripyat=73, l03_agroprom=12, l10_radar=33, l09_deadcity=7, l02_garbage=38,l10_limansk=19,l13_generators=7, l10_red_forest=21,jupiter=33,l06_rostok=12, l12_stancia_2=4,l01_escape=32, k00_marsh=23, l08_yantar=9, y04_pole=26,l05_bar=12,l12_stancia=3",
+                        ui_hook_functor={ui_mcm_hfg_list_track.init_control},
+                        order={tbl={pripyat=1, zaton=2, k01_darkscape=3, l07_military=4, l11_pripyat=5, l03_agroprom=6, l10_radar=7, l09_deadcity=8, l02_garbage=9, l10_limansk=10, l13_generators=11, l10_red_forest=12, jupiter=13, l06_rostok=14, l12_stancia_2=15, l01_escape=16, k00_marsh=17, l08_yantar=18, y04_pole=19, l05_bar=20, l12_stancia=21}, priority="lower"},
+                        range={
+                            pripyat={min=1, max=21},      zaton={min=1, max=23},         k01_darkscape={min=1, max=22},
+                            l07_military={min=1, max=42}, l11_pripyat={min=1, max=73},   l03_agroprom={min=1, max=12},
+                            l10_radar={min=1, max=33},    l09_deadcity={min=1, max=7},   l02_garbage={min=1, max=38},
+                            l10_limansk={min=1, max=19},  l13_generators={min=1, max=7}, l10_red_forest={min=1, max=21},
+                            jupiter={min=1, max=33},      l06_rostok={min=1, max=12},    l12_stancia_2={min=1, max=4},
+                            l01_escape={min=1, max=32},   k00_marsh={min=1, max=23},     l08_yantar={min=1, max=9},
+                            y04_pole={min=1, max=26},     l05_bar={min=1, max=12},       l12_stancia={min=1, max=3}},
+                        steps={pripyat=1, zaton=1, k01_darkscape=1, l07_military=1, l11_pripyat=1, l03_agroprom=1, l10_radar=1, l09_deadcity=1, l02_garbage=1, l10_limansk=1, l13_generators=1, l10_red_forest=1, jupiter=1, l06_rostok=1, l12_stancia_2=1, l01_escape=1, k00_marsh=1, l08_yantar=1, y04_pole=1, l05_bar=1, l12_stancia=1},
+                        margin=10,
+                        padding=5,
+                        align="left"
+                    },
+                    {id="guranteed_spot_zone_preference", type="list", val=0, def="none", 
+                        content={
+                            {"none", "none"},
+                            {"north", "north"},
+                            {"south", "south"}
+                        }
+                    },
+                    {id="max_spot_diminisher", type="list", val=2, def=2,
+                        content={
+                            {1, "8x"},
+                            {2, "6x"},
+                            {3, "4x"},
+                            {4, "2x"},
+                            {5, "1x"},
+                        }
+                    },
                 }
             },
             {

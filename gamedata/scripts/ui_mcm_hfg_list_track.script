@@ -1,0 +1,279 @@
+-- Library Imports
+ag_utils.import_metatable(this, ag_tables)
+ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_maths)
+gts = get_translation
+
+-- Constants
+LOG_HEADER = "[HFG|List Track]"
+LIST_ITEM_MCM_PREFIX = "ui_mcm_multitrack_%s"
+
+-- Globals
+
+-- Locals
+local UIMCM, UIMM
+local xml = CScriptXmlInit()
+local wnds = {}
+local dbg_pr = nil
+
+-- DEBUGGING
+function setup_log(level, header, enabled)
+    if not dbg_pr then
+        dbg_pr = ag_logging.new({
+            level=level,
+            header=header,
+            enabled=enabled
+        })
+    else
+        dbg_pr:SetLevel(level)
+        dbg_pr:Enable(enabled)
+    end
+end
+
+function dbg(level, fmt, ...)
+    if not dbg_pr then
+        setup_log(get_config("misc", "debug_level"), LOG_HEADER, get_config("misc", "enable_debug"))    
+    end
+    dbg_pr:Log(level, fmt, ...)
+end
+
+-- Main
+function init_control(anchor, handlers, opts, flags)
+	xml = CScriptXmlInit()
+	xml:ParseFile("ui_hfg_list_track.xml")
+	if not (anchor and opts and flags) then return end
+	local opt_tbl 		= dup_table(opts)
+	local flag_tbl 		= dup_table(flags)
+
+	flag_tbl.ctrl_id 	= ui_mcm.cc(flag_tbl.path, flag_tbl.opt)
+	if handlers and handlers.ctrl then
+		handlers.ctrl:Show(false)
+	end
+
+	wnds[flag_tbl.ctrl_id] = UIListTrack(anchor, handlers, opt_tbl, flag_tbl)
+end
+
+class "UIListTrack" (CUIScriptWnd)
+function UIListTrack:__init(anchor, handlers, opts, flags) super()
+	self:SetAutoDelete(true)
+
+	local id 	    = "list_track_"
+	local opt 		= opts and opts.id or ""
+	self.base_id 	= id .. opt .. "_"
+	self.anchor     = anchor or self
+	self.opts       = opts or {}
+	self.flags      = flags or {}
+	self.path 		= flags.path or ""
+	self.opt 		= flags.opt or opts.id or ""
+	self.opt_id 	= ui_mcm.cc(self.path, self.opt)
+	self.ctrl 		= {}
+	self.text 		= {}
+    self.tmr        = 0
+
+	self:InitControls()
+    RegisterScriptCallback("mcm_option_restore_default", self)
+end
+
+function UIListTrack:Update()
+	CUIScriptWnd.Update(self)
+    self:UpdateTrack()
+end
+
+
+function UIListTrack:InitControls()
+	self.alignment = self.opts.align or "left" -- left, right, center
+	self.value_tbl_range = self.opts.range -- {Y={min=0,max=10}, etc}
+	self.value_tbl_steps = self.opts.steps -- {Y={min=0,max=10}, etc}
+    self.value_tbl_order = self:BuildOrderFunc(self.opts.order)
+    self.order_to_value = invert_table(self.opts.order.tbl)
+	self.init_value = mcm_get_value(self.path, self.opt, self.opts, self.flags)
+	self.def_value_tbl = self:TableFromString(self.init_value)
+	self.value_tbl = {}
+	copy_table(self.value_tbl, self.def_value_tbl)
+	self.ele_num = size_table(self.value_tbl)
+    -- dbg("dev", "ele num:%s", self.ele_num)
+    self.trackbar_vals = {}
+	self.text_clr = self.opts.clr and {
+		a = self.opts.clr.a or self.opts.clr[1],
+		r = self.opts.clr.r or self.opts.clr[2],
+		g = self.opts.clr.g or self.opts.clr[3],
+		b = self.opts.clr.b or self.opts.clr[4]
+	} or {}
+	if is_not_empty(self.text_clr) and ag_colours then
+		self.colourbind_support = self.opts.colourblind_support or false
+		self.colourblind_type_path = self.colourblind_support and self.opts.colourblind_type_path or ""
+		-- "misc/colour_blind_type"
+	end
+
+	self.anchor_size = {
+		w = self.anchor:GetWidth(),
+		h = self.anchor:GetHeight()
+	}
+	self.margin = self.opts.margin and math.min(self.opts.margin, self.anchor_size.w) or 10
+	self.padding = self.opts.padding and math.min(self.opts.padding, self.margin) or self.margin
+    local mcm_pos = {x=282, y=0}
+	self.total_width  = self.anchor_size.w - (self.margin * 2) - self.padding - mcm_pos.x
+	self.total_height = self.anchor_size.h
+    -- dbg("dev", "margin:%s, padding:%s", self.margin, self.padding)
+    -- dbg("dev", "total width:%s, total height:%s", self.total_width, self.total_height)
+
+	self.dialog = xml:InitStatic("dialog", self.anchor)
+	self.dialog:SetWndSize(vector2():set(self.total_width, self.total_height))
+	self.dialog:SetWndPos(vector2():set(self.margin + mcm_pos.x, self.margin + mcm_pos.y))
+
+    local list_width = (self.total_width / 2) - (self.padding / 2) - 15
+    local list_height = (self.total_height - 4)
+    local list_pos = {x=0, y=self.total_height - list_height }
+    -- dbg("dev", "list| width:%s, height:%s, pos:%s", list_width, list_height, list_pos)
+    self.list = xml:InitComboBox("list", self.dialog)
+    self.list:SetWndSize(vector2():set(list_width, list_height))
+    self.list:SetWndPos(vector2():set(list_pos.x, list_pos.y))
+    -- self.list:SetListLength(self.ele_num)
+
+    self:Register(self.list, "list")
+    self:AddCallback("list", ui_events.LIST_ITEM_SELECT, self.OnList, self)
+
+    local track_width = self.total_width - list_width - 15
+    local track_height = self.total_height
+    local track_pos = {x=list_pos.x + list_width + (self.padding / 2), y=0}
+
+    self.track = xml:InitTrackBar("trackbar", self.dialog)
+    self.track:SetWndSize(vector2():set(track_width, track_height))
+    self.track:SetWndPos(vector2():set(track_pos.x, track_pos.y))
+    -- dbg("dev", "track| width:%s, height:%s, pos:%s", track_width, track_height, track_pos)
+    self.track_vals = {}
+    self.track_value = xml:InitTextWnd("caption", self.dialog)
+    self.track_value:SetWndSize(vector2():set(15, self.total_height))
+    self.track_value:SetWndPos(vector2():set(track_pos.x + track_width + 5, track_pos.y))
+
+	local idx = 1
+    for id, val in spairs(self.value_tbl, self.value_tbl_order) do
+        self:SetupControl(idx, id, val)
+        idx = idx + 1
+    end
+
+    self:LoadListTrack(1)
+end
+
+function UIListTrack:SetupControl(idx, id, value)
+    -- dbg("dev", "setup control idx:%s, id:%s, value:%s", idx, id, value)
+    self.track_vals[idx] = self.value_tbl[id]
+    -- dbg("dev", "set track val for %s to %s", idx, self.track_vals[idx])
+    local itm = self:GetIDString(id)
+    -- dbg("dev", "adding %s at %s for list", itm, idx)
+    self.list:AddItem(itm, idx)
+end
+
+function UIListTrack:LoadListTrack(idx)
+    -- dbg("dev", "loading list track for %s", idx)
+    local id = self:IndexToID(idx)
+    local curr_idx = self.list:CurrentID()
+    if curr_idx ~= idx then
+        -- dbg("dev", "changing list idx from %s to %s", curr_idx, idx)
+        self.list:SetCurrentIdx(idx)
+        self.list:SetText(self:GetIDString(id))
+    end
+    self.track:SetOptFBounds(self.value_tbl_range[id].min, self.value_tbl_range[id].max)
+    self.track:SetFValue(self.track_vals[idx])
+    self.track:SetStep(self.value_tbl_steps[id])
+    self.track_value:SetText(tostring(self.track_vals[idx]))
+    -- dbg("dev", "using id:%s setting track to | val:%s, bounds:%s, step:%s", id, self.track_vals[idx], self.value_tbl_range[id], self.value_tbl_steps[id])
+end
+
+function UIListTrack:UpdateTrack()
+    if not self.track:IsCursorOverWindow() then return end
+    local idx = clamp(self.list:CurrentID(), 1, self.ele_num)
+    local curr_track_val = self.track:GetFValue()
+    -- dbg("dev", "track val| idx:%s, old:%s, new:%s", idx, self.track_vals[idx], curr_track_val)
+    if self.track_vals[idx] ~= curr_track_val then
+        self.track_vals[idx] = curr_track_val
+        self.track_value:SetText(tostring(curr_track_val))
+        local id = self:IndexToID(idx)
+        -- dbg("dev", "changing %s in value tbl from %s to %s", id, self.value_tbl[id], curr_track_val)
+        self.value_tbl[id] = curr_track_val
+        local value_tbl_str = self:StringFromTable(self.value_tbl)
+        mcm_cache_value(self.path, self.opt, value_tbl_str, self.opts)
+        -- dbg("dev", "cached %s for %s", value_tbl_str, self.opt)
+    end
+end
+
+-- UI Callbacks
+function UIListTrack:OnList()
+    local idx = self.list:CurrentID()
+    -- dbg("dev", "on list %s", idx)
+    self:LoadListTrack(idx)
+end
+
+function UIListTrack:mcm_option_restore_default()
+    dbg("dev", "restoring default from %s", self.value_tbl)
+    self.value_tbl = {}
+	copy_table(self.value_tbl, self.def_value_tbl)
+    dbg("dev", "to: %s", self.value_tbl)
+    self:LoadListTrack(1)
+end
+
+-- Helpers
+function UIListTrack:GetIDString(id)
+    return gts(strformat(LIST_ITEM_MCM_PREFIX, id))
+end
+
+function UIListTrack:IndexToID(idx)
+    return self.order_to_value[idx]
+end
+
+function UIListTrack:BuildOrderFunc(order)
+    if order.priority == "lower" then
+        return function(t, a, b)
+            return order.tbl[a] < order.tbl[b]    
+        end
+    end
+    return function(t, a, b)
+        return order.tbl[a] > order.tbl[b]
+    end
+end
+
+function UIListTrack:TableFromString(str)
+	return hfg_utils.str2tbl(str)
+end
+
+function UIListTrack:StringFromTable(tbl)
+    return hfg_utils.tbl2str(tbl, self.value_tbl_order)
+end
+
+
+---@author catspaw
+function mcm_cache_value(path, opt, value, v)
+	UIMCM = UIMM.mcm_dlg
+	if (not UIMCM) or ui_mcm.is_gathering() then return end
+	UIMCM:CacheValue(path, opt, value, v)
+end
+
+---@author catspaw
+function mcm_get_value(path, opt, v, flags)
+	UIMCM = UIMM.mcm_dlg
+	if (not UIMCM) or ui_mcm.is_gathering() then return end
+	return UIMCM:GetValue(path, opt, v, flags)
+end
+
+-- Callbacks
+RegisterScriptCallback("main_menu_on_init", function(m) UIMM = m end)
+
+base_mcm_update = ui_mcm.UI_MCM.Update
+function ui_mcm.UI_MCM.Update(self)
+    base_mcm_update(self)
+    for id, wnd in pairs(wnds) do
+        if wnd then
+            wnd:Update()
+        end
+    end
+end
+
+function on_option_change(options)
+    setup_log(options["misc"]["debug_level"], LOG_HEADER, options["misc"]["enable_debug"])
+    -- dbg("debug", "Received options")
+end
+
+function on_game_start()
+    RegisterScriptCallback("hfg_on_option_change", on_option_change)
+end
+
