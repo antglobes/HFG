@@ -392,6 +392,8 @@ function print_table(node)
 					else
 						output_str = output_str .. tab(depth) .. key .. " = userdata"
 					end
+				elseif (type(v) == "function") then
+					output_str = output_str .. tab(depth) .. key .. " = function"
 				else
 					output_str = output_str .. tab(depth) .. key .. " = '"..v.."'"
 				end
