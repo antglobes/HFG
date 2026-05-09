@@ -41,3 +41,14 @@ end
 function has_key(sect, k)
 	return ini_sys:line_exist(sect, k)
 end
+
+function get_ltx_pairs(ini, sect, key, convert_func)
+    local tmp = {}
+    local tbl = parse_list(ini, sect, key)
+    for i=1, #tbl, 2 do
+        local k = tbl[i]
+        local v = convert_func and convert_func(tbl[i + 1]) or tbl[i + 1]
+        tmp[k] = v
+    end
+    return tmp
+end
