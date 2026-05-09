@@ -109,32 +109,41 @@ function AG_Log:printf(header, fmt, ...)
 	local fmt_type = type(fmt)
 	if contains({"string", "number", "boolean"}, fmt_type) then
 		fmt = tostring(fmt)
-	elseif fmt_type == "table" or fmt_type == 'userdata' then
-		if fmt.x or fmt.y or fmt.z then
+	elseif fmt_type == "userdata" then
+		if (fmt.x and fmt.y) or (fmt.x and fmt.y and fmt.z) then
+			fmt = vec_to_str(fmt)
+		elseif (fmt.r  and fmt.g and fmt.b) then
+			fmt = clr_to_str(fmt)
+		end
+	elseif fmt_type == "table" then
+		if (fmt.x and fmt.y) or (fmt.x and fmt.y and fmt.z) then
 			fmt = vec_to_str(fmt)
 		elseif (fmt.r  and fmt.g and fmt.b) or (fmt.h and fmt.s and fmt.v) then
 			fmt = clr_to_str(fmt)
 		elseif fmt.id then
 			fmt = self:ObjectToTable(fmt)
-		else
-			fmt = print_table(fmt)
 		end
+	elseif fmt_type == "function" then
+		fmt = "function"
 	end
-
+	
 	if (select('#',...) >= 1) then
 		local i = 0
 		local p = {...}
 		local function sr(a)
 			i = i + 1
 			if (type(p[i]) == 'userdata') then
-				if (p[i].x or p[i].y or p[i].z) then
+				if (fmt.x and fmt.y) or (fmt.x and fmt.y and fmt.z) then
 					return vec_to_str(p[i])
-				elseif (p[i].r  and p[i].g and p[i].b) or (p[i].h and p[i].s and p[i].v) then
+				elseif (p[i].r  and p[i].g and p[i].b) 
+					or (p[i].h and p[i].s and p[i].v) then
 					return clr_to_str(p[i])
 				elseif p[i].id then
 					return self:ObjectToTable(p[i])
 				end
 				return 'userdata'
+			elseif (type(p[i]) == "function") then
+				return 'function'
 			elseif (type(p[i]) == "table") then
 				local contains_obj = false
 				local obj_tbl = {}
