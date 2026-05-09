@@ -4,6 +4,7 @@
 
 -- Library Imports
 ag_utils.import_metatable(this, ag_strings)
+ag_utils.import_metatable(this, ag_tables)
 
 -- Tables
 special_character_faction = {
@@ -47,7 +48,18 @@ communities = {
     "monster",
     "sin",
 }
+alt_community_names = {
+    duty = "dolg",
+    loner = "stalker",
+    merc = "killer",
+    zombied = "greh",
+    mutant = "monster"
+}
 
+function sanitize_faction(faction)
+    if contains(communities, faction) then return faction end
+    return alt_community_names[faction]
+end
 -- Boolean Functions
 
 function IsNpc(npc, npc_type)
