@@ -123,6 +123,7 @@ function AG_Log:printf(header, fmt, ...)
 		elseif fmt.id then
 			fmt = self:ObjectToTable(fmt)
 		end
+		fmt = print_table(fmt)
 	elseif fmt_type == "function" then
 		fmt = "function"
 	end
