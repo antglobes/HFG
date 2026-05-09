@@ -298,6 +298,42 @@ function get_anim_offset(anim_style, anim_state)
     return demonized_randomizing_functions[anim_style](anim_state)
 end
 
+function str2tbl(str)
+	local tbl = {}
+    local tmp = str_explode(str, ",")
+    for _, chunk in pairs(tmp) do
+        local s, _ = chunk:find("=")
+        local k = chunk:sub(1, s - 1)
+        local v = chunk:sub(s + 1, #chunk)
+        local key = is_number(k) and tonumber(k) or k
+        local value = is_number(v) and tonumber(v) or v
+        tbl[key] = value
+    end
+    return tbl
+end
+
+function tbl2str(tbl, order)
+	local tmp = ""
+    if not order then
+        for k, v in pairs(tbl) do
+            tmp = strformat("%s %s=%s,", tmp, k, v)
+        end
+        return tmp:sub(1, #tmp - 1)
+    end
+    for k, v in spairs(tbl, order) do
+        tmp = strformat("%s %s=%s,", tmp, k, v)
+    end
+    return tmp:sub(1, #tmp - 1)
+end
+
+function bind_console_nav(name)
+    dbg("dev", "ui name:%s", name)
+
+end
+
+function unbind_console_nav(name)
+    dbg("dev", "ui name:%s", name)
+end
 
 -- MCM
 
@@ -322,6 +358,8 @@ end
 
 function on_game_start()
     RegisterScriptCallback("hfg_on_option_change", on_option_change)
+    RegisterScriptCallback("GUI_on_show", bind_console_nav)
+    RegisterScriptCallback("GUI_on_hide", unbind_console_nav)
     -- RegisterScriptCallback("hf_on_furniture_place", on_place_power_object)
 end
 
