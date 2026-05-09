@@ -26,7 +26,7 @@ PI_HALF = math.pi / 2
 ---@param var any
 ---@return boolean
 function is_number(var)
-    return tonumber(var) and type(var) == "number"
+    return tonumber(var) and type(tonumber(var)) == "number"
 end
 
 ---Check if a number is negative
@@ -57,8 +57,10 @@ end
 ---@param v vector
 ---@param angle number
 ---@return vector
-function vector_rotate_x(v, angle)
-	angle = angle * 0.017453292519943295769236907684886
+function vector_rotate_x(v, angle, in_radians)
+	if not in_radians then
+        angle = angle * 0.017453292519943295769236907684886
+    end
 	local c = math.cos(angle)
 	local s = math.sin(angle)
 	return vector():set(v.x, v.y * c - v.z * s, v.y * s + v.z * c)
@@ -69,8 +71,10 @@ end
 ---@param v vector
 ---@param angle number
 ---@return vector
-function vector_rotate_z(v, angle)
-	angle = angle * 0.017453292519943295769236907684886
+function vector_rotate_z(v, angle, in_radians)
+	if not in_radians then
+        angle = angle * 0.017453292519943295769236907684886
+    end
 	local c = math.cos(angle)
 	local s = math.sin(angle)
 	return vector():set(v.x * c - v.y * s, v.x * s + v.y * c, v.z)
@@ -81,8 +85,10 @@ end
 ---@param v vector
 ---@param angle number
 ---@return vector
-function vector_rotate_y(v, angle)
-	angle = angle * 0.017453292519943295769236907684886
+function vector_rotate_y(v, angle, in_radians)
+	if not in_radians then
+        angle = angle * 0.017453292519943295769236907684886
+    end
 	local c = math.cos(angle)
 	local s = math.sin(angle)
 	return vector():set(v.x, v.y * c - v.z * s, v.y * s + v.z * s)
@@ -451,4 +457,8 @@ function get_hpb(dir_vec)
         get_pitch(dir_vec),
         get_bank(dir_vec)
     )
+end
+
+function is_vector(v)
+    return type(v) == "userdata" and (v.x and v.y and v.z)
 end
