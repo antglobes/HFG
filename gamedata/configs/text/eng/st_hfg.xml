@@ -105,6 +105,22 @@
 	<string id="ui_mcm_hfg_siphon_activation_range">
 		<text>Siphon Activation Range</text>
 	</string>
+	<string id="ui_mcm_hfg_siphon_fuel_lifetime">
+		<text>Fuel Lifetime</text>
+	</string>
+	<string id="ui_mcm_hfg_siphon_faction_search_radius">
+		<text>Faction Search Radius</text>
+	</string>
+	<string id="ui_mcm_hfg_siphon_guranteed_spot_amount">
+		<text>Guaranteed Siphon Spots</text>
+	</string>
+	<string id="ui_mcm_hfg_siphon_guranteed_spot_zone_preference">
+		<text>Zone Preferance</text>
+	</string>
+	<string id="ui_mcm_hfg_siphon_max_spot_diminisher">
+		<text>Max Spot Amount Diminisher</text>
+	</string>
+	
 
 	<!-- Misc -->
 	<string id="ui_mcm_hfg_misc_colour_blind_type">
@@ -248,7 +264,158 @@
 	<string id="ui_mcm_lst_white">
 		<text>White</text>
 	</string>
-	
+	<!-- Guranteed Spot Zone Preference -->
+	<string id="ui_mcm_lst_none">
+		<text>None</text>
+	</string>
+	<string id="ui_mcm_lst_north">
+		<text>North</text>
+	</string>
+	<string id="ui_mcm_lst_south">
+		<text>South</text>
+	</string>
+	<!-- Max Spot Diminisher -->
+	<string id="ui_mcm_lst_1x">
+		<text>1x</text>
+	</string>
+	<string id="ui_mcm_lst_2x">
+		<text>2x</text>
+	</string>
+	<string id="ui_mcm_lst_4x">
+		<text>4x</text>
+	</string>
+	<string id="ui_mcm_lst_6x">
+		<text>6x</text>
+	</string>
+	<string id="ui_mcm_lst_8x">
+		<text>8x</text>
+	</string>
+
+	<!-- Multi Track -->
+	<!-- Fuel Lifetime -->
+	<string id="ui_mcm_multitrack_Y">
+		<text>Years</text>
+	</string>
+	<string id="ui_mcm_multitrack_M">
+		<text>Months</text>
+	</string>
+	<string id="ui_mcm_multitrack_D">
+		<text>Days</text>
+	</string>
+	<string id="ui_mcm_multitrack_h">
+		<text>Hours</text>
+	</string>
+	<string id="ui_mcm_multitrack_m">
+		<text>Mintues</text>
+	</string>
+	<string id="ui_mcm_multitrack_s">
+		<text>Seconds</text>
+	</string>
+	<string id="ui_mcm_multitrack_ms">
+		<text>Miliseconds</text>
+	</string>
+	<!-- Faction Search Radius -->
+	<string id="ui_mcm_multitrack_isg">
+		<text>ISG</text>
+	</string>
+	<string id="ui_mcm_multitrack_ecolog">
+		<text>Ecologist</text>
+	</string>
+	<string id="ui_mcm_multitrack_renegade">
+		<text>Renegade</text>
+	</string>
+	<string id="ui_mcm_multitrack_sin">
+		<text>Sin</text>
+	</string>
+	<string id="ui_mcm_multitrack_csky">
+		<text>Clear Sky</text>
+	</string>
+	<string id="ui_mcm_multitrack_killer">
+		<text>Mercenaries</text>
+	</string>
+	<string id="ui_mcm_multitrack_stalker">
+		<text>Loners</text>
+	</string>
+	<string id="ui_mcm_multitrack_dolg">
+		<text>Duty</text>
+	</string>
+	<string id="ui_mcm_multitrack_bandit">
+		<text>Bandit</text>
+	</string>
+	<string id="ui_mcm_multitrack_freedom">
+		<text>Freedomers</text>
+	</string>
+	<string id="ui_mcm_multitrack_monolith">
+		<text>Monolith</text>
+	</string>
+	<string id="ui_mcm_multitrack_army">
+		<text>Military</text>
+	</string>
+	<!-- Guranteed Spot Amount -->
+	<string id="ui_mcm_multitrack_pripyat">
+		<text>Outskirts</text>
+	</string>
+	<string id="ui_mcm_multitrack_zaton">
+		<text>Zaton</text>
+	</string>
+	<string id="ui_mcm_multitrack_k01_darkscape">
+		<text>Darkspace</text>
+	</string>
+	<string id="ui_mcm_multitrack_l07_military">
+		<text>Military Warehouses</text>
+	</string>
+	<string id="ui_mcm_multitrack_l11_pripyat">
+		<text>Pripyat</text>
+	</string>
+		<string id="ui_mcm_multitrack_l03_agroprom">
+		<text>Agroprom</text>
+	</string>
+	<string id="ui_mcm_multitrack_l10_radar">
+		<text>Radar</text>
+	</string>
+	<string id="ui_mcm_multitrack_l09_deadcity">
+		<text>Dead City</text>
+	</string>
+	<string id="ui_mcm_multitrack_l02_garbage">
+		<text>Garbage</text>
+	</string>
+	<string id="ui_mcm_multitrack_l10_limansk">
+		<text>Limansk</text>
+	</string>
+	<string id="ui_mcm_multitrack_l13_generators">
+		<text>Generators</text>
+	</string>
+	<string id="ui_mcm_multitrack_l10_red_forest">
+		<text>Red Forest</text>
+	</string>
+	<string id="ui_mcm_multitrack_jupiter">
+		<text>Jupiter</text>
+	</string>
+	<string id="ui_mcm_multitrack_l06_rostok">
+		<text>Wild Territory</text>
+	</string>
+	<string id="ui_mcm_multitrack_l12_stancia_2">
+		<text>Chernobyl NPP South</text>
+	</string>
+	<string id="ui_mcm_multitrack_l01_escape">
+		<text>Cordon</text>
+	</string>
+	<string id="ui_mcm_multitrack_k00_marsh">
+		<text>Great Swamps</text>
+	</string>
+	<string id="ui_mcm_multitrack_l08_yantar">
+		<text>Yantar</text>
+	</string>
+	<string id="ui_mcm_multitrack_y04_pole">
+		<text>Meadow</text>
+	</string>
+	<string id="ui_mcm_multitrack_l05_bar">
+		<text>Rostok</text>
+	</string>
+	<string id="ui_mcm_multitrack_l12_stancia">
+		<text>Chernobyl NPP North</text>
+	</string>
+
 	<!-- Hideout Furniture  -->
     <string id="st_disel_generator_descr">
         <text>
